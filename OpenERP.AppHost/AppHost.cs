@@ -27,6 +27,13 @@ var api = builder.AddProject<Projects.OpenERP_Api>("api")
     .WaitFor(redis)
     .WaitFor(storage);
 
+// Token 仅注入后端；未配置时仍可启动并在店铺页提示。
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Parameters:wxw-erp-access-token"]))
+{
+    var erpToken = builder.AddParameter("wxw-erp-access-token", secret: true);
+    api.WithEnvironment("Erp__AccessToken", erpToken);
+}
+
 var web = builder.AddViteApp("web", "../OpenERP.Web")
     .WithPnpm(installArgs: ["--frozen-lockfile"])
     .WithReference(api)
