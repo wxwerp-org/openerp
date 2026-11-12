@@ -200,6 +200,15 @@
           "YamlDotNet": "18.1.0"
         }
       },
+      "CommunityToolkit.Aspire.Hosting.SeaweedFS": {
+        "type": "Direct",
+        "requested": "[13.6.1, )",
+        "resolved": "13.6.1",
+        "contentHash": "8PBdXbuCIRpc2xXgqDVXuYdOrwWTsBeUKcxHozhDPi5winGS3+D7pbQu1HbWheB4FZt4MpLPulEfvriDMeUpLQ==",
+        "dependencies": {
+          "Aspire.Hosting": "13.6.4"
+        }
+      },
       "Aspire.Hosting": {
         "type": "Transitive",
         "resolved": "13.6.5",
