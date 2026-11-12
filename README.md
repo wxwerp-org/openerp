@@ -1,6 +1,22 @@
 # OpenERP
 
-最小开发骨架：Aspire 编排 Vue/Vite、ASP.NET Core Minimal API、PostgreSQL 和 Redis。后端只有一个应用进程；尚无业务实体、表或业务功能。
+Aspire 编排 Vue/Vite、ASP.NET Core Minimal API、PostgreSQL 和 Redis。后端只有一个应用进程；已接入私有 ERP 店铺读取，尚无订单本地保存。
+
+## 私有 ERP 店铺（B2）
+
+本期接入 `https://v3-api.wxwerp.com`，仅查询 Temu 半托管跨境（TemuPop）店铺。在仓库根目录设置 Open API Token：
+
+```bash
+dotnet user-secrets set "Parameters:wxw-erp-access-token" "你的Token" --project OpenERP.AppHost
+```
+
+按下文通过 Aspire 启动后打开 `/shops`。AppHost 将密钥参数注入后端的 `Erp__AccessToken`；前端只读取配置是否存在，不获取 Token，不把 Token 存入浏览器或数据库。修改 Token 后重新启动该 AppHost。直接配置后端时使用环境变量 `Erp__AccessToken`。
+
+店铺页支持加载、重试和分页，逐店显示平台授权有效、无效或查询失败。Token 已配置不代表权限有效；能查询店铺也不代表平台授权有效。授权无效的店铺仍可显示，历史订单是否可读另行核验。当前没有管理员登录，部署及访问控制由 C1/C4 完成。
+
+本轮确认 SID 30 用于历史订单联调，SID 644928 用于后续订单分页验证；B2 不触发订单同步或保存。调查记录和接口契约差异见 [B1 #6](https://github.com/wxwerp-org/openerp/issues/6)。
+
+后端入口：`GET /api/erp/config`、`GET /api/erp/shops?page=1&pageSize=20`，每页 1–100 条。上游列表失败返回错误；单店授权状态查询失败保留店铺并标记未知。返回的页面数量和总数来自 ERP。
 
 ## 环境
 

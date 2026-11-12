@@ -25,9 +25,64 @@ input {
   font: inherit;
 }
 
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-header {
+  height: 68px;
+  border-bottom: 1px solid #e7eaf0;
+  background: #fff;
+}
+
+.app-header__inner {
+  display: flex;
+  width: min(100%, 1160px);
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.app-brand {
+  color: #172033;
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  text-decoration: none;
+}
+
+.app-navigation {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-navigation__link {
+  display: inline-flex;
+  height: 36px;
+  padding: 0 13px;
+  align-items: center;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 550;
+  text-decoration: none;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.app-navigation__link:hover,
+.app-navigation__link.router-link-active {
+  color: #2563eb;
+  background: #eff6ff;
+}
+
 .page-shell {
   display: grid;
-  min-height: 100vh;
+  min-height: calc(100vh - 68px);
   padding: 32px 20px;
   place-items: center;
 }
@@ -90,7 +145,119 @@ h1 {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+.shops-page {
+  width: min(100%, 1160px);
+  min-height: calc(100vh - 68px);
+  margin: 0 auto;
+  padding: 40px 24px 56px;
+}
+
+.shops-heading {
+  display: flex;
+  margin-bottom: 24px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.shops-heading__copy h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+}
+
+.shops-heading__copy .description {
+  margin-top: 9px;
+}
+
+.shops-heading__status {
+  display: flex;
+  padding-top: 3px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shops-notice {
+  margin-bottom: 20px;
+}
+
+.shops-card {
+  border: 1px solid #e7eaf0;
+  border-radius: 12px;
+}
+
+.shops-card .el-card__body {
+  padding: 0;
+}
+
+.shops-card__toolbar {
+  display: flex;
+  min-height: 64px;
+  padding: 14px 20px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.shops-card__summary {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.shops-table-wrap {
+  min-height: 220px;
+}
+
+.shops-loading {
+  display: flex;
+  min-height: 220px;
+  padding: 24px;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.shops-empty {
+  padding: 26px 0;
+}
+
+.shops-pagination {
+  display: flex;
+  min-height: 66px;
+  padding: 12px 20px;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid #edf0f5;
+}
+
+.shop-status-error {
+  max-width: 360px;
+  margin: 5px 0 0;
+  color: #b45309;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 480px) {
+  .app-header__inner {
+    padding: 0 14px;
+  }
+
+  .app-navigation {
+    gap: 0;
+  }
+
+  .app-navigation__link {
+    padding: 0 9px;
+    font-size: 13px;
+  }
+
   .ping-card .el-card__body {
     padding: 22px;
   }
@@ -98,5 +265,28 @@ h1 {
   .card-heading,
   .card-footer {
     gap: 12px;
+  }
+
+  .shops-page {
+    padding: 28px 14px 40px;
+  }
+
+  .shops-heading {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .shops-heading__status {
+    justify-content: flex-start;
+  }
+
+  .shops-card__toolbar {
+    padding: 12px 14px;
+  }
+
+  .shops-pagination {
+    justify-content: center;
+    padding: 12px 8px;
+    overflow-x: auto;
   }
 }
