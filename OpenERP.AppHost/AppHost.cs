@@ -11,13 +11,21 @@ var redis = builder.AddRedis("redis")
     .WithDataVolume()
     .WithLifetime(ContainerLifetime.Persistent);
 
+var storage = builder.AddSeaweedFS("seaweedfs")
+    .WithImageTag("4.53")
+    .WithS3()
+    .WithDataVolume()
+    .WithLifetime(ContainerLifetime.Persistent);
+
 var api = builder.AddProject<Projects.OpenERP_Api>("api")
     .WithHttpsEndpoint()
     .WithHttpHealthCheck("/health", endpointName: "https")
     .WithReference(database)
     .WithReference(redis)
+    .WithReference(storage)
     .WaitFor(database)
-    .WaitFor(redis);
+    .WaitFor(redis)
+    .WaitFor(storage);
 
 var web = builder.AddViteApp("web", "../OpenERP.Web")
     .WithPnpm(installArgs: ["--frozen-lockfile"])
