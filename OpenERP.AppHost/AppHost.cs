@@ -20,11 +20,6 @@ var api = builder.AddProject<Projects.OpenERP_Api>("api")
     .WaitFor(redis);
 
 var web = builder.AddViteApp("web", "../OpenERP.Web")
-    .WithEndpoint("http", endpoint =>
-    {
-        endpoint.Name = "https";
-        endpoint.UriScheme = "https";
-    })
     .WithPnpm(installArgs: ["--frozen-lockfile"])
     .WithReference(api)
     .WithEnvironment("API_BASE_URL", api.GetEndpoint("https"))
