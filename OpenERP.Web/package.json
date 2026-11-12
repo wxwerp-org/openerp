@@ -8,7 +8,9 @@
     "dev": "vite",
     "typecheck": "vue-tsc --noEmit",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "element-plus": "2.14.8",
@@ -16,10 +18,14 @@
     "vue-router": "5.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.0",
     "@types/node": "26.6.6",
     "@vitejs/plugin-vue": "6.0.10",
+    "@vue/test-utils": "2.5.1",
+    "jsdom": "31.0.0",
     "typescript": "6.0.3",
     "vite": "8.3.8",
+    "vitest": "5.1.0",
     "vue-tsc": "3.3.14"
   }
 }

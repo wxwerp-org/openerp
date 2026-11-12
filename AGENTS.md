@@ -44,7 +44,7 @@ C#/.NET 后端处理可预期失败时优先使用 Result 模式；适用时优�
 
 ## 测试与验证
 
-尚无自动化测试项目、测试脚本、测试命名约定或覆盖率门槛。执行上述构建和类型检查。涉及连接流程时，验证首页显示 `pong`、失败提示和重试正常，API `/health` 能检查 PostgreSQL 与 Redis；`/alive` 仅检查存活。明确记录实际验证结果及未验证项。
+后端测试项目 `OpenERP.Api.Tests` 使用 xUnit v3 + 原生 MTP，并已引入 Aspire.Hosting.Testing。前端采用 Vitest + Vue Test Utils + jsdom，浏览器采用 TypeScript + Playwright Test；配置及运行方式见 `README.md`。当前保留已有文件存储测试，尚未新增前端或浏览器用例，也没有覆盖率门槛。明确记录实际验证结果及未验证项。
 
 ## 提交与合并请求
 

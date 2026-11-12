@@ -103,3 +103,22 @@ dotnet tool run aspire stop --apphost OpenERP.AppHost/OpenERP.AppHost.csproj --n
 Redis 使用官方数据卷集成启用的快照持久化；尚无缓存业务，也不承诺异常断电时保存最近的内存写入。
 
 本次仅用于开发。前端生产镜像及 Caddy、后端生产镜像和部署流水线均未实现。
+
+## 测试框架
+
+- 后端：`OpenERP.Api.Tests` 使用 xUnit v3 + 原生 .NET 10 Microsoft.Testing.Platform，替换原 xUnit v2/VSTest；已引入与 AppHost 版本一致的 `Aspire.Hosting.Testing`。
+- 前端：Vitest + Vue Test Utils + jsdom，测试目录为 `OpenERP.Web/tests/unit`。
+- 浏览器：TypeScript + Playwright Test，测试目录为 `OpenERP.Web/tests/e2e`，使用 Chromium。
+
+本次仅接入框架并保留已有文件存储测试，不新增用例或测试环境管理。前端两个测试目录目前没有用例，运行时会提示未发现测试。
+
+```bash
+# 仅发现已有后端测试，不启动服务或执行文件操作。
+dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --list-tests
+
+pnpm --dir OpenERP.Web test
+pnpm --dir OpenERP.Web exec playwright install chromium
+pnpm --dir OpenERP.Web test:e2e
+```
+
+已有后端测试仍通过 `OPENERP_TEST_API_URL` 指向预先启动的 API，其中一个用例会重启当前 checkout 的 SeaweedFS；执行前应确认目标是可用于文件测试的环境。Aspire 测试环境的创建尚未接入现有用例。浏览器测试的目标地址通过 `PLAYWRIGHT_BASE_URL` 指定，使用 Aspire 实际分配的前端地址。

@@ -489,6 +489,7 @@ $RECYCLE.BIN/
 **/bin/
 **/obj/
 **/node_modules/
+.pnpm-store/
 **/dist/
 **/*.tsbuildinfo
 .aspire/
