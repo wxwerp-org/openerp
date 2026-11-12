@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="OpenERP.AppHost/OpenERP.AppHost.csproj" />
+  <Project Path="OpenERP.ServiceDefaults/OpenERP.ServiceDefaults.csproj" />
+  <Project Path="OpenERP.Api/OpenERP.Api.csproj" />
+</Solution>
