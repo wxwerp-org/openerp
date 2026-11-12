@@ -38,7 +38,9 @@ Aspire 自动启动前端。端口动态分配，请通过 Dashboard 打开 `web
 
 遵循 `.editorconfig`：使用空格，C# 缩进四格，JSON/XML 缩进两格；采用文件范围命名空间，类型和方法使用 PascalCase，接口以 `I` 开头，私有实例字段使用 `_camelCase`。
 
-前端沿用两格缩进、单引号、不加分号、PascalCase Vue 文件名及 `<script setup lang="ts">`。TypeScript 已开启严格检查，尚未配置 ESLint 或 Prettier。可预期失败优先使用 Result 模式；适用时优先采用 `RokyZevon.OpResult`，避免用异常控制正常流程。
+C#/.NET 后端处理可预期失败时优先使用 Result 模式；适用时优先采用 `RokyZevon.OpResult`，避免用异常控制正常流程。
+
+前端沿用两格缩进、单引号、不加分号、PascalCase Vue 文件名及 `<script setup lang="ts">`。TypeScript 已开启严格检查，尚未配置 ESLint 或 Prettier。
 
 ## 测试与验证
 
