@@ -20,7 +20,7 @@ public sealed class FileStorageTestTargetTests
         var apiReady = new TaskCompletionSource<ResourceEvent>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         // When 执行真实集成测试使用的重启流程。
-        var restart = FileStorageFixture.RestartStorageAsync(
+        var restart = AspireIntegrationFixture.RestartStorageAsync(
             (name, command, _) =>
             {
                 commands.Add($"{command} {name}");

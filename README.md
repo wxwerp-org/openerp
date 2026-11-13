@@ -116,7 +116,7 @@ Redis 使用官方数据卷集成启用的快照持久化；尚无缓存业务�
 
 ## 历史订单同步验证
 
-订单读取测试可独立运行。PostgreSQL 测试使用 `OPENERP_TEST_POSTGRES` 指向已就绪的隔离 Aspire 数据库，测试为各用例新建并清理独立数据库。该连接账号需要创建数据库权限。真实验收测试在配置 `OPENERP_TEST_ERP_TOKEN` 时对 SID `644928` 只读扫页，另配置上述连接变量可核对 SID `30` 的已同步数据。凭证通过进程环境提供。
+订单读取测试可独立运行。订单 PostgreSQL 和文件存储测试共用测试宿主启动和清理的隔离 Aspire 环境，订单测试为各用例新建并清理独立数据库。真实验收测试在配置 `OPENERP_TEST_ERP_TOKEN` 时对 SID `644928` 只读扫页，另配置 `OPENERP_TEST_POSTGRES` 可核对 SID `30` 的已同步数据。凭证通过进程环境提供。
 
 ```bash
 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class '*OrderReaderTests*'
@@ -152,5 +152,6 @@ dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class 
 | --- | --- | --- |
 | Given ERP 已配置，When 店铺页请求配置，Then 仅开发环境声明并提供同步能力 | 后端 3 个环境均缺少能力字段，前端 3 个能力关闭用例仍显示按钮 | HTTP 回归核对配置与路由，前端验证关闭或缺少字段时隐藏入口、停止状态请求与轮询 |
 | Given 店铺不可见、已有同步任务或数据库约束拒绝写入，When 同步遇到该错误，Then 返回 OpResult 失败 | 分别得到自定义结果、`null` 和 `DbUpdateException` | 保留失败提示和冲突行为，PostgreSQL 回归核对失败前后的主单与子项版本一致 |
+| Given 容器环境与开发证书已就绪，且未设置 `OPENERP_TEST_POSTGRES`，When 运行默认全量测试，Then 测试宿主提供隔离 PostgreSQL，四项订单存储用例执行原有断言 | 四项用例在初始化阶段因缺少连接变量而失败 | 订单 PostgreSQL 专项 4 项通过 |
 
-隔离 Aspire 的后端回归通过 51 项，跳过 2 项真实 ERP 验收。前端 19 项、类型检查和构建通过。锁定还原及 .NET 构建通过，保留既有 15 条 `xUnit1051` 警告。
+未设置 PostgreSQL 或 ERP 验收变量时，`dotnet test --solution OpenERP.slnx` 通过 43 项，跳过 2 项真实 ERP 验收。前端 19 项、类型检查和构建通过。

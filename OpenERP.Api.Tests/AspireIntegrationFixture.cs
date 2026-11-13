@@ -10,7 +10,10 @@ using Xunit;
 
 namespace OpenERP.Api.Tests;
 
-public sealed class FileStorageFixture : IAsyncLifetime
+[CollectionDefinition(nameof(AspireIntegrationCollection))]
+public sealed class AspireIntegrationCollection : ICollectionFixture<AspireIntegrationFixture>;
+
+public sealed class AspireIntegrationFixture : IAsyncLifetime
 {
     private const string StorageName = "seaweedfs";
     private readonly string _volumeName = $"openerp-test-seaweedfs-{Guid.NewGuid():N}";
@@ -82,6 +85,10 @@ public sealed class FileStorageFixture : IAsyncLifetime
         client.Timeout = TimeSpan.FromMinutes(3);
         return client;
     }
+
+    internal async Task<string> GetPostgresConnectionStringAsync(CancellationToken cancellationToken) =>
+        await _app!.GetConnectionStringAsync("openerp", cancellationToken)
+            ?? throw new InvalidOperationException("Aspire 未提供订单测试的数据库连接。");
 
     public async Task RestartStorageAsync(CancellationToken cancellationToken)
     {
@@ -157,7 +164,7 @@ public sealed class FileStorageFixture : IAsyncLifetime
 
         if (errors.Count > 0)
         {
-            throw new AggregateException("文件存储集成测试清理失败。", errors);
+            throw new AggregateException("Aspire 集成测试清理失败。", errors);
         }
     }
 

@@ -6,7 +6,8 @@ using Xunit.Sdk;
 
 namespace OpenERP.Api.Tests;
 
-public sealed class OrderStorePostgresTests : IAsyncLifetime
+[Collection(nameof(AspireIntegrationCollection))]
+public sealed class OrderStorePostgresTests(AspireIntegrationFixture fixture) : IAsyncLifetime
 {
     private readonly string _databaseName = $"openerp_orders_test_{Guid.NewGuid():N}";
     private string _adminConnectionString = "";
@@ -16,8 +17,7 @@ public sealed class OrderStorePostgresTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        _adminConnectionString = Environment.GetEnvironmentVariable("OPENERP_TEST_POSTGRES")
-            ?? throw new InvalidOperationException("请将 OPENERP_TEST_POSTGRES 设置为可创建测试数据库的 PostgreSQL 连接字符串。");
+        _adminConnectionString = await fixture.GetPostgresConnectionStringAsync(cancellationToken);
         _testConnectionString = new NpgsqlConnectionStringBuilder(_adminConnectionString)
         {
             Database = _databaseName,
