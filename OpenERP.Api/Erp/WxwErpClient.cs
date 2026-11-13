@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace OpenERP.Api.Erp;
 
-public sealed class WxwErpClient(HttpClient http, IConfiguration configuration) : IErpClient
+public sealed partial class WxwErpClient(HttpClient http, IConfiguration configuration) : IErpClient
 {
     // 本期接入已确认的站点，不接受浏览器提交任意目标地址或凭证。
     private const string BaseUrl = "https://v3-api.wxwerp.com";
@@ -11,6 +11,35 @@ public sealed class WxwErpClient(HttpClient http, IConfiguration configuration) 
     public ErpConfiguration Configuration => new(!string.IsNullOrEmpty(Token), BaseUrl);
 
     public async Task<ErpResult<ShopPage>> GetShopsAsync(int page, int pageSize, CancellationToken ct)
+    {
+        var result = await GetShopListAsync(page, pageSize, ct);
+        if (result.Value is not { } list)
+            return result;
+
+        using var limit = new SemaphoreSlim(4);
+        var withStatus = await Task.WhenAll(list.Items.Select(async shop =>
+        {
+            await limit.WaitAsync(ct);
+            try
+            {
+                var status = await PostAsync("/open-api/shop/get_status", new { sid = shop.Sid }, ct);
+                if (status.Value is { } body && body.TryGetProperty("data", out var statusData) &&
+                    statusData.ValueKind == JsonValueKind.Object &&
+                    statusData.TryGetProperty("isTokenOk", out var tokenOk) &&
+                    tokenOk.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    return shop with { IsTokenOk = tokenOk.GetBoolean() };
+
+                return shop with { StatusError = status.Error ?? "ERP 授权状态响应格式不正确。" };
+            }
+            finally
+            {
+                limit.Release();
+            }
+        }));
+        return new(list with { Items = withStatus });
+    }
+
+    private async Task<ErpResult<ShopPage>> GetShopListAsync(int page, int pageSize, CancellationToken ct)
     {
         if (page < 1 || pageSize is < 1 or > 100)
             return new(null, "页码必须大于 0，每页数量必须在 1 至 100 之间。", 400);
@@ -39,27 +68,7 @@ public sealed class WxwErpClient(HttpClient http, IConfiguration configuration) 
             shops.Add(new(sid, Text(item, "name") ?? "", platform, Text(item, "region"), null, null));
         }
 
-        using var limit = new SemaphoreSlim(4);
-        var withStatus = await Task.WhenAll(shops.Select(async shop =>
-        {
-            await limit.WaitAsync(ct);
-            try
-            {
-                var status = await PostAsync("/open-api/shop/get_status", new { sid = shop.Sid }, ct);
-                if (status.Value is { } body && body.TryGetProperty("data", out var statusData) &&
-                    statusData.ValueKind == JsonValueKind.Object &&
-                    statusData.TryGetProperty("isTokenOk", out var tokenOk) &&
-                    tokenOk.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                    return shop with { IsTokenOk = tokenOk.GetBoolean() };
-
-                return shop with { StatusError = status.Error ?? "ERP 授权状态响应格式不正确。" };
-            }
-            finally
-            {
-                limit.Release();
-            }
-        }));
-        return new(new(withStatus, page, pageSize, totalCount, pageCount));
+        return new(new(shops, page, pageSize, totalCount, pageCount));
     }
 
     private async Task<ErpResult<JsonElement?>> PostAsync(string path, object body, CancellationToken ct)
@@ -82,6 +91,9 @@ public sealed class WxwErpClient(HttpClient http, IConfiguration configuration) 
             {
                 // 不透传上游原始响应，防止把凭证或内部信息带到浏览器。
                 var message = Text(root, "message");
+                if (path == OrderTimePath && message is "_暂未找到信息" or "暂未找到信息")
+                    return new(null, "ERP 未找到订单或时间记录。", 404);
+
                 return new(null, message switch
                 {
                     "AccessToken invalid" or "AccessToken disabled" or "AccessToken expired" or "AccessToken is empty"

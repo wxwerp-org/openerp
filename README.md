@@ -1,6 +1,6 @@
 # OpenERP
 
-Aspire 编排 Vue/Vite、ASP.NET Core Minimal API、PostgreSQL、Redis 和 SeaweedFS。后端只有一个应用进程；已接入私有 ERP 店铺读取及开发环境文件存储，尚无订单本地保存。
+Aspire 编排 Vue/Vite、ASP.NET Core Minimal API、PostgreSQL、Redis 和 SeaweedFS。后端只有一个应用进程，已接入私有 ERP 店铺读取、TemuPop 历史订单手动同步及开发环境文件存储。
 
 ## 私有 ERP 店铺（B2）
 
@@ -17,6 +17,16 @@ dotnet user-secrets set "Parameters:wxw-erp-access-token" "你的Token" --projec
 本轮确认 SID 30 用于历史订单联调，SID 644928 用于后续订单分页验证；B2 不触发订单同步或保存。调查记录和接口契约差异见 [B1 #6](https://github.com/wxwerp-org/openerp/issues/6)。
 
 后端入口：`GET /api/erp/config`、`GET /api/erp/shops?page=1&pageSize=20`，每页 1–100 条。上游列表失败返回错误；单店授权状态查询失败保留店铺并标记未知。返回的页面数量和总数来自 ERP。
+
+## 历史订单同步（B3）
+
+在开发环境的 `/shops` 选择店铺，点击「同步历史订单」。只读取当前 ERP AccessToken 可见的 TemuPop 店铺在私有 ERP 中已有的历史订单，平台授权失效仍可使用。后台同一时间执行一个同步，页面展示进度及新增、更新、未变化和跳过计数。刷新页面可查看最近一次任务，API 重启后可手动重跑。
+
+开发 API 使用 `POST /api/erp/shops/{sid}/order-sync` 受理任务，返回 `202`，已有同步时返回 `409`。同路径 `GET` 查询最近任务，无任务返回 `204`。
+
+API 启动时应用 EF Core 迁移。PostgreSQL 以 ERP 内部 ID 保存主单，平台 PO 和商品行分别关联主单。订单时间保留 ERP 显示原值及来源。同步刷新本轮核对通过的订单，保留本轮未返回或归属异常而被跳过的订单。完整读取后才写库，归属异常显示为部分成功。当前销量口径由 [B4 #9](https://github.com/wxwerp-org/openerp/issues/9) 跟踪。
+
+订单列表按 ERP ID 排序并核对前后计数、每页条数和 ID 唯一性。偏移分页读取期间，如果不同订单同时进入和退出可见范围，前后总数可能相同，此时仍可能漏读。两种页长的验收结果覆盖当次源数据。
 
 ## 环境
 
@@ -103,3 +113,35 @@ dotnet tool run aspire stop --apphost OpenERP.AppHost/OpenERP.AppHost.csproj --n
 Redis 使用官方数据卷集成启用的快照持久化；尚无缓存业务，也不承诺异常断电时保存最近的内存写入。
 
 本次仅用于开发。前端生产镜像及 Caddy、后端生产镜像和部署流水线均未实现。
+
+## 历史订单同步验证
+
+订单读取测试可独立运行。PostgreSQL 测试使用 `OPENERP_TEST_POSTGRES` 指向已就绪的隔离 Aspire 数据库，测试为各用例新建并清理独立数据库。该连接账号需要创建数据库权限。真实验收测试在配置 `OPENERP_TEST_ERP_TOKEN` 时对 SID `644928` 只读扫页，另配置上述连接变量可核对 SID `30` 的已同步数据。凭证通过进程环境提供。
+
+```bash
+dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class '*OrderReaderTests*'
+dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class '*OrderStorePostgresTests*'
+dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class '*OrderLiveAcceptanceTests*' --show-test-results passed --show-stdout All
+```
+
+### B3 行为验证记录
+
+| 场景 | 红灯 | 绿灯 |
+| --- | --- | --- |
+| 订单读取与归属校验 | `OrderReaderTests` 的 8 项测试在空实现上全部失败 | 筛选、完整扫页、时间补查、整单跳过和详情失败阻断共 8 项通过 |
+| PostgreSQL 初始化与整批保存 | `OrderStorePostgresTests` 中迁移前查到 0 张订单表，存储空实现有 3 项失败 | 迁移、子项更新、乱序重放和数据库回滚共 4 项通过 |
+| 店铺页手动入口与状态恢复 | 无同步入口时 GET 返回 404，5 个初始前端用例失败。跨店铺 409 后无法重试的回归用例也先复现失败 | GET 无任务返回 204，前端测试 9 项通过，含跨店铺冲突后的手动重试 |
+
+2026-11-12 隔离 Aspire 验收。SID `30` 在平台授权无效的情况下，浏览器首轮新增 53 单，第二轮 53 单均未变化，刷新后可查看结果。直接读取 PostgreSQL 核对了 53 张主单、53 张平台 PO 和 55 行商品。SID `644928` 按每页 20 和 100 条只读扫描，分别覆盖 113 和 23 页，得到相同的 2,259 个唯一 ERP ID，子单 SID 匹配，跳过 0 单。
+
+最终后端常规回归通过 16 项，另行运行的真实 ERP 验收通过 2 项。前端测试 9 项、类型检查与构建通过。锁定依赖还原和 .NET 解决方案构建通过，既有文件存储测试代码仍有 15 条 `xUnit1051` 构建警告。
+
+#### 2026-11-13 评审修复
+
+| 场景 | 红灯 | 绿灯 |
+| --- | --- | --- |
+| ERP 已知字段类型错误 | 12 个用例复现解析接纳错误类型并产生空值 | 错误类型使批次失败，合法缺省和空值保留 |
+| 补查时间无法区分无时间和主单消失 | 4 个用例复现旧详情仍被接纳 | 复核相同 ERP ID，读取失败则中止整批，归属不符则跳过，正常详情按复核结果保存 |
+| 同步进度 | 2 个用例复现详情阶段一直为 99%，提前失败显示 100% | 列表和详情分阶段推进，失败保留实际进度，成功和部分成功显示 100% |
+
+后端订单读取测试 25 项、前端测试 15 项全部通过，.NET 解决方案构建、前端类型检查和构建通过。使用修复后的读取器只读复核 SID `30`，通过 53 张主单、53 张平台 PO、55 行商品。该批订单的创建时间均来自列表，时间补查的异常路径由回归用例验证。

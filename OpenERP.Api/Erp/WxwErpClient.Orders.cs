@@ -1,0 +1,334 @@
+using System.Globalization;
+using System.Text.Json;
+using OpenERP.Api.Orders;
+
+namespace OpenERP.Api.Erp;
+
+public sealed partial class WxwErpClient
+{
+    private const string OrderTimePath = "/open-api/order_detail/get_time";
+    private const string TemuPop = "TemuPop";
+
+    public async Task<ErpResult<OrderImportBatch>> ReadOrdersAsync(int sid, Action<OrderReadProgress>? report, CancellationToken ct)
+    {
+        const int shopPageSize = 100;
+        var found = false;
+        for (var page = 1; ; page++)
+        {
+            var shops = await GetShopListAsync(page, shopPageSize, ct);
+            if (shops.Value is not { } list)
+                return new(null, shops.Error, shops.Status);
+
+            found = list.Items.Any(shop => int.Parse(shop.Sid, CultureInfo.InvariantCulture) == sid);
+            if (found || page >= list.PageCount)
+                break;
+        }
+
+        if (!found)
+            return new(null, "当前 ERP AccessToken 无法访问该 TemuPop 店铺。", 404);
+
+        var scan = await ReadOrderIndexAsync(sid, 20, report, ct);
+        if (scan.Value is not { } index)
+            return new(null, scan.Error, scan.Status);
+
+        var orders = new List<OrderSnapshot>(index.Orders.Count);
+        var skips = new Dictionary<string, int>(index.SkipReasons);
+        var processed = index.Total - index.Orders.Count;
+        report?.Invoke(new("details", index.Total, index.Total, processed));
+        foreach (var header in index.Orders)
+        {
+            var detail = await ReadOrderAsync(sid, header, ct);
+            if (detail.Value is not { } result)
+                return new(null, detail.Error, detail.Status);
+
+            if (result.Order is { } order)
+                orders.Add(order);
+            else if (result.SkipReason is { } reason)
+                CountSkip(skips, reason);
+
+            report?.Invoke(new("details", index.Total, index.Total, ++processed));
+        }
+
+        return new(new(index.Total, orders, skips));
+    }
+
+    public async Task<ErpResult<OrderIndex>> ReadOrderIndexAsync(
+        int sid, int pageSize, Action<OrderReadProgress>? report, CancellationToken ct)
+    {
+        if (sid <= 0 || pageSize is < 1 or > 500)
+            return new(null, "店铺或分页参数无效。", 400);
+        if (!Configuration.Configured)
+            return new(null, "尚未配置私有 ERP AccessToken。", 503);
+
+        var filters = new
+        {
+            status = "all",
+            gid = "all",
+            shops = new { values = new[] { new { items = new[] { new { key = sid.ToString(CultureInfo.InvariantCulture) } } } } },
+            platforms = new[] { 40 }
+        };
+        const string countPath = "/open-api/order/get_list_page_count";
+        var countRequest = new { filters, page_size = pageSize };
+        var before = await PostAsync(countPath, countRequest, ct);
+        if (before.Value is not { } countRoot)
+            return new(null, before.Error, before.Status);
+        if (!TryReadPageCount(countRoot, pageSize, out var total, out var pages))
+            return new(null, "ERP 订单分页统计格式不正确。");
+
+        var orders = new List<ErpOrderHeader>();
+        var ids = new List<string>();
+        var skips = new Dictionary<string, int>();
+        report?.Invoke(new("pages", total, 0, 0));
+
+        for (var page = 1; page <= pages; page++)
+        {
+            var response = await PostAsync("/open-api/order/get_list", new
+            {
+                filters, page, page_size = pageSize, sort = new { field = "w_order._id", order = "desc" }
+            }, ct);
+            if (response.Value is not { } root)
+                return new(null, response.Error, response.Status);
+            if (!TryField(root, "data", JsonValueKind.Object, out var data) ||
+                !TryField(data, "orders", JsonValueKind.Array, out var rows) ||
+                rows.GetArrayLength() != Math.Min(pageSize, total - ids.Count))
+                return new(null, "ERP 订单分页返回条数与统计不一致。");
+
+            foreach (var row in rows.EnumerateArray())
+            {
+                var id = Text(row, "id")?.ToLowerInvariant();
+                var number = Text(row, "orderid");
+                if (id is not { Length: 24 } || !id.All(char.IsAsciiHexDigit) || string.IsNullOrWhiteSpace(number))
+                    return new(null, "ERP 订单标识格式不正确。");
+                if (ids.Count > 0 && string.CompareOrdinal(ids[^1], id) <= 0)
+                    return new(null, "ERP 订单分页出现重复 ID 或排序不一致。");
+
+                ids.Add(id);
+                if (!TryReadPlatformOrders(row, sid, out var pos, out var reason))
+                    return new(null, "ERP 订单列表的平台子单状态格式不正确。");
+                if (reason is not null)
+                {
+                    CountSkip(skips, reason);
+                    continue;
+                }
+
+                if (!TryReadTimes(row, "time", "list", out var times))
+                    return new(null, "ERP 订单列表的时间格式不正确。");
+
+                orders.Add(new(id, number, times, pos));
+            }
+
+            report?.Invoke(new("pages", total, ids.Count, 0));
+        }
+
+        var after = await PostAsync(countPath, countRequest, ct);
+        if (after.Value is not { } afterRoot)
+            return new(null, after.Error, after.Status);
+        if (!TryReadPageCount(afterRoot, pageSize, out var afterTotal, out var afterPages) ||
+            afterTotal != total || afterPages != pages || ids.Count != total)
+            return new(null, "ERP 订单分页统计发生变化，请重试同步。");
+
+        return new(new(total, ids, orders, skips));
+    }
+
+    private async Task<ErpResult<OrderReadItem>> ReadOrderAsync(int sid, ErpOrderHeader header, CancellationToken ct)
+    {
+        var detail = await ReadOrderDetailAsync(sid, header, ct);
+        if (detail.Value?.Order is not { } order || order.Times.Created is not null)
+            return detail;
+
+        var timeResult = await PostAsync(OrderTimePath, new { id = header.ErpId }, ct);
+        if (timeResult.Value is not { } timeRoot)
+        {
+            // 时间记录缺失和主单已消失的消息相同，重新读取并校验详情后才能保存。
+            if (timeResult.Status == 404)
+                return await ReadOrderDetailAsync(sid, header, ct);
+
+            return new(null, timeResult.Error, timeResult.Status);
+        }
+
+        if (!TryField(timeRoot, "data", JsonValueKind.Object, out var timeData) ||
+            !TryField(timeData, "times", JsonValueKind.Array, out _) ||
+            !TryReadTimes(timeData, "date", "detail", out var fallback))
+            return new(null, "ERP 订单时间详情格式不正确。");
+
+        var times = order.Times;
+        return new(new(order with
+        {
+            Times = new(fallback.Created, times.Paid ?? fallback.Paid,
+                times.Dispatched ?? fallback.Dispatched, times.Refunded ?? fallback.Refunded)
+        }, null));
+    }
+
+    private async Task<ErpResult<OrderReadItem>> ReadOrderDetailAsync(int sid, ErpOrderHeader header, CancellationToken ct)
+    {
+        var response = await PostAsync("/open-api/order_detail/get_base",
+            new { id = header.ErpId, ask = false, showAllProduct = true }, ct);
+        if (response.Value is not { } root)
+            return new(null, response.Error, response.Status);
+        if (!TryField(root, "data", JsonValueKind.Object, out var data) ||
+            Text(data, "orderId") != header.OrderNumber ||
+            !TryField(data, "shop", JsonValueKind.Object, out var shop) ||
+            !TryField(data, "status", JsonValueKind.Object, out var status) ||
+            Text(status, "key") is not { Length: > 0 } statusCode ||
+            !TryField(data, "platformOrders", JsonValueKind.Array, out var platformOrders) ||
+            !TryField(data, "products", JsonValueKind.Array, out var products))
+            return new(null, "ERP 订单详情格式或编号不匹配。");
+
+        if (!TrySid(shop, out var detailSid) || detailSid != sid || Text(shop, "platform") != TemuPop)
+            return new(new(null, "订单详情店铺或平台与目标不符"));
+
+        var poCodes = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var po in platformOrders.EnumerateArray())
+        {
+            if (Text(po, "oid") is not { Length: > 0 } poNumber)
+                return new(new(null, "订单详情缺少平台子单标识"));
+
+            if (!TryOptionalField(po, "status", JsonValueKind.Object, out var poStatus) ||
+                (poStatus.ValueKind == JsonValueKind.Object &&
+                 !TryOptionalField(poStatus, "key", JsonValueKind.String, out _)))
+                return new(null, "ERP 订单详情的平台子单状态格式不正确。");
+
+            var code = Text(poStatus, "key");
+            if (!poCodes.TryAdd(poNumber, code) && poCodes[poNumber] != code)
+                return new(null, "ERP 订单详情的同一平台子单返回了不同状态。");
+        }
+
+        if (poCodes.Count != header.PlatformOrders.Count || header.PlatformOrders.Any(po => !poCodes.ContainsKey(po.PoNumber)))
+            return new(new(null, "订单列表和详情的平台子单归属不一致"));
+
+        var lines = new List<OrderLineSnapshot>(products.GetArrayLength());
+        foreach (var product in products.EnumerateArray())
+        {
+            if (!TryField(product, "qty", JsonValueKind.Number, out var quantity) || !quantity.TryGetInt32(out var qty))
+                return new(null, "ERP 订单商品数量格式不正确。");
+
+            if (!TryOptionalField(product, "opid", JsonValueKind.String, out _) ||
+                !TryOptionalField(product, "oguid", JsonValueKind.String, out _) ||
+                !TryOptionalField(product, "skuId", JsonValueKind.String, out _) ||
+                !TryOptionalField(product, "skuCode", JsonValueKind.String, out _) ||
+                !TryOptionalBoolean(product, "enabled", out var disabled) ||
+                !TryOptionalBoolean(product, "append", out var appended))
+                return new(null, "ERP 订单商品标识或状态格式不正确。");
+
+            // ERP 详情的 enabled 字段直接来自源商品行的 disabled。
+            lines.Add(new(Text(product, "opid"), Text(product, "oguid"), Text(product, "skuId"), Text(product, "skuCode"),
+                qty, disabled, appended));
+        }
+
+        var pos = header.PlatformOrders.Select(po => po with { StatusCode = poCodes[po.PoNumber] }).ToArray();
+        return new(new(new(header.ErpId, header.OrderNumber, sid, TemuPop, statusCode, header.Times, pos, lines), null));
+    }
+
+    private static bool TryReadPlatformOrders(JsonElement row, int sid,
+        out IReadOnlyList<PlatformOrderSnapshot> result, out string? skipReason)
+    {
+        result = [];
+        skipReason = null;
+        if (!TryField(row, "sub_orders", JsonValueKind.Array, out var children) || children.GetArrayLength() == 0)
+        {
+            skipReason = "列表缺少平台子单";
+            return true;
+        }
+
+        var pos = new Dictionary<string, PlatformOrderSnapshot>(StringComparer.Ordinal);
+        foreach (var child in children.EnumerateArray())
+        {
+            var number = Text(child, "id");
+            if (string.IsNullOrWhiteSpace(number) || !TrySid(child, out var childSid))
+            {
+                skipReason = "平台子单缺少 PO 号或 SID";
+                return true;
+            }
+            if (childSid != sid)
+            {
+                skipReason = "平台子单不属于目标店铺";
+                return true;
+            }
+
+            if (!TryOptionalField(child, "status", JsonValueKind.String, out var status))
+                return false;
+
+            var snapshot = new PlatformOrderSnapshot(number, childSid, null,
+                status.ValueKind == JsonValueKind.String ? status.GetString() : null);
+            if (!pos.TryAdd(number, snapshot) && pos[number] != snapshot)
+            {
+                skipReason = "列表中的同一 PO 返回了不同信息";
+                return true;
+            }
+        }
+
+        result = pos.Values.ToArray();
+        return true;
+    }
+
+    private static bool TryReadTimes(JsonElement order, string valueField, string source, out OrderTimes result)
+    {
+        result = new(null, null, null, null);
+        if (!TryOptionalField(order, "times", JsonValueKind.Array, out var rows))
+            return false;
+        if (rows.ValueKind != JsonValueKind.Array)
+            return true;
+
+        var values = new Dictionary<string, OrderTimeValue>(StringComparer.Ordinal);
+        foreach (var row in rows.EnumerateArray())
+        {
+            if (Text(row, "name") is not { } name)
+                return false;
+            var label = name.TrimStart('_');
+            if (label is not ("创建" or "付款" or "出库" or "退款"))
+                continue;
+
+            if (!TryOptionalField(row, valueField, JsonValueKind.String, out var raw))
+                return false;
+            if (raw.ValueKind == JsonValueKind.String &&
+                raw.GetString() is { } value && !string.IsNullOrWhiteSpace(value) && value.Trim() != "-")
+                values.TryAdd(label, new(value, source));
+        }
+
+        result = new(values.GetValueOrDefault("创建"), values.GetValueOrDefault("付款"),
+            values.GetValueOrDefault("出库"), values.GetValueOrDefault("退款"));
+        return true;
+    }
+
+    private static bool TryReadPageCount(JsonElement root, int pageSize, out int total, out int pages)
+    {
+        total = pages = 0;
+        return TryField(root, "data", JsonValueKind.Object, out var data) &&
+            TryCount(data, "data_count", out total) && TryCount(data, "page_count", out pages) &&
+            pages == ((long)total + pageSize - 1) / pageSize;
+    }
+
+    private static bool TryField(JsonElement node, string field, JsonValueKind kind, out JsonElement value)
+    {
+        value = default;
+        return node.ValueKind == JsonValueKind.Object && node.TryGetProperty(field, out value) && value.ValueKind == kind;
+    }
+
+    private static bool TrySid(JsonElement node, out int sid)
+    {
+        sid = 0;
+        return (TryField(node, "sid", JsonValueKind.Number, out var value)
+            ? value.TryGetInt32(out sid)
+            : int.TryParse(Text(node, "sid"), NumberStyles.None, CultureInfo.InvariantCulture, out sid)) && sid > 0;
+    }
+
+    private static bool TryOptionalField(JsonElement node, string key, JsonValueKind kind, out JsonElement value) =>
+        !node.TryGetProperty(key, out value) || value.ValueKind == JsonValueKind.Null || value.ValueKind == kind;
+
+    private static bool TryOptionalBoolean(JsonElement node, string key, out bool? value)
+    {
+        value = null;
+        if (!node.TryGetProperty(key, out var field) || field.ValueKind == JsonValueKind.Null)
+            return true;
+        if (field.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            return false;
+
+        value = field.GetBoolean();
+        return true;
+    }
+
+    private static void CountSkip(Dictionary<string, int> skips, string reason) =>
+        skips[reason] = skips.GetValueOrDefault(reason) + 1;
+
+    private sealed record OrderReadItem(OrderSnapshot? Order, string? SkipReason);
+}
