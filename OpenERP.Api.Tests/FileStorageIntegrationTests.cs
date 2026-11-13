@@ -12,11 +12,13 @@ public sealed class FileStorageIntegrationTests
 {
     private const long MaxFileSize = 20 * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static string? ConfiguredApiUrl => Environment.GetEnvironmentVariable("OPENERP_TEST_API_URL");
 
     [Fact]
     public async Task Files_survive_SeaweedFS_restart_and_support_the_full_lifecycle()
     {
-        using var client = CreateApiClient();
+        var runAspire = CreateAspireRunner();
+        using var client = await CreateApiClientAsync(ConfiguredApiUrl, runAspire);
         var createdKeys = new HashSet<string>(StringComparer.Ordinal);
 
         try
@@ -54,11 +56,7 @@ public sealed class FileStorageIntegrationTests
             Assert.Equal(uploaded.Count, createdKeys.Count);
             Assert.NotEqual(uploaded[0].StoredFile.Key, uploaded[1].StoredFile.Key);
 
-            var (repositoryRoot, appHostPath) = FindAppHost();
-            await RunAspireAsync(repositoryRoot, "resource", "seaweedfs", "restart",
-                "--apphost", appHostPath, "--non-interactive", "--nologo");
-            await RunAspireAsync(repositoryRoot, "wait", "seaweedfs",
-                "--apphost", appHostPath, "--non-interactive", "--timeout", "120", "--nologo");
+            await RestartStorageAsync(runAspire);
 
             using var listResponse = await client.GetAsync("api/files/");
             Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
@@ -112,7 +110,7 @@ public sealed class FileStorageIntegrationTests
                 }
                 catch
                 {
-                    // Cleanup must not hide the failure that caused it to run.
+                    // 清理失败不能掩盖原始测试失败。
                 }
             }
         }
@@ -150,17 +148,75 @@ public sealed class FileStorageIntegrationTests
 
     private static HttpClient CreateApiClient()
     {
-        var value = Environment.GetEnvironmentVariable("OPENERP_TEST_API_URL");
+        var value = ConfiguredApiUrl;
         if (string.IsNullOrWhiteSpace(value))
-            throw new InvalidOperationException("OPENERP_TEST_API_URL must be set to the base URL of a running OpenERP.Api instance.");
+            throw new InvalidOperationException("请将 OPENERP_TEST_API_URL 设为正在运行的 OpenERP.Api 基地址。");
         if (!Uri.TryCreate(value, UriKind.Absolute, out var apiUri) || apiUri.Scheme is not ("http" or "https"))
-            throw new InvalidOperationException("OPENERP_TEST_API_URL must be an absolute HTTP or HTTPS URL.");
+            throw new InvalidOperationException("OPENERP_TEST_API_URL 必须是绝对 HTTP 或 HTTPS 地址。");
 
         var baseAddress = value.EndsWith("/", StringComparison.Ordinal) ? apiUri : new Uri(value + "/");
         return new HttpClient { BaseAddress = baseAddress, Timeout = TimeSpan.FromMinutes(3) };
     }
 
+    internal static async Task<HttpClient> CreateApiClientAsync(string? value, Func<string[], Task<string>> runAspire)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidOperationException("请将 OPENERP_TEST_API_URL 设为所选 AppHost 中 api 的 HTTP 或 HTTPS 根地址。");
+
+        var description = await runAspire(["describe", "api", "--format", "Json"]);
+        var endpoints = GetApiEndpoints(description);
+        if (endpoints.Length == 0)
+            throw new InvalidOperationException("所选 AppHost 的 Aspire describe 未返回可访问的 api HTTP 或 HTTPS 根地址。");
+
+        var apiUri = Uri.TryCreate(value, UriKind.Absolute, out var configuredUri) && IsHttpRoot(configuredUri)
+            ? endpoints.SingleOrDefault(endpoint => endpoint == configuredUri)
+            : null;
+        if (apiUri is null)
+        {
+            throw new InvalidOperationException(
+                $"OPENERP_TEST_API_URL 必须与所选 AppHost 中 api 的一个根地址一致。可用地址为 {string.Join<Uri>("、", endpoints)}。");
+        }
+
+        await WaitForResourceAsync(runAspire, "api");
+        return new HttpClient { BaseAddress = apiUri, Timeout = TimeSpan.FromMinutes(3) };
+    }
+
+    private static Uri[] GetApiEndpoints(string description)
+    {
+        var resources = string.IsNullOrWhiteSpace(description)
+            ? []
+            : JsonSerializer.Deserialize<AspireDescription>(description, JsonOptions)?.Resources ?? [];
+        return resources.Where(resource => (resource.DisplayName ?? resource.Name) == "api")
+            .SelectMany(resource => resource.Urls ?? [])
+            .Where(endpoint => !endpoint.IsInternal)
+            .Select(endpoint => Uri.TryCreate(endpoint.Url, UriKind.Absolute, out var uri) ? uri : null)
+            .OfType<Uri>()
+            .Where(IsHttpRoot)
+            .Distinct()
+            .ToArray();
+    }
+
+    private static bool IsHttpRoot(Uri uri) => uri.Scheme is "http" or "https" && uri.PathAndQuery == "/" &&
+        uri.Fragment.Length == 0 && uri.UserInfo.Length == 0;
+
+    internal static async Task RestartStorageAsync(Func<string[], Task<string>> runAspire)
+    {
+        await runAspire(["resource", "seaweedfs", "restart"]);
+        await WaitForResourceAsync(runAspire, "seaweedfs");
+        await WaitForResourceAsync(runAspire, "api");
+    }
+
+    private static Task WaitForResourceAsync(Func<string[], Task<string>> runAspire, string resource) =>
+        runAspire(["wait", resource, "--timeout", "120"]);
+
     private static string GetFixturePath(string fileName) => Path.Combine(AppContext.BaseDirectory, "Fixtures", fileName);
+
+    private static Func<string[], Task<string>> CreateAspireRunner()
+    {
+        var (repositoryRoot, appHostPath) = FindAppHost();
+        return arguments => RunAspireAsync(repositoryRoot,
+            [.. arguments, "--apphost", appHostPath, "--non-interactive", "--nologo"]);
+    }
 
     private static (string RepositoryRoot, string AppHostPath) FindAppHost()
     {
@@ -186,7 +242,7 @@ public sealed class FileStorageIntegrationTests
         throw new InvalidOperationException("Could not find OpenERP.AppHost/OpenERP.AppHost.csproj. Set OPENERP_TEST_REPO_ROOT to the repository root.");
     }
 
-    private static async Task RunAspireAsync(string repositoryRoot, params string[] arguments)
+    private static async Task<string> RunAspireAsync(string repositoryRoot, params string[] arguments)
     {
         var startInfo = new ProcessStartInfo("dotnet")
         {
@@ -223,11 +279,19 @@ public sealed class FileStorageIntegrationTests
         if (process.ExitCode != 0)
             throw new InvalidOperationException(
                 $"Aspire command failed with exit code {process.ExitCode}: {string.Join(' ', arguments)}{Environment.NewLine}{stdout}{Environment.NewLine}{stderr}");
+
+        return stdout;
     }
 
     private sealed record UploadSample(string FileName, string ContentType, string FixtureName);
 
     private sealed record UploadedSample(UploadSample Sample, byte[] Bytes, StoredFileResponse StoredFile);
+
+    private sealed record AspireDescription(AspireResource[]? Resources);
+
+    private sealed record AspireResource(string Name, string? DisplayName, AspireEndpoint[]? Urls);
+
+    private sealed record AspireEndpoint(string? Url, bool IsInternal);
 
     private sealed record StoredFileResponse(
         [property: JsonPropertyName("key")] string Key,

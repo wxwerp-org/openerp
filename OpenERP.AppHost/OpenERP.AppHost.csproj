@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="4.0.103.4" />
     <PackageReference Include="CommunityToolkit.Aspire.Hosting.SeaweedFS" Version="13.6.1" />
     <ProjectReference Include="../OpenERP.Api/OpenERP.Api.csproj" />
     <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.6.5" />

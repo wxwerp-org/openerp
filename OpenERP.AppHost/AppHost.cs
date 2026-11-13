@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using OpenERP.AppHost;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
 var postgres = builder.AddPostgres("postgres")
@@ -16,6 +19,11 @@ var storage = builder.AddSeaweedFS("seaweedfs")
     .WithS3()
     .WithDataVolume()
     .WithLifetime(ContainerLifetime.Persistent);
+
+// Master/Volume 就绪后，还需确认 API 启动所依赖的 S3 列桶操作可用。
+builder.Services.AddHealthChecks()
+    .AddCheck("seaweedfs-s3", new SeaweedFsS3HealthCheck(storage.Resource), timeout: TimeSpan.FromSeconds(10));
+storage.WithHealthCheck("seaweedfs-s3");
 
 var api = builder.AddProject<Projects.OpenERP_Api>("api")
     .WithHttpsEndpoint()

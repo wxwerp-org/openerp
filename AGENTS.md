@@ -16,12 +16,12 @@
 
 ## 项目结构
 
-当前仓库是开发骨架，尚无业务实体或业务流程。
+当前仓库以开发骨架为主，已接入 Temu 半托管跨境店铺的只读查询，以及仅在 Development 环境开放的 SeaweedFS 文件存储；尚未实现本地订单保存。
 
-- `OpenERP.AppHost/`：通过 Aspire 编排前端、API、PostgreSQL 和 Redis。
-- `OpenERP.Api/`：ASP.NET Core Minimal API 与 EF Core `AppDbContext`。
+- `OpenERP.AppHost/`：通过 Aspire 编排前端、API、PostgreSQL、Redis 和 SeaweedFS。
+- `OpenERP.Api/`：ASP.NET Core Minimal API、EF Core `AppDbContext`、私有 ERP 店铺查询及开发环境文件存储 API。
 - `OpenERP.ServiceDefaults/`：共享健康检查、遥测和服务发现配置。
-- `OpenERP.Web/src/`：Vue/TypeScript 前端；`router/` 定义路由，`views/` 存放页面，`styles.css` 提供共享样式；尚无独立静态资源目录。
+- `OpenERP.Web/src/`：Vue/TypeScript 前端；`router/` 定义 `/` 首页和 `/shops` 店铺页路由，`views/` 存放页面，`styles.css` 提供共享样式；尚无独立静态资源目录。
 - `OpenERP.slnx`：.NET 解决方案；详细启动和诊断步骤见 `README.md`。
 
 ## 构建与本地开发
@@ -37,6 +37,8 @@ dotnet build OpenERP.slnx --no-restore       # 构建 .NET 项目
 pnpm --dir OpenERP.Web typecheck            # 检查 Vue/TypeScript 类型
 pnpm --dir OpenERP.Web build                # 构建前端资源
 dotnet tool run aspire start --apphost OpenERP.AppHost/OpenERP.AppHost.csproj --non-interactive --isolated
+dotnet tool run aspire wait web --apphost OpenERP.AppHost/OpenERP.AppHost.csproj --non-interactive
+dotnet tool run aspire describe --apphost OpenERP.AppHost/OpenERP.AppHost.csproj --non-interactive
 ```
 
 上面的启动示例适用于 Git worktree；普通检出按 `aspire-orchestration` 选择启动方式。Aspire 自动启动前端。端口动态分配，请通过 Dashboard 打开 `web` 地址。停止必须遵循该 Skill 的生命周期工具及结果处理规则；允许 CLI 停止时，执行 `dotnet tool run aspire stop --apphost OpenERP.AppHost/OpenERP.AppHost.csproj --non-interactive`。
@@ -53,7 +55,7 @@ C#/.NET 后端处理可预期失败时优先使用 Result 模式；适用时优�
 
 ## 测试与验证
 
-后端测试项目 `OpenERP.Api.Tests` 使用 xUnit v3 + 原生 MTP，并已引入 Aspire.Hosting.Testing。前端采用 Vitest + Vue Test Utils + jsdom，浏览器采用 TypeScript + Playwright Test；配置及运行方式见 `README.md`。当前保留已有文件存储测试，尚未新增前端或浏览器用例，也没有覆盖率门槛。明确记录实际验证结果及未验证项。
+后端测试项目 `OpenERP.Api.Tests` 使用 xUnit v3 + 原生 MTP，并已引入 Aspire.Hosting.Testing。前端采用 Vitest + Vue Test Utils + jsdom，浏览器采用 TypeScript + Playwright Test；配置及运行方式见 `README.md`。后端保留文件存储集成测试，并包含测试目标绑定及 S3 就绪模型回归；尚未新增前端或浏览器用例，也没有覆盖率门槛。明确记录实际验证结果及未验证项。
 
 ### BDD/TDD 开发流程（强制）
 
