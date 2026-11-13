@@ -103,31 +103,3 @@ dotnet tool run aspire stop --apphost OpenERP.AppHost/OpenERP.AppHost.csproj --n
 Redis 使用官方数据卷集成启用的快照持久化；尚无缓存业务，也不承诺异常断电时保存最近的内存写入。
 
 本次仅用于开发。前端生产镜像及 Caddy、后端生产镜像和部署流水线均未实现。
-
-## 测试框架
-
-- 后端：`OpenERP.Api.Tests` 使用 xUnit v3 + 原生 .NET 10 Microsoft.Testing.Platform，替换原 xUnit v2/VSTest；已引入与 AppHost 版本一致的 `Aspire.Hosting.Testing`。
-- 前端：Vitest + Vue Test Utils + jsdom，测试目录为 `OpenERP.Web/tests/unit`。
-- 浏览器：TypeScript + Playwright Test，测试目录为 `OpenERP.Web/tests/e2e`，使用 Chromium。
-
-后端包含测试目标绑定回归、普通上传校验用例的 HTTP 入口回归、S3 健康状态模型测试和真实文件存储集成测试。模型测试使用实际 AppHost 配置及本地 HTTP fixture，验证探针接线和模拟失败、恢复时的健康状态，不启动 API 或容器，也不验证真实签名有效性、冷启动故障或容器重启。真实持久性测试使用预先启动的 Aspire 环境。前端两个测试目录目前没有用例，运行时会提示未发现测试。
-
-```bash
-# 仅发现已有后端测试，不启动服务或执行文件操作。
-dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --list-tests
-
-# 无需启动 Aspire 资源的回归测试。
-dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class "*FileStorageTestTargetTests"
-dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class "*FileStorageHttpValidationTests"
-dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class "*SeaweedFSReadinessTests"
-
-pnpm --dir OpenERP.Web test
-pnpm --dir OpenERP.Web exec playwright install chromium
-pnpm --dir OpenERP.Web test:e2e
-```
-
-文件集成测试通过 `OPENERP_TEST_API_URL` 指向预先启动的 API。普通非法格式、空文件和超限上传校验只使用该 HTTP/HTTPS 基地址，不要求 AppHost 或存储健康。
-
-只有持久性重启用例使用 `OPENERP_TEST_REPO_ROOT` 指定对应仓库根目录，未指定时使用当前 checkout。该用例先通过所选 AppHost 的 `aspire describe api --format Json` 获取非内部 HTTP/HTTPS 根地址并校验 URL；不匹配时在文件操作和重启前失败。匹配后先等待 API 健康，再上传文件、重启 SeaweedFS，并依次等待 SeaweedFS 和 API 健康后验证文件。执行前应确认该环境允许文件测试，测试会上传和清理自己的文件。
-
-浏览器测试的目标地址通过 `PLAYWRIGHT_BASE_URL` 指定，使用 Aspire 实际分配的前端地址。
