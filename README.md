@@ -30,7 +30,7 @@ API 启动时应用 EF Core 迁移。PostgreSQL 以 ERP 内部 ID 保存主单�
 
 ## 环境
 
-- .NET SDK **10.0.404**（`global.json`）；本地 Aspire CLI **13.6.5**（工具清单）。
+- 正式版 .NET **10** SDK（`global.json` 选择已安装的最高 .NET 10 SDK）；本地 Aspire CLI **13.6.5**（工具清单）。
 - Node.js **26.13.0**（`.node-version`）、pnpm **11.16.0**。
 - 已启动的 Docker Desktop，或 Aspire 支持的兼容容器运行环境。
 - 已受信任的 ASP.NET Core HTTPS 开发证书；浏览器日志需要 Chrome 或 Edge。

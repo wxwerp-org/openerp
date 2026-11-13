@@ -26,7 +26,7 @@
 
 ## 构建与本地开发
 
-使用 .NET SDK 10.0.404、Node.js 26.13.0、pnpm 11.16.0，并启动兼容 Docker 的容器运行环境。在仓库根目录执行：
+使用正式版 .NET 10 SDK、Node.js 26.13.0、pnpm 11.16.0，并启动兼容 Docker 的容器运行环境。在仓库根目录执行：
 
 ```bash
 dotnet tool restore                         # 安装本地 Aspire CLI
