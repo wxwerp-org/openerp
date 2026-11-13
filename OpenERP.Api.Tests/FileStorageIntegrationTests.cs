@@ -5,7 +5,8 @@ using Xunit;
 
 namespace OpenERP.Api.Tests;
 
-public sealed class FileStorageIntegrationTests(FileStorageFixture fixture) : IClassFixture<FileStorageFixture>
+[Collection(nameof(AspireIntegrationCollection))]
+public sealed class FileStorageIntegrationTests(AspireIntegrationFixture fixture)
 {
     private const long MaxFileSize = 20 * 1024 * 1024;
 
