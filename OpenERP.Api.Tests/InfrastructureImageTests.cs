@@ -23,17 +23,17 @@ public sealed class InfrastructureImageTests
     }
 
     [Fact]
-    public async Task Postgres_uses_a_separate_persistent_volume_for_Alpine()
+    public async Task Postgres_uses_the_default_data_volume()
     {
-        // Given 开发环境已经可能存在 Debian 创建的默认 PostgreSQL 卷。
+        // Given 以仓库实际 AppHost 配置构建资源模型。
         await using var builder = await DistributedApplicationTestingBuilder.CreateAsync<Projects.OpenERP_AppHost>(
             ["NO_PROXY=localhost,127.0.0.1,::1"], TestContext.Current.CancellationToken);
 
-        // When 解析 PostgreSQL 数据卷，Then Alpine 使用独立卷及 PostgreSQL 18 挂载点。
+        // When 解析 PostgreSQL 数据卷，Then 使用 Aspire 默认卷名和 PostgreSQL 18 挂载点。
         var postgres = builder.Resources.Single(resource => resource.Name == "postgres");
         var volume = Assert.Single(postgres.Annotations.OfType<ContainerMountAnnotation>(),
             mount => mount.Type == ContainerMountType.Volume);
-        Assert.EndsWith("-postgres-alpine-data", volume.Source);
+        Assert.EndsWith("-postgres-data", volume.Source);
         Assert.Equal("/var/lib/postgresql", volume.Target);
     }
 }

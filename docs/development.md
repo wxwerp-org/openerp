@@ -116,34 +116,7 @@ dotnet tool run aspire secret path --apphost OpenERP.AppHost/OpenERP.AppHost.csp
 
 PostgreSQL `18-alpine` 和 Redis `8-alpine` 使用浮动大版本标签，小版本可能随镜像更新变化，本机缓存也会影响实际运行版本。SeaweedFS `4.53` 的普通发布镜像已基于 Alpine。[AppHost 镜像配置](../OpenERP.AppHost/AppHost.cs) · [SeaweedFS 发布构建](https://github.com/seaweedfs/seaweedfs/blob/4.53/.github/workflows/container_release_unified.yml) · [SeaweedFS Dockerfile](https://github.com/seaweedfs/seaweedfs/blob/4.53/docker/Dockerfile.go_build)
 
-#### 从 PostgreSQL `18` 迁移已有开发数据
-
-Alpine 的 libc 会改变 PostgreSQL 默认文本排序。旧卷记录了 Debian 的 collation 版本，直接挂载到 Alpine 时，从 `template1` 创建数据库会失败。因此新 AppHost 使用以 `-postgres-alpine-data` 结尾的独立卷，原 `-postgres-data` 卷保留。新卷首次启动时为空，有旧数据的开发环境需要逻辑导出与恢复。[PostgreSQL 排序规则](https://www.postgresql.org/docs/18/collation.html)
-
-1. 在旧版本中通过 Aspire 停止 `api`，确认它已停止并暂停其他数据库写入，保持 PostgreSQL 运行。使用 `dotnet tool run aspire describe postgres --format Json --apphost OpenERP.AppHost/OpenERP.AppHost.csproj` 查看容器资源的 `name` 和 `volumes`。确认源卷以 `-postgres-data` 结尾，将 `OLD_POSTGRES` 设为容器名，在新的私有备份目录导出应用库。导出成功后再切换版本。
-
-   ```bash
-   umask 077
-   docker exec "$OLD_POSTGRES" sh -ec 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec pg_dump -Fc -U "$POSTGRES_USER" -d openerp' > openerp.dump
-   ```
-
-2. 正常停止旧 AppHost 后，在原 checkout 路径启动新版本。迁移完成前暂停同步及其他数据库写入。等待 PostgreSQL 与 API 就绪后，通过 Aspire 停止 `api` 并确认它已停止。再次查询 PostgreSQL 资源，确认容器挂载了新的 `-postgres-alpine-data` 卷，再将 `NEW_POSTGRES` 设为该容器名。
-
-3. 确认目标库只包含首次启动生成的结构和迁移记录，并检查三张订单表的行数均为 0。目标库已有数据时，先备份这些数据并确定合并方式。确认目标可恢复后，`pg_restore` 会在一个事务内替换备份中的数据库对象和数据。
-
-   ```bash
-   docker exec -i "$NEW_POSTGRES" sh -ec 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d openerp' <<'SQL'
-   SELECT (SELECT count(*) FROM "Orders") AS orders,
-          (SELECT count(*) FROM "OrderLines") AS order_lines,
-          (SELECT count(*) FROM "PlatformOrders") AS platform_orders;
-   SQL
-   ```
-
-   ```bash
-   docker exec -i "$NEW_POSTGRES" sh -ec 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec pg_restore --clean --if-exists --single-transaction --exit-on-error -U "$POSTGRES_USER" -d openerp' < openerp.dump
-   ```
-
-4. 恢复 API 后检查 `/health`，对照旧库核对订单、订单行和平台订单。保留原卷、开发密钥和备份。需要回退时，停止新 AppHost，以原 checkout 路径运行旧版本，重新使用原卷。原卷包含切换前的数据，切换后产生的写入需另行保留。
+如果当前 checkout 已有 PostgreSQL `18` 创建的开发卷，首次切换到 Alpine 时请使用全新的默认 PostgreSQL 卷。例如，从新的 checkout 路径启动，Aspire 会为该路径创建默认卷。
 
 ## 使用 AI 开发工具
 
