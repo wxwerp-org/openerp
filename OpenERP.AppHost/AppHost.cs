@@ -4,9 +4,8 @@ using OpenERP.AppHost;
 var builder = DistributedApplication.CreateBuilder(args);
 
 var postgres = builder.AddPostgres("postgres")
-    .WithImageTag("18-alpine");
-// Alpine 的 libc 排序规则与旧镜像不同，使用独立数据卷供逻辑恢复。
-postgres.WithDataVolume(name: VolumeNameGenerator.Generate(postgres, "alpine-data"))
+    .WithImageTag("18-alpine")
+    .WithDataVolume()
     .WithLifetime(ContainerLifetime.Persistent);
 var database = postgres.AddDatabase("openerp");
 
