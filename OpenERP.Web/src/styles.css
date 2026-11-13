@@ -244,6 +244,43 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.shop-order-sync {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.shop-order-sync__task {
+  width: 100%;
+  min-width: 280px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.shop-order-sync__heading {
+  display: flex;
+  margin: 2px 0 6px;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+}
+
+.shop-order-sync__counts,
+.shop-order-sync__reason,
+.shop-order-sync__error {
+  margin: 5px 0 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.shop-order-sync__reason {
+  color: #92400e;
+}
+
+.shop-order-sync__error {
+  color: #b91c1c;
+}
+
 @media (max-width: 480px) {
   .app-header__inner {
     padding: 0 14px;

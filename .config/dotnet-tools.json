@@ -6,6 +6,11 @@
       "version": "13.6.5",
       "commands": ["aspire"],
       "rollForward": false
+    },
+    "dotnet-ef": {
+      "version": "10.0.15",
+      "commands": ["dotnet-ef"],
+      "rollForward": false
     }
   }
 }
