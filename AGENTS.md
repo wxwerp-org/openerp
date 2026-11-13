@@ -55,7 +55,19 @@ C#/.NET 后端处理可预期失败时优先使用 Result 模式；适用时优�
 
 ## 测试与验证
 
-后端测试项目 `OpenERP.Api.Tests` 使用 xUnit v3 + 原生 MTP，并已引入 Aspire.Hosting.Testing。前端采用 Vitest + Vue Test Utils + jsdom，浏览器采用 TypeScript + Playwright Test；配置及运行方式见 `README.md`。后端保留文件存储集成测试，并包含测试目标绑定及 S3 就绪模型回归；尚未新增前端或浏览器用例，也没有覆盖率门槛。明确记录实际验证结果及未验证项。
+默认在仓库根目录执行全量测试。
+
+```bash
+dotnet test --solution OpenERP.slnx
+pnpm --dir OpenERP.Web test
+pnpm --dir OpenERP.Web test:e2e
+```
+
+后端使用 xUnit v3、原生 .NET 10 Microsoft.Testing.Platform 和 Aspire.Hosting.Testing。文件存储集成测试需要运行中的 Docker 兼容容器环境和受信任的 HTTPS 开发证书，测试宿主自行启动和清理资源。后端还包含重启就绪顺序、独立 HTTP 上传校验和 S3 健康状态模型回归。
+
+前端单元测试位于 `OpenERP.Web/tests/unit`，使用 Vitest、Vue Test Utils 和 jsdom。浏览器测试位于 `OpenERP.Web/tests/e2e`，使用 TypeScript 和 Playwright Test。浏览器测试环境需安装 Chromium（`pnpm --dir OpenERP.Web exec playwright install chromium`），目标地址由 `PLAYWRIGHT_BASE_URL` 提供。
+
+在任务回复中汇报实际验证结果和未验证项。
 
 ### BDD/TDD 开发流程（强制）
 
