@@ -4,6 +4,7 @@ using Npgsql;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using Xunit;
+using Xunit.Sdk;
 
 namespace OpenERP.Api.Tests;
 
@@ -23,9 +24,11 @@ public sealed class OrderLiveAcceptanceTests(ITestOutputHelper output)
 
         // When 使用同一订单读取器按两种每页数量扫完整列表。
         var small = await erp.ReadOrderIndexAsync(644928, 20, null, ct);
-        Assert.True(small.Value is not null, small.Error);
+        if (small.IsErr)
+            throw new XunitException(small.Error.Message);
         var large = await erp.ReadOrderIndexAsync(644928, 100, null, ct);
-        Assert.True(large.Value is not null, large.Error);
+        if (large.IsErr)
+            throw new XunitException(large.Error.Message);
 
         // Then 全量 ID 一致，源端统计吻合，已通过校验的 PO 均属于目标店铺。
         Assert.True(small.Value.Total > 100, "该店需有超过 100 单才能验证两种页长的翻页。");
@@ -49,7 +52,8 @@ public sealed class OrderLiveAcceptanceTests(ITestOutputHelper output)
         using var http = CreateHttp();
         var ct = TestContext.Current.CancellationToken;
         var source = await CreateErp(http).ReadOrdersAsync(30, null, ct);
-        Assert.True(source.Value is not null, source.Error);
+        if (source.IsErr)
+            throw new XunitException(source.Error.Message);
         Assert.NotEmpty(source.Value.Orders);
         var acceptedIds = source.Value.Orders.Select(order => order.ErpId).ToArray();
 

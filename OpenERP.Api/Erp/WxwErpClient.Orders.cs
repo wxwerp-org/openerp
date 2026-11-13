@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using OpResult;
 using OpenERP.Api.Orders;
 
 namespace OpenERP.Api.Erp;
@@ -9,28 +10,30 @@ public sealed partial class WxwErpClient
     private const string OrderTimePath = "/open-api/order_detail/get_time";
     private const string TemuPop = "TemuPop";
 
-    public async Task<ErpResult<OrderImportBatch>> ReadOrdersAsync(int sid, Action<OrderReadProgress>? report, CancellationToken ct)
+    public async Task<OpResult<OrderImportBatch>> ReadOrdersAsync(int sid, Action<OrderReadProgress>? report, CancellationToken ct)
     {
         const int shopPageSize = 100;
         var found = false;
         for (var page = 1; ; page++)
         {
-            var shops = await GetShopListAsync(page, shopPageSize, ct);
-            if (shops.Value is not { } list)
-                return new(null, shops.Error, shops.Status);
+            var (shops, _) = await GetShopListAsync(page, shopPageSize, ct);
+            if (shops.IsErr)
+                return shops.Error;
 
+            var list = shops.Value;
             found = list.Items.Any(shop => int.Parse(shop.Sid, CultureInfo.InvariantCulture) == sid);
             if (found || page >= list.PageCount)
                 break;
         }
 
         if (!found)
-            return new(null, "当前 ERP AccessToken 无法访问该 TemuPop 店铺。", 404);
+            return OpResults.Err("当前 ERP AccessToken 无法访问该 TemuPop 店铺。");
 
         var scan = await ReadOrderIndexAsync(sid, 20, report, ct);
-        if (scan.Value is not { } index)
-            return new(null, scan.Error, scan.Status);
+        if (scan.IsErr)
+            return scan.Error;
 
+        var index = scan.Value;
         var orders = new List<OrderSnapshot>(index.Orders.Count);
         var skips = new Dictionary<string, int>(index.SkipReasons);
         var processed = index.Total - index.Orders.Count;
@@ -38,9 +41,10 @@ public sealed partial class WxwErpClient
         foreach (var header in index.Orders)
         {
             var detail = await ReadOrderAsync(sid, header, ct);
-            if (detail.Value is not { } result)
-                return new(null, detail.Error, detail.Status);
+            if (detail.IsErr)
+                return detail.Error;
 
+            var result = detail.Value;
             if (result.Order is { } order)
                 orders.Add(order);
             else if (result.SkipReason is { } reason)
@@ -49,16 +53,16 @@ public sealed partial class WxwErpClient
             report?.Invoke(new("details", index.Total, index.Total, ++processed));
         }
 
-        return new(new(index.Total, orders, skips));
+        return new OrderImportBatch(index.Total, orders, skips);
     }
 
-    public async Task<ErpResult<OrderIndex>> ReadOrderIndexAsync(
+    public async Task<OpResult<OrderIndex>> ReadOrderIndexAsync(
         int sid, int pageSize, Action<OrderReadProgress>? report, CancellationToken ct)
     {
         if (sid <= 0 || pageSize is < 1 or > 500)
-            return new(null, "店铺或分页参数无效。", 400);
+            return OpResults.Err("店铺或分页参数无效。");
         if (!Configuration.Configured)
-            return new(null, "尚未配置私有 ERP AccessToken。", 503);
+            return OpResults.Err("尚未配置私有 ERP AccessToken。");
 
         var filters = new
         {
@@ -69,11 +73,11 @@ public sealed partial class WxwErpClient
         };
         const string countPath = "/open-api/order/get_list_page_count";
         var countRequest = new { filters, page_size = pageSize };
-        var before = await PostAsync(countPath, countRequest, ct);
-        if (before.Value is not { } countRoot)
-            return new(null, before.Error, before.Status);
-        if (!TryReadPageCount(countRoot, pageSize, out var total, out var pages))
-            return new(null, "ERP 订单分页统计格式不正确。");
+        var (before, _) = await PostAsync(countPath, countRequest, ct);
+        if (before.IsErr)
+            return before.Error;
+        if (!TryReadPageCount(before.Value, pageSize, out var total, out var pages))
+            return OpResults.Err("ERP 订单分页统计格式不正确。");
 
         var orders = new List<ErpOrderHeader>();
         var ids = new List<string>();
@@ -82,29 +86,29 @@ public sealed partial class WxwErpClient
 
         for (var page = 1; page <= pages; page++)
         {
-            var response = await PostAsync("/open-api/order/get_list", new
+            var (response, _) = await PostAsync("/open-api/order/get_list", new
             {
                 filters, page, page_size = pageSize, sort = new { field = "w_order._id", order = "desc" }
             }, ct);
-            if (response.Value is not { } root)
-                return new(null, response.Error, response.Status);
-            if (!TryField(root, "data", JsonValueKind.Object, out var data) ||
+            if (response.IsErr)
+                return response.Error;
+            if (!TryField(response.Value, "data", JsonValueKind.Object, out var data) ||
                 !TryField(data, "orders", JsonValueKind.Array, out var rows) ||
                 rows.GetArrayLength() != Math.Min(pageSize, total - ids.Count))
-                return new(null, "ERP 订单分页返回条数与统计不一致。");
+                return OpResults.Err("ERP 订单分页返回条数与统计不一致。");
 
             foreach (var row in rows.EnumerateArray())
             {
                 var id = Text(row, "id")?.ToLowerInvariant();
                 var number = Text(row, "orderid");
                 if (id is not { Length: 24 } || !id.All(char.IsAsciiHexDigit) || string.IsNullOrWhiteSpace(number))
-                    return new(null, "ERP 订单标识格式不正确。");
+                    return OpResults.Err("ERP 订单标识格式不正确。");
                 if (ids.Count > 0 && string.CompareOrdinal(ids[^1], id) <= 0)
-                    return new(null, "ERP 订单分页出现重复 ID 或排序不一致。");
+                    return OpResults.Err("ERP 订单分页出现重复 ID 或排序不一致。");
 
                 ids.Add(id);
                 if (!TryReadPlatformOrders(row, sid, out var pos, out var reason))
-                    return new(null, "ERP 订单列表的平台子单状态格式不正确。");
+                    return OpResults.Err("ERP 订单列表的平台子单状态格式不正确。");
                 if (reason is not null)
                 {
                     CountSkip(skips, reason);
@@ -112,7 +116,7 @@ public sealed partial class WxwErpClient
                 }
 
                 if (!TryReadTimes(row, "time", "list", out var times))
-                    return new(null, "ERP 订单列表的时间格式不正确。");
+                    return OpResults.Err("ERP 订单列表的时间格式不正确。");
 
                 orders.Add(new(id, number, times, pos));
             }
@@ -120,87 +124,87 @@ public sealed partial class WxwErpClient
             report?.Invoke(new("pages", total, ids.Count, 0));
         }
 
-        var after = await PostAsync(countPath, countRequest, ct);
-        if (after.Value is not { } afterRoot)
-            return new(null, after.Error, after.Status);
-        if (!TryReadPageCount(afterRoot, pageSize, out var afterTotal, out var afterPages) ||
+        var (after, _) = await PostAsync(countPath, countRequest, ct);
+        if (after.IsErr)
+            return after.Error;
+        if (!TryReadPageCount(after.Value, pageSize, out var afterTotal, out var afterPages) ||
             afterTotal != total || afterPages != pages || ids.Count != total)
-            return new(null, "ERP 订单分页统计发生变化，请重试同步。");
+            return OpResults.Err("ERP 订单分页统计发生变化，请重试同步。");
 
-        return new(new(total, ids, orders, skips));
+        return new OrderIndex(total, ids, orders, skips);
     }
 
-    private async Task<ErpResult<OrderReadItem>> ReadOrderAsync(int sid, ErpOrderHeader header, CancellationToken ct)
+    private async Task<OpResult<OrderReadItem>> ReadOrderAsync(int sid, ErpOrderHeader header, CancellationToken ct)
     {
         var detail = await ReadOrderDetailAsync(sid, header, ct);
-        if (detail.Value?.Order is not { } order || order.Times.Created is not null)
+        if (detail.IsErr || detail.Value.Order is not { } order || order.Times.Created is not null)
             return detail;
 
-        var timeResult = await PostAsync(OrderTimePath, new { id = header.ErpId }, ct);
-        if (timeResult.Value is not { } timeRoot)
+        var (timeResult, timeStatus) = await PostAsync(OrderTimePath, new { id = header.ErpId }, ct);
+        if (timeResult.IsErr)
         {
             // 时间记录缺失和主单已消失的消息相同，重新读取并校验详情后才能保存。
-            if (timeResult.Status == 404)
+            if (timeStatus == 404)
                 return await ReadOrderDetailAsync(sid, header, ct);
 
-            return new(null, timeResult.Error, timeResult.Status);
+            return timeResult.Error;
         }
 
-        if (!TryField(timeRoot, "data", JsonValueKind.Object, out var timeData) ||
+        if (!TryField(timeResult.Value, "data", JsonValueKind.Object, out var timeData) ||
             !TryField(timeData, "times", JsonValueKind.Array, out _) ||
             !TryReadTimes(timeData, "date", "detail", out var fallback))
-            return new(null, "ERP 订单时间详情格式不正确。");
+            return OpResults.Err("ERP 订单时间详情格式不正确。");
 
         var times = order.Times;
-        return new(new(order with
+        return new OrderReadItem(order with
         {
             Times = new(fallback.Created, times.Paid ?? fallback.Paid,
                 times.Dispatched ?? fallback.Dispatched, times.Refunded ?? fallback.Refunded)
-        }, null));
+        }, null);
     }
 
-    private async Task<ErpResult<OrderReadItem>> ReadOrderDetailAsync(int sid, ErpOrderHeader header, CancellationToken ct)
+    private async Task<OpResult<OrderReadItem>> ReadOrderDetailAsync(int sid, ErpOrderHeader header, CancellationToken ct)
     {
-        var response = await PostAsync("/open-api/order_detail/get_base",
+        var (response, _) = await PostAsync("/open-api/order_detail/get_base",
             new { id = header.ErpId, ask = false, showAllProduct = true }, ct);
-        if (response.Value is not { } root)
-            return new(null, response.Error, response.Status);
-        if (!TryField(root, "data", JsonValueKind.Object, out var data) ||
+        if (response.IsErr)
+            return response.Error;
+        if (!TryField(response.Value, "data", JsonValueKind.Object, out var data) ||
             Text(data, "orderId") != header.OrderNumber ||
             !TryField(data, "shop", JsonValueKind.Object, out var shop) ||
             !TryField(data, "status", JsonValueKind.Object, out var status) ||
             Text(status, "key") is not { Length: > 0 } statusCode ||
             !TryField(data, "platformOrders", JsonValueKind.Array, out var platformOrders) ||
             !TryField(data, "products", JsonValueKind.Array, out var products))
-            return new(null, "ERP 订单详情格式或编号不匹配。");
+            return OpResults.Err("ERP 订单详情格式或编号不匹配。");
 
         if (!TrySid(shop, out var detailSid) || detailSid != sid || Text(shop, "platform") != TemuPop)
-            return new(new(null, "订单详情店铺或平台与目标不符"));
+            return new OrderReadItem(null, "订单详情店铺或平台与目标不符");
 
         var poCodes = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var po in platformOrders.EnumerateArray())
         {
             if (Text(po, "oid") is not { Length: > 0 } poNumber)
-                return new(new(null, "订单详情缺少平台子单标识"));
+                return new OrderReadItem(null, "订单详情缺少平台子单标识");
 
             if (!TryOptionalField(po, "status", JsonValueKind.Object, out var poStatus) ||
                 (poStatus.ValueKind == JsonValueKind.Object &&
                  !TryOptionalField(poStatus, "key", JsonValueKind.String, out _)))
-                return new(null, "ERP 订单详情的平台子单状态格式不正确。");
+                return OpResults.Err("ERP 订单详情的平台子单状态格式不正确。");
 
             var code = Text(poStatus, "key");
             if (!poCodes.TryAdd(poNumber, code) && poCodes[poNumber] != code)
-                return new(null, "ERP 订单详情的同一平台子单返回了不同状态。");
+                return OpResults.Err("ERP 订单详情的同一平台子单返回了不同状态。");
         }
 
         if (poCodes.Count != header.PlatformOrders.Count || header.PlatformOrders.Any(po => !poCodes.ContainsKey(po.PoNumber)))
-            return new(new(null, "订单列表和详情的平台子单归属不一致"));
+            return new OrderReadItem(null, "订单列表和详情的平台子单归属不一致");
 
         var lines = new List<OrderLineSnapshot>(products.GetArrayLength());
         foreach (var product in products.EnumerateArray())
         {
             if (!TryField(product, "qty", JsonValueKind.Number, out var quantity) || !quantity.TryGetInt32(out var qty))
-                return new(null, "ERP 订单商品数量格式不正确。");
+                return OpResults.Err("ERP 订单商品数量格式不正确。");
 
             if (!TryOptionalField(product, "opid", JsonValueKind.String, out _) ||
                 !TryOptionalField(product, "oguid", JsonValueKind.String, out _) ||
@@ -208,7 +212,7 @@ public sealed partial class WxwErpClient
                 !TryOptionalField(product, "skuCode", JsonValueKind.String, out _) ||
                 !TryOptionalBoolean(product, "enabled", out var disabled) ||
                 !TryOptionalBoolean(product, "append", out var appended))
-                return new(null, "ERP 订单商品标识或状态格式不正确。");
+                return OpResults.Err("ERP 订单商品标识或状态格式不正确。");
 
             // ERP 详情的 enabled 字段直接来自源商品行的 disabled。
             lines.Add(new(Text(product, "opid"), Text(product, "oguid"), Text(product, "skuId"), Text(product, "skuCode"),
@@ -216,7 +220,7 @@ public sealed partial class WxwErpClient
         }
 
         var pos = header.PlatformOrders.Select(po => po with { StatusCode = poCodes[po.PoNumber] }).ToArray();
-        return new(new(new(header.ErpId, header.OrderNumber, sid, TemuPop, statusCode, header.Times, pos, lines), null));
+        return new OrderReadItem(new(header.ErpId, header.OrderNumber, sid, TemuPop, statusCode, header.Times, pos, lines), null);
     }
 
     private static bool TryReadPlatformOrders(JsonElement row, int sid,

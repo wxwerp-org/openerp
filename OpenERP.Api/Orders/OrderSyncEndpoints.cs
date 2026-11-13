@@ -16,10 +16,11 @@ public static class OrderSyncEndpoints
                 return TypedResults.Problem(statusCode: 400, title: "店铺 SID 必须为正整数");
             if (!erp.Configuration.Configured)
                 return TypedResults.Problem(statusCode: 503, title: "尚未配置私有 ERP AccessToken");
-            if (jobs.Start(sid) is not { } job)
-                return TypedResults.Problem(statusCode: 409, title: "已有店铺正在同步，请稍后重试");
+            var started = jobs.Start(sid);
+            if (started.IsErr)
+                return TypedResults.Problem(statusCode: 409, title: started.Error.Message);
 
-            return TypedResults.Accepted($"/api/erp/shops/{sid}/order-sync", job);
+            return TypedResults.Accepted($"/api/erp/shops/{sid}/order-sync", started.Value);
         }).WithSummary("为 TemuPop 店铺启动历史订单同步");
 
         app.MapGet(route, Results<Ok<OrderSyncStatus>, NoContent, ProblemHttpResult>

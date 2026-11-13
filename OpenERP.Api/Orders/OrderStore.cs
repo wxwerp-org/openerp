@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using OpResult;
 
 namespace OpenERP.Api.Orders;
 
@@ -6,10 +7,10 @@ public sealed record OrderSaveCounts(int Added, int Updated, int Unchanged);
 
 public sealed class OrderStore(AppDbContext db)
 {
-    public async Task<OrderSaveCounts> SaveAsync(IReadOnlyList<OrderSnapshot> orders, CancellationToken cancellationToken)
+    public async Task<OpResult<OrderSaveCounts>> SaveAsync(IReadOnlyList<OrderSnapshot> orders, CancellationToken cancellationToken)
     {
         if (orders.Count == 0)
-            return new(0, 0, 0);
+            return new OrderSaveCounts(0, 0, 0);
 
         var erpIds = orders.Select(order => order.ErpId).ToArray();
         var existingOrders = await db.Orders
@@ -41,9 +42,18 @@ public sealed class OrderStore(AppDbContext db)
         }
 
         if (added + updated > 0)
-            await db.SaveChangesAsync(cancellationToken);
+        {
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                return OpResults.Err("保存订单失败，请检查数据库后重试。");
+            }
+        }
 
-        return new(added, updated, orders.Count - added - updated);
+        return new OrderSaveCounts(added, updated, orders.Count - added - updated);
     }
 
     private bool ApplyValues<TEntity>(TEntity existing, TEntity desired) where TEntity : class

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using OpenERP.Api.Orders;
 using Xunit;
+using Xunit.Sdk;
 
 namespace OpenERP.Api.Tests;
 
@@ -149,11 +150,12 @@ public sealed class OrderStorePostgresTests : IAsyncLifetime
             """, cancellationToken);
         var invalid = CreateOrder("erp-3") with { Lines = [existing.Lines[0] with { Quantity = 0 }] };
 
-        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => SaveAsync(
-            [existing with { Status = "dispatched" }, CreateOrder("erp-2"), invalid], cancellationToken));
+        var result = await new OrderStore(db).SaveAsync(
+            [existing with { Status = "dispatched" }, CreateOrder("erp-2"), invalid], cancellationToken);
 
-        Assert.Equal("TestRequiresPositiveQuantity",
-            Assert.IsType<PostgresException>(exception.InnerException).ConstraintName);
+        if (!result.IsErr)
+            throw new XunitException("违反数据库约束必须返回保存失败。");
+        Assert.Equal("保存订单失败，请检查数据库后重试。", result.Error.Message);
         Assert.Equal(versionsBefore, await ReadRowVersionsAsync(cancellationToken));
     }
 
@@ -172,7 +174,10 @@ public sealed class OrderStorePostgresTests : IAsyncLifetime
     private async Task<OrderSaveCounts> SaveAsync(IReadOnlyList<OrderSnapshot> orders, CancellationToken cancellationToken)
     {
         await using var db = CreateContext();
-        return await new OrderStore(db).SaveAsync(orders, cancellationToken);
+        var result = await new OrderStore(db).SaveAsync(orders, cancellationToken);
+        if (result.IsErr)
+            throw new XunitException(result.Error.Message);
+        return result.Value;
     }
 
     private static Task<long> CountAsync(AppDbContext db, string sql, CancellationToken cancellationToken) =>

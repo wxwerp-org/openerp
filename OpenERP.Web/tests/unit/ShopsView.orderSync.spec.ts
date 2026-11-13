@@ -63,12 +63,19 @@ function jsonResponse(value: unknown, status = 200): Response {
 
 function configureFetch(options: {
   tokenStatus?: boolean | null
+  getConfig?: () => unknown
   getTask?: () => Promise<Response> | Response
   postTask?: () => Promise<Response> | Response
 } = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
-    if (url === '/api/erp/config') return jsonResponse({ configured: true, baseUrl: 'https://erp.test' })
+    if (url === '/api/erp/config') {
+      return jsonResponse(options.getConfig?.() ?? {
+        configured: true,
+        baseUrl: 'https://erp.test',
+        orderSyncEnabled: true,
+      })
+    }
     if (url.startsWith('/api/erp/shops?')) {
       const visibleShop = options.tokenStatus === undefined
         ? shop
@@ -115,6 +122,7 @@ describe('店铺历史订单同步', () => {
   })
 
   it.each([
+    { tokenStatus: true, tokenLabel: '有效' },
     { tokenStatus: false, tokenLabel: '无效' },
     { tokenStatus: null, tokenLabel: '未知' },
   ])('Given 店铺授权$tokenLabel When 点击同步历史订单 Then 仍发起无请求体的任务并显示进度', async ({ tokenStatus, tokenLabel }) => {
@@ -136,6 +144,70 @@ describe('店铺历史订单同步', () => {
     expect(postCall?.[1]?.signal).toBeUndefined()
     expect(wrapper.text()).toContain('读取 4 / 10')
     expect(wrapper.text()).toContain('已处理 3')
+  })
+
+  it.each([
+    {
+      label: '能力关闭',
+      config: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+    },
+    {
+      label: '旧配置缺少能力字段',
+      config: { configured: true, baseUrl: 'https://erp.test' },
+    },
+  ])('Given $label When 店铺页加载并刷新 Then 隐藏同步功能且不请求同步 API', async ({ config }) => {
+    const fetchMock = configureFetch({ getConfig: () => config })
+    wrapper = await mountShops()
+
+    expect(wrapper.text()).toContain('测试店铺')
+    expect(syncButton(wrapper)).toBeUndefined()
+
+    const refreshButton = wrapper.findAll('button').find((button) => button.text().includes('刷新'))!
+    await refreshButton.trigger('click')
+    await flushPromises()
+
+    const orderSyncCalls = fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes('/order-sync'),
+    )
+    expect(orderSyncCalls).toHaveLength(0)
+  })
+
+  it('Given 同步能力重新读取后关闭且存在轮询 When 店铺页刷新 Then 清除轮询并停止同步状态请求', async () => {
+    vi.useFakeTimers()
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout')
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
+    let orderSyncEnabled = true
+    const fetchMock = configureFetch({
+      getConfig: () => ({
+        configured: true,
+        baseUrl: 'https://erp.test',
+        orderSyncEnabled,
+      }),
+      getTask: () => jsonResponse(task()),
+    })
+    wrapper = await mountShops()
+
+    const initialStatusCalls = fetchMock.mock.calls.filter(([input, init]) =>
+      String(input) === '/api/erp/shops/42/order-sync' && init?.method !== 'POST',
+    )
+    expect(initialStatusCalls).toHaveLength(1)
+    const pollTimerIndex = setTimeoutSpy.mock.calls.findIndex(([, delay]) => delay === 2000)
+    expect(pollTimerIndex).toBeGreaterThanOrEqual(0)
+    const pollTimer = setTimeoutSpy.mock.results[pollTimerIndex]?.value
+
+    orderSyncEnabled = false
+    const refreshButton = wrapper.findAll('button').find((button) => button.text().includes('刷新'))!
+    await refreshButton.trigger('click')
+    await flushPromises()
+
+    expect(syncButton(wrapper)).toBeUndefined()
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(pollTimer)
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+    const finalStatusCalls = fetchMock.mock.calls.filter(([input, init]) =>
+      String(input) === '/api/erp/shops/42/order-sync' && init?.method !== 'POST',
+    )
+    expect(finalStatusCalls).toHaveLength(1)
   })
 
   it('Given 有运行中的任务 When 页面载入 Then 展示阶段、计数和进度', async () => {

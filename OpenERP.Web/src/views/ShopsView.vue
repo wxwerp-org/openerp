@@ -63,6 +63,7 @@ const errorMessage = ref('')
 const orderSyncTasks = ref<Record<string, OrderSyncTask>>({})
 const orderSyncErrors = ref<Record<string, string>>({})
 const orderSyncSubmittingSids = ref(new Set<string>())
+const orderSyncEnabled = ref(false)
 
 const isLoading = computed(
   () => configStatus.value === 'loading' || shopsStatus.value === 'loading',
@@ -121,12 +122,20 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
 }
 
-function parseConfig(value: unknown): { configured: boolean; baseUrl: string } {
+function parseConfig(value: unknown): {
+  configured: boolean
+  baseUrl: string
+  orderSyncEnabled: boolean
+} {
   if (!isRecord(value) || typeof value.configured !== 'boolean' || typeof value.baseUrl !== 'string') {
     throw new Error('服务器配置响应格式无效。')
   }
 
-  return { configured: value.configured, baseUrl: value.baseUrl }
+  return {
+    configured: value.configured,
+    baseUrl: value.baseUrl,
+    orderSyncEnabled: value.orderSyncEnabled === true,
+  }
 }
 
 function parseShopsResponse(value: unknown): ShopsResponse {
@@ -257,7 +266,20 @@ function clearOrderSyncError(sid: string): void {
   orderSyncErrors.value = nextErrors
 }
 
+function setOrderSyncEnabled(enabled: boolean): void {
+  orderSyncEnabled.value = enabled
+  if (enabled) return
+
+  orderSyncLifecycle += 1
+  clearOrderSyncPoll()
+  orderSyncTasks.value = {}
+  orderSyncErrors.value = {}
+  orderSyncSubmittingSids.value = new Set<string>()
+}
+
 async function refreshOrderSyncStatus(sid: string): Promise<OrderSyncTask | null> {
+  if (!orderSyncEnabled.value) return null
+
   const version = nextOrderSyncRequestVersion(sid)
   const lifecycle = orderSyncLifecycle
 
@@ -318,7 +340,7 @@ function scheduleOrderSyncPoll(): void {
   const hasVisibleRunningTask = shops.value.some(
     (shop) => orderSyncTasks.value[shop.sid]?.status === 'running',
   )
-  if (!isMounted || !hasVisibleRunningTask) return
+  if (!isMounted || !orderSyncEnabled.value || !hasVisibleRunningTask) return
 
   orderSyncPollTimeout = setTimeout(() => {
     orderSyncPollTimeout = null
@@ -327,7 +349,7 @@ function scheduleOrderSyncPoll(): void {
 }
 
 async function pollRunningOrderSyncTasks(): Promise<void> {
-  if (!isMounted) return
+  if (!isMounted || !orderSyncEnabled.value) return
   const runningShopSids = shops.value
     .filter((shop) => orderSyncTasks.value[shop.sid]?.status === 'running')
     .map((shop) => shop.sid)
@@ -336,6 +358,8 @@ async function pollRunningOrderSyncTasks(): Promise<void> {
 }
 
 async function loadVisibleOrderSyncStatuses(visibleShops: Shop[]): Promise<void> {
+  if (!orderSyncEnabled.value) return
+
   const visibleSids = new Set(visibleShops.map((shop) => shop.sid))
   orderSyncTasks.value = Object.fromEntries(
     Object.entries(orderSyncTasks.value).filter(([sid]) => visibleSids.has(sid)),
@@ -351,6 +375,7 @@ async function loadVisibleOrderSyncStatuses(visibleShops: Shop[]): Promise<void>
 async function startOrderSync(shop: Shop): Promise<void> {
   const sid = shop.sid
   if (
+    !orderSyncEnabled.value ||
     orderSyncSubmittingSids.value.has(sid) ||
     orderSyncTasks.value[sid]?.status === 'running'
   ) {
@@ -460,6 +485,7 @@ function orderSyncProgressStatus(task: OrderSyncTask): 'success' | 'warning' | '
 
 function orderSyncButtonDisabled(sid: string): boolean {
   return (
+    !orderSyncEnabled.value ||
     orderSyncSubmittingSids.value.has(sid) ||
     orderSyncTasks.value[sid]?.status === 'running'
   )
@@ -491,6 +517,7 @@ async function loadPage(page: number, size: number, checkConfiguration = false):
 
       const config = parseConfig(await configResponse.json())
       if (!isCurrentRequest()) return
+      setOrderSyncEnabled(config.orderSyncEnabled)
       configStatus.value = config.configured ? 'configured' : 'unconfigured'
 
       if (!config.configured) {
@@ -661,7 +688,7 @@ onUnmounted(() => {
               </p>
             </template>
           </ElTableColumn>
-          <ElTableColumn label="历史订单" min-width="360">
+          <ElTableColumn v-if="orderSyncEnabled" label="历史订单" min-width="360">
             <template #default="{ row }">
               <div class="shop-order-sync">
                 <ElButton

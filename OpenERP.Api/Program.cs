@@ -35,7 +35,6 @@ if (app.Environment.IsDevelopment())
     await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync(app.Lifetime.ApplicationStopping);
     await app.Services.GetRequiredService<FileStore>().EnsureBucketAsync(app.Lifetime.ApplicationStopping);
     app.MapFiles();
-    app.MapOrderSync();
 }
 app.MapErp();
 app.MapGet("/api/ping", (ILogger<Program> logger) =>
