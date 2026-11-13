@@ -66,6 +66,8 @@ Aspire 会自动启动前端及依赖服务。打开启动输出中的 Dashboard
 
 PostgreSQL、Redis 和 SeaweedFS 使用持久容器与 Docker 数据卷，正常停止应用后保留开发数据。可在 Docker Desktop 的 Volumes 页面查看数据卷。不要随意删除数据卷、开发密钥或更改 `UserSecretsId`，否则会丢失数据或导致已有数据无法连接。
 
+从 PostgreSQL `18` 升级到 `18-alpine` 时，已有开发数据需要按[迁移步骤](docs/development.md#从-postgresql-18-迁移已有开发数据)恢复到新的数据卷。
+
 ## 参与开发与帮助
 
 贡献要求和提交约定见[贡献指南](CONTRIBUTING.md)。代码导航、构建测试、接口行为和同步限制见[开发说明](docs/development.md)，启动或请求异常时参考其中的[本地诊断](docs/development.md#本地诊断)。问题反馈请使用 [GitHub Issues](https://github.com/wxwerp-org/openerp/issues)。
