@@ -22,7 +22,7 @@ dotnet user-secrets set "Parameters:wxw-erp-access-token" "你的Token" --projec
 
 在开发环境的 `/shops` 选择店铺，点击「同步历史订单」。只读取当前 ERP AccessToken 可见的 TemuPop 店铺在私有 ERP 中已有的历史订单，平台授权失效仍可使用。后台同一时间执行一个同步，页面展示进度及新增、更新、未变化和跳过计数。刷新页面可查看最近一次任务，API 重启后可手动重跑。
 
-开发 API 使用 `POST /api/erp/shops/{sid}/order-sync` 受理任务，返回 `202`，已有同步时返回 `409`。同路径 `GET` 查询最近任务，无任务返回 `204`。
+`GET /api/erp/config` 在开发环境返回 `orderSyncEnabled: true`，店铺页据此显示同步入口并查询任务。开发 API 使用 `POST /api/erp/shops/{sid}/order-sync` 受理任务，返回 `202`，已有同步时返回 `409`。同路径 `GET` 查询最近任务，无任务返回 `204`。
 
 API 启动时应用 EF Core 迁移。PostgreSQL 以 ERP 内部 ID 保存主单，平台 PO 和商品行分别关联主单。订单时间保留 ERP 显示原值及来源。同步刷新本轮核对通过的订单，保留本轮未返回或归属异常而被跳过的订单。完整读取后才写库，归属异常显示为部分成功。当前销量口径由 [B4 #9](https://github.com/wxwerp-org/openerp/issues/9) 跟踪。
 
@@ -145,3 +145,12 @@ dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class 
 | 同步进度 | 2 个用例复现详情阶段一直为 99%，提前失败显示 100% | 列表和详情分阶段推进，失败保留实际进度，成功和部分成功显示 100% |
 
 后端订单读取测试 25 项、前端测试 15 项全部通过，.NET 解决方案构建、前端类型检查和构建通过。使用修复后的读取器只读复核 SID `30`，通过 53 张主单、53 张平台 PO、55 行商品。该批订单的创建时间均来自列表，时间补查的异常路径由回归用例验证。
+
+#### PR #26 评审回归
+
+| 场景 | 红灯 | 绿灯 |
+| --- | --- | --- |
+| Given ERP 已配置，When 店铺页请求配置，Then 仅开发环境声明并提供同步能力 | 后端 3 个环境均缺少能力字段，前端 3 个能力关闭用例仍显示按钮 | HTTP 回归核对配置与路由，前端验证关闭或缺少字段时隐藏入口、停止状态请求与轮询 |
+| Given 店铺不可见、已有同步任务或数据库约束拒绝写入，When 同步遇到该错误，Then 返回 OpResult 失败 | 分别得到自定义结果、`null` 和 `DbUpdateException` | 保留失败提示和冲突行为，PostgreSQL 回归核对失败前后的主单与子项版本一致 |
+
+隔离 Aspire 的后端回归通过 51 项，跳过 2 项真实 ERP 验收。前端 19 项、类型检查和构建通过。锁定还原及 .NET 构建通过，保留既有 15 条 `xUnit1051` 警告。

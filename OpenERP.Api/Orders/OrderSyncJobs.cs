@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using OpResult;
 using OpenERP.Api.Erp;
 
 namespace OpenERP.Api.Orders;
@@ -15,17 +16,18 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
     private readonly Channel<OrderSyncStatus> _queue = Channel.CreateBounded<OrderSyncStatus>(1);
     private bool _active;
 
-    public OrderSyncStatus? Start(int sid)
+    public OpResult<OrderSyncStatus> Start(int sid)
     {
         lock (_gate)
         {
+            const string conflict = "已有店铺正在同步，请稍后重试";
             if (_active)
-                return null;
+                return OpResults.Err(conflict);
 
             var job = new OrderSyncStatus(Guid.NewGuid().ToString("N"), sid, "running", "shop",
                 SkipReasons: new Dictionary<string, int>());
             if (!_queue.Writer.TryWrite(job))
-                return null;
+                return OpResults.Err(conflict);
 
             _latest[sid] = job;
             _active = true;
@@ -62,17 +64,25 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
                 Publish(current);
             }, ct);
 
-            if (read.Value is not { } batch)
+            if (read.IsErr)
             {
-                Fail(current, read.Error ?? "无法读取 ERP 历史订单。");
+                Fail(current, read.Error.Message);
                 return;
             }
 
+            var batch = read.Value;
             var skipped = batch.SkipReasons.Values.Sum();
             current = current with { Stage = "saving", Skipped = skipped, SkipReasons = batch.SkipReasons };
             Publish(current);
 
-            var counts = await scope.ServiceProvider.GetRequiredService<OrderStore>().SaveAsync(batch.Orders, ct);
+            var save = await scope.ServiceProvider.GetRequiredService<OrderStore>().SaveAsync(batch.Orders, ct);
+            if (save.IsErr)
+            {
+                Fail(current, save.Error.Message);
+                return;
+            }
+
+            var counts = save.Value;
             Publish(current with
             {
                 Status = skipped == 0 ? "succeeded" : "partial",

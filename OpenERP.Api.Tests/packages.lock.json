@@ -1239,6 +1239,11 @@
           "System.Drawing.Common": "6.0.0"
         }
       },
+      "RokyZevon.OpResult": {
+        "type": "Transitive",
+        "resolved": "0.3.0",
+        "contentHash": "svMDEpmoybmCprFhADzVrXWrOIwyQaHvBQ5uR9br5sEbs4im6vJjGqem9NnSivhn5j93+3C+okXibP8dEfOIMA=="
+      },
       "Semver": {
         "type": "Transitive",
         "resolved": "3.0.0",
@@ -1370,7 +1375,8 @@
           "Microsoft.EntityFrameworkCore": "[10.0.15, )",
           "Microsoft.EntityFrameworkCore.Relational": "[10.0.15, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
-          "OpenERP.ServiceDefaults": "[1.0.0, )"
+          "OpenERP.ServiceDefaults": "[1.0.0, )",
+          "RokyZevon.OpResult": "[0.3.0, )"
         }
       },
       "openerp.apphost": {

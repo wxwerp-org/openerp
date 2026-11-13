@@ -84,6 +84,12 @@
           "Npgsql": "10.0.3"
         }
       },
+      "RokyZevon.OpResult": {
+        "type": "Direct",
+        "requested": "[0.3.0, )",
+        "resolved": "0.3.0",
+        "contentHash": "svMDEpmoybmCprFhADzVrXWrOIwyQaHvBQ5uR9br5sEbs4im6vJjGqem9NnSivhn5j93+3C+okXibP8dEfOIMA=="
+      },
       "AspNetCore.HealthChecks.Redis": {
         "type": "Transitive",
         "resolved": "9.0.0",

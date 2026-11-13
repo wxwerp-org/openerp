@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using Xunit;
+using Xunit.Sdk;
 
 namespace OpenERP.Api.Tests;
 
@@ -35,7 +36,8 @@ public sealed class OrderReaderTests
         var result = await client.ReadOrdersAsync(30, progress.Add, TestContext.Current.CancellationToken);
 
         // Then 请求按店铺和平台筛选，PO 状态、每行数量和时间来源均保留。
-        Assert.NotNull(result.Value);
+        if (result.IsErr)
+            throw new XunitException(result.Error.Message);
         Assert.Equal(2, result.Value.Total);
         Assert.Empty(result.Value.SkipReasons);
         Assert.Equal([FirstId, SecondId], result.Value.Orders.Select(order => order.ErpId));
@@ -72,7 +74,8 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
 
         // Then 仅同店订单进入保存集合，异常主单计为跳过且不查询详情。
-        Assert.NotNull(result.Value);
+        if (result.IsErr)
+            throw new XunitException(result.Error.Message);
         Assert.Equal(SecondId, Assert.Single(result.Value.Orders).ErpId);
         Assert.Equal(1, Assert.Single(result.Value.SkipReasons).Value);
         handler.AssertCompleted();
@@ -89,8 +92,9 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrdersAsync(9, null, TestContext.Current.CancellationToken);
 
         // Then 明确拒绝且不调用任何订单接口。
-        Assert.Null(result.Value);
-        Assert.Equal(404, result.Status);
+        if (!result.IsErr)
+            throw new XunitException("不可见店铺必须以业务失败结束。");
+        Assert.Contains("无法访问", result.Error.Message);
         handler.AssertCompleted();
     }
 
@@ -118,8 +122,9 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrderIndexAsync(30, 1, null, TestContext.Current.CancellationToken);
 
         // Then 以分页错误结束，不能把部分 ID 当成成功。
-        Assert.Null(result.Value);
-        Assert.Contains("分页", result.Error);
+        if (!result.IsErr)
+            throw new XunitException("该批次必须失败。");
+        Assert.Contains("分页", result.Error.Message);
         handler.AssertCompleted();
     }
 
@@ -142,7 +147,8 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
 
         // Then 创建时间为空，保留列表付款时间，商品使用复核后的详情。
-        Assert.NotNull(result.Value);
+        if (result.IsErr)
+            throw new XunitException(result.Error.Message);
         var order = Assert.Single(result.Value.Orders);
         Assert.Null(order.Times.Created);
         Assert.Equal("list", order.Times.Paid?.Source);
@@ -172,8 +178,9 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
 
         // Then 批次失败，已经读取的任何主单都不能交给保存步骤。
-        Assert.Null(result.Value);
-        Assert.NotNull(result.Error);
+        if (!result.IsErr)
+            throw new XunitException("该批次必须失败。");
+        Assert.NotEmpty(result.Error.Message);
         handler.AssertCompleted();
     }
 
@@ -196,7 +203,8 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
 
         // Then 沿用归属异常的跳过规则，旧详情不会进入保存集合。
-        Assert.NotNull(result.Value);
+        if (result.IsErr)
+            throw new XunitException(result.Error.Message);
         Assert.Empty(result.Value.Orders);
         Assert.Equal(1, Assert.Single(result.Value.SkipReasons).Value);
         handler.AssertCompleted();
@@ -219,8 +227,9 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
 
         // Then 权限失败直接中止整批。
-        Assert.Null(result.Value);
-        Assert.Contains("访问权限", result.Error);
+        if (!result.IsErr)
+            throw new XunitException("该批次必须失败。");
+        Assert.Contains("访问权限", result.Error.Message);
         handler.AssertCompleted();
     }
 
@@ -242,8 +251,9 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
 
         // Then 即使首单已读取也不交付部分数据给保存步骤。
-        Assert.Null(result.Value);
-        Assert.Contains("访问权限", result.Error);
+        if (!result.IsErr)
+            throw new XunitException("该批次必须失败。");
+        Assert.Contains("访问权限", result.Error.Message);
         handler.AssertCompleted();
     }
 
@@ -266,8 +276,9 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrderIndexAsync(30, 20, null, TestContext.Current.CancellationToken);
 
         // Then 整批失败，不能把错误值当作空时间。
-        Assert.Null(result.Value);
-        Assert.Contains("时间", result.Error);
+        if (!result.IsErr)
+            throw new XunitException("该批次必须失败。");
+        Assert.Contains("时间", result.Error.Message);
     }
 
     [Theory]
@@ -296,8 +307,9 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
 
         // Then 整批失败，连同首单也不会交给保存步骤。
-        Assert.Null(result.Value);
-        Assert.Contains("格式", result.Error);
+        if (!result.IsErr)
+            throw new XunitException("该批次必须失败。");
+        Assert.Contains("格式", result.Error.Message);
         handler.AssertCompleted();
     }
 
@@ -315,8 +327,9 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrderIndexAsync(30, 20, null, TestContext.Current.CancellationToken);
 
         // Then 批次失败，错误状态文本不会被转成空值。
-        Assert.Null(result.Value);
-        Assert.Contains("状态", result.Error);
+        if (!result.IsErr)
+            throw new XunitException("该批次必须失败。");
+        Assert.Contains("状态", result.Error.Message);
     }
 
     [Fact]
@@ -336,8 +349,9 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
 
         // Then 批次失败，不保存缺少创建时间的快照。
-        Assert.Null(result.Value);
-        Assert.Contains("时间", result.Error);
+        if (!result.IsErr)
+            throw new XunitException("该批次必须失败。");
+        Assert.Contains("时间", result.Error.Message);
         handler.AssertCompleted();
     }
 
@@ -362,7 +376,8 @@ public sealed class OrderReaderTests
         var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
 
         // Then 原样保留有效字段，合法缺省仍为空。
-        Assert.NotNull(result.Value);
+        if (result.IsErr)
+            throw new XunitException(result.Error.Message);
         var order = Assert.Single(result.Value.Orders);
         Assert.Equal(new PlatformOrderSnapshot("PO-1", 30, null, null), Assert.Single(order.PlatformOrders));
         Assert.Equal(new OrderLineSnapshot(null, null, null, null, 1, null, null), Assert.Single(order.Lines));
