@@ -1,0 +1,113 @@
+name: 前端 PR 检查
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: 前端检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: OpenERP.Web/package.json
+          cache: true
+          cache_dependency_path: OpenERP.Web/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm --dir OpenERP.Web install --frozen-lockfile
+
+      - name: lint
+        run: pnpm --dir OpenERP.Web lint
+
+      - name: typecheck
+        run: pnpm --dir OpenERP.Web typecheck
+
+      - name: 单元测试
+        run: pnpm --dir OpenERP.Web test
+
+      - name: 生产构建
+        run: pnpm --dir OpenERP.Web build
+
+  e2e:
+    name: 浏览器端到端
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/e2e-results.json
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: OpenERP.Web/package.json
+          cache: true
+          cache_dependency_path: OpenERP.Web/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm --dir OpenERP.Web install --frozen-lockfile
+
+      - name: 安装浏览器
+        run: pnpm --dir OpenERP.Web exec playwright install --with-deps chromium
+
+      # 工作台用例不需要后端：无 OPENERP_TEST_ADMIN_PASSWORD 时由 page.route 提供 mock 会话，
+      # 认证用例（authentication.spec.ts）在无密码时跳过；真实会话验收由隔离宿主
+      # BrowserAcceptanceTests 入口覆盖（后端 PR 自动检查见 #43）。
+      - name: 运行浏览器端到端测试
+        run: pnpm --dir OpenERP.Web exec playwright test --reporter=line,json
+
+      # 防止用例被全部跳过时仍显示成功：成功执行的用例不能为零。
+      - name: 确认浏览器用例真实执行
+        run: |
+          node -e '
+            const report = require(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME)
+            console.log("浏览器用例：通过 " + report.stats.expected + "，跳过 " + report.stats.skipped + "，失败 " + report.stats.unexpected)
+            if (report.stats.expected === 0) {
+              console.error("浏览器用例全部跳过，拒绝以假绿状态通过。")
+              process.exit(1)
+            }
+          '
+
+  results:
+    name: 结果汇总
+    if: ${{ !cancelled() }}
+    needs: [checks, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 汇总检查结果
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          E2E: ${{ needs.e2e.result }}
+        run: |
+          echo "前端检查=$CHECKS"
+          echo "浏览器端到端=$E2E"
+          if [ "$CHECKS" != "success" ] || [ "$E2E" != "success" ]; then
+            echo "前端 PR 检查未通过。"
+            exit 1
+          fi
