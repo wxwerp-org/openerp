@@ -22,5 +22,5 @@
 - AppHost 生命周期严格遵循 `aspire-orchestration`：明确唯一目标，按其规则选用编辑器生命周期工具或 Aspire CLI。Git worktree 中使用带 `--isolated`、`--apphost <path>` 和 `--non-interactive` 的 `aspire start`；不得用直接 `dotnet run`、手工 Docker 或进程操作替代 Aspire 编排。
 - 与资源交互前必须使用 `aspire wait <resource>` 等待就绪，不得以手工 HTTP 轮询替代。通过 `aspire describe` 获取资源状态和实际端点，不硬编码动态端口。运行异常先按 `aspire-monitoring` 检查状态、日志和追踪，再决定代码改动。
 - 资源代码变化优先使用资源命令、运行时 watch/HMR 或 Skill 允许的调试流程；仅因一个资源变化不得重启整个 AppHost。禁止用删除 `bin/`、`obj/` 或强杀进程解决运行锁定；按 Skill 的停止和恢复流程处理。`aspire stop --force` 会删除持久资源，必须先取得针对明确 AppHost 及数据丢失的用户授权。
-- 本仓库通过 `dotnet tool run aspire` 调用锁定的本地 CLI；上文 `aspire ...` 均指该入口。普通 .NET 构建和测试按[开发说明](docs/development.md#构建与测试)执行。用户明确指令优先于 Skill；若 Skill 导致请求确认、暂停或无法完成任务，必须链接实际读取的 Skill、引用相关原文并说明适用理由，不得自行扩大任务范围。
+- 直接调用 PATH 中的 `aspire` CLI，不额外套用 `dotnet tool run`；代理启动及其他生命周期操作严格遵循项目内 Aspire Skill。普通 .NET 构建和测试按[开发说明](docs/development.md#构建与测试)执行。用户明确指令优先于 Skill；若 Skill 导致请求确认、暂停或无法完成任务，必须链接实际读取的 Skill、引用相关原文并说明适用理由，不得自行扩大任务范围。
 - 保持官方代理集成方式，不因人工启动入口不同而改写 MCP 配置；客户端配置说明见[开发说明](docs/development.md#使用-ai-开发工具)。

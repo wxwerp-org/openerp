@@ -69,6 +69,9 @@ function configureFetch(options: {
 } = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
+    if (url === '/api/auth/csrf') {
+      return jsonResponse({ requestToken: 'shop-token' })
+    }
     if (url === '/api/erp/config') {
       return jsonResponse(options.getConfig?.() ?? {
         configured: true,
@@ -131,7 +134,7 @@ describe('店铺历史订单同步', () => {
     { tokenStatus: true, tokenLabel: '有效' },
     { tokenStatus: false, tokenLabel: '无效' },
     { tokenStatus: null, tokenLabel: '未知' },
-  ])('Given 店铺授权$tokenLabel When 点击同步历史订单 Then 仍发起无请求体的任务并显示进度', async ({ tokenStatus, tokenLabel }) => {
+  ])('Given 店铺授权$tokenLabel When 点击同步历史订单 Then 携带防伪令牌发起无请求体的任务并显示进度', async ({ tokenStatus, tokenLabel }) => {
     const fetchMock = configureFetch({ tokenStatus })
     wrapper = await mountShops()
 
@@ -146,6 +149,7 @@ describe('店铺历史订单同步', () => {
     const postCall = fetchMock.mock.calls.find(([input, init]) =>
       String(input) === '/api/erp/shops/42/order-sync' && init?.method === 'POST',
     )
+    expect(new Headers(postCall?.[1]?.headers).get('X-CSRF-TOKEN')).toBe('shop-token')
     expect(postCall?.[1]?.body).toBeUndefined()
     expect(postCall?.[1]?.signal).toBeUndefined()
     expect(wrapper.text()).toContain('读取 4 / 10')

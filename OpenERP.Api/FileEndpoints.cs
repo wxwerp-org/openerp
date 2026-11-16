@@ -49,9 +49,7 @@ public static class FileEndpoints
             var result = await store.UploadAsync(file, name, contentType, ct);
             return TypedResults.Created($"/api/files/{Uri.EscapeDataString(result.Key)}", result);
         })
-        .WithMetadata(new RequestSizeLimitAttribute(FileStore.MaxFileSize + 1024 * 1024))
-        // No cookie authentication exists in this development-only example.
-        .DisableAntiforgery();
+        .WithMetadata(new RequestSizeLimitAttribute(FileStore.MaxFileSize + 1024 * 1024));
 
         files.MapGet("/{key}", async Task<Results<PushStreamHttpResult, NotFound>> (
             string key, bool? download, FileStore store, HttpContext context, CancellationToken ct) =>

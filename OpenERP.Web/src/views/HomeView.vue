@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { apiRequest } from '../account/session'
 import { ElAlert, ElButton, ElCard, ElTag } from 'element-plus'
 
 type PingStatus = 'loading' | 'success' | 'error'
@@ -28,7 +29,7 @@ async function checkPing(): Promise<void> {
 
   let response: Response
   try {
-    response = await fetch('/api/ping')
+    response = await apiRequest('/api/ping')
   } catch {
     if (currentRequest === requestNumber) {
       errorMessage.value = '网络请求失败，请检查前端代理和后端连接。'

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { logout, type Account } from '../../account/session'
 import AccountMenu from '../navigation/AccountMenu.vue'
 import ProfileDialog from '../../account/ProfileDialog.vue'
 import PasswordDialog from '../../account/PasswordDialog.vue'
@@ -10,6 +11,8 @@ import WorkspaceTabs from '../navigation/WorkspaceTabs.vue'
 import { navigationPages, workspacePages, type WorkspacePage } from '../../router/workspace'
 import { useToast } from '../../composables/useToast'
 
+defineProps<{ account: Account }>()
+
 const route = useRoute()
 const router = useRouter()
 const sidebarCollapsed = ref(false)
@@ -17,6 +20,7 @@ const openTabs = ref<WorkspacePage[]>(workspacePages.slice(0, 3))
 const { toast, showToast } = useToast()
 const profileOpen = ref(false)
 const passwordOpen = ref(false)
+const logoutPending = ref(false)
 const accountMenu = ref<InstanceType<typeof AccountMenu> | null>(null)
 
 const activePage = computed<string | null>(() => {
@@ -45,24 +49,24 @@ function closeTab(page: string): void {
   }
 }
 
-function closeProfile(): void {
-  profileOpen.value = false
-  void nextTick(() => accountMenu.value?.focusTrigger())
-}
-
-function closePassword(): void {
-  passwordOpen.value = false
-  void nextTick(() => accountMenu.value?.focusTrigger())
-}
-
-function handleAccountAction(action: 'profile' | 'password' | 'settings' | 'logout'): void {
+async function handleAccountAction(action: 'profile' | 'password' | 'settings' | 'logout'): Promise<void> {
   if (action === 'settings') {
     navigate('business')
     return
   }
   if (action === 'profile') profileOpen.value = true
   else if (action === 'password') passwordOpen.value = true
-  else showToast('原型演示：退出登录')
+  else if (!logoutPending.value) {
+    logoutPending.value = true
+    try {
+      await logout()
+    } catch (error) {
+      showToast(error instanceof Error && !(error instanceof TypeError) ? error.message : '退出登录失败，请稍后重试。')
+      accountMenu.value?.focusTrigger()
+    } finally {
+      logoutPending.value = false
+    }
+  }
 }
 </script>
 
@@ -81,12 +85,12 @@ function handleAccountAction(action: 'profile' | 'password' | 'settings' | 'logo
     <div class="app-main">
       <header class="topbar">
         <WorkspaceTabs :items="openTabs" :active-page="activePage ?? ''" @close="closeTab" />
-        <AccountMenu ref="accountMenu" @action="handleAccountAction" @notice="showToast('原型演示：通知')" />
+        <AccountMenu ref="accountMenu" :account="account" @action="handleAccountAction" @notice="showToast('原型演示：通知')" />
       </header>
       <main id="main" class="main" tabindex="-1">
         <RouterView />
-        <ProfileDialog :open="profileOpen" @close="closeProfile" @feedback="showToast" />
-        <PasswordDialog :open="passwordOpen" @close="closePassword" @feedback="showToast" />
+        <ProfileDialog :open="profileOpen" :account="account" @close="profileOpen = false" @closed="accountMenu?.focusTrigger()" @feedback="showToast" />
+        <PasswordDialog :open="passwordOpen" @close="passwordOpen = false" @closed="accountMenu?.focusTrigger()" />
       </main>
     </div>
   </div>

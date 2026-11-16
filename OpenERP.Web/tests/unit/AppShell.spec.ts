@@ -2,6 +2,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import AppShell from '../../src/components/layout/AppShell.vue'
+import { adminAccount } from './adminAccount'
 
 const Page = { template: '<main class="test-page">原型页面</main>' }
 
@@ -24,6 +25,7 @@ async function mountAt(path: string): Promise<{ wrapper: VueWrapper; router: Rou
   await router.push(path)
   await router.isReady()
   const wrapper = mount(AppShell, {
+    props: { account: adminAccount },
     global: { plugins: [router] },
   })
   await flushPromises()
@@ -52,11 +54,11 @@ describe('原型应用公共框架', () => {
     for (const label of ['产品', '销售', 'FBA', '采购', '仓库', '物流', '广告', '客服', '财务', '统计', '工具', '设置']) {
       expect(wrapper.get('.side-nav').text()).toContain(label)
     }
-    expect(wrapper.get('.account-button').text()).toContain('超级管理员')
+    expect(wrapper.get('.account-button').text()).toContain(adminAccount.name)
     expect(wrapper.find('button[aria-label="通知"]').exists()).toBe(true)
   })
 
-  it('Given 顶部管理员入口 When 点击账户按钮 Then 展示原型账户菜单', async () => {
+  it('Given 顶部管理员入口 When 点击账户按钮 Then 展示账户菜单', async () => {
     const mounted = await mountAt('/')
     wrapper = mounted.wrapper
 
