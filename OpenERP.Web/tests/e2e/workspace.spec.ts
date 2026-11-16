@@ -1,15 +1,22 @@
 import { expect, test, type Page } from '@playwright/test'
 
-async function mockShops(page: Page): Promise<void> {
+async function mockShops(page: Page, count = 1): Promise<void> {
   await page.route('**/api/erp/config', (route) => route.fulfill({
     json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
   }))
   await page.route('**/api/erp/shops?**', (route) => route.fulfill({
     json: {
-      items: [{ sid: '42', name: '测试店铺', platform: 'Temu', region: 'US', isTokenOk: true, statusError: null }],
+      items: Array.from({ length: count }, (_, index) => ({
+        sid: String(index + 1),
+        name: `测试店铺 ${index + 1}`,
+        platform: 'Temu',
+        region: 'US',
+        isTokenOk: true,
+        statusError: null,
+      })),
       page: 1,
       pageSize: 20,
-      totalCount: 1,
+      totalCount: count,
       pageCount: 1,
     },
   }))
@@ -109,4 +116,18 @@ test('Given 独立服务路由 When 从设置侧栏导航 Then 授权店铺和�
   await expect(page).toHaveURL(/\/service-connection$/)
   await expect(page.locator('.ping-card')).toBeVisible()
   await expect(page.locator('[data-nav-page="service-connection"]').first()).toHaveClass(/active/)
+})
+
+
+test('Given 一页 20 家店铺 When 视口高度不足 Then 可通过纵向滚动访问分页栏', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 700 })
+  await mockShops(page, 20)
+  await page.goto('/shops')
+
+  await expect(page.locator('.shops-table-wrap .el-table__body tr')).toHaveCount(20)
+  const pagination = page.locator('.shops-pagination')
+  await expect(pagination).not.toBeInViewport()
+  await page.locator('.shops-page').hover()
+  await page.mouse.wheel(0, 1400)
+  await expect(pagination).toBeInViewport()
 })

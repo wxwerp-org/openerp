@@ -784,9 +784,11 @@ onUnmounted(() => {
 <style scoped>
 .shops-page {
   width: min(100%, 1160px);
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   margin: 0 auto;
   padding: 32px 28px 48px;
+  overflow-y: auto;
 }
 
 .shops-heading {
