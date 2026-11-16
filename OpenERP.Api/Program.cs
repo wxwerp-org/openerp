@@ -23,6 +23,16 @@ if (builder.Environment.IsDevelopment())
     builder.Services.AddScoped<OrderStore>();
     builder.Services.AddSingleton<OrderSyncJobs>();
     builder.Services.AddHostedService(services => services.GetRequiredService<OrderSyncJobs>());
+    builder.Services.AddScoped<OrderSyncSettingsStore>();
+    builder.Services.AddScoped<IOrderSyncSettingsStore>(services => services.GetRequiredService<OrderSyncSettingsStore>());
+    builder.Services.AddOptions<OrderSyncSchedulerOptions>()
+        .Bind(builder.Configuration.GetSection("OrderSync"))
+        .Validate(options => options.SchedulerIntervalMinutes is
+            >= OrderSyncSchedulerOptions.MinIntervalMinutes and <= OrderSyncSchedulerOptions.MaxIntervalMinutes,
+            "OrderSync:SchedulerIntervalMinutes 必须在 1 到 1440 之间。")
+        .ValidateOnStart();
+    builder.Services.AddSingleton<OrderSyncScheduler>();
+    builder.Services.AddHostedService(services => services.GetRequiredService<OrderSyncScheduler>());
 }
 
 var app = builder.Build();

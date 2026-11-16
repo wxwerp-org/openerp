@@ -7,6 +7,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 {
     internal DbSet<OrderRecord> Orders => Set<OrderRecord>();
 
+    internal DbSet<OrderSyncSettings> OrderSyncSettings => Set<OrderSyncSettings>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<OrderRecord>(order =>
@@ -15,6 +17,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             order.HasKey(x => x.ErpId);
             order.HasMany(x => x.PlatformOrders).WithOne().HasForeignKey(x => x.ErpId);
             order.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.ErpId);
+        });
+
+        modelBuilder.Entity<OrderSyncSettings>(settings =>
+        {
+            settings.ToTable("OrderSyncSettings",
+                table => table.HasCheckConstraint("CK_OrderSyncSettings_Singleton", "\"Id\" = 1"));
+            settings.HasKey(x => x.Id);
+            settings.Property(x => x.Id).ValueGeneratedNever();
+            settings.Property(x => x.ShopSids).HasColumnType("integer[]").IsRequired();
         });
 
         modelBuilder.Entity<PlatformOrderRecord>(platformOrder =>

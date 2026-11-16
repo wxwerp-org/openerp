@@ -1,4 +1,5 @@
 using OpResult;
+using OpenERP.Api.Orders;
 
 namespace OpenERP.Api.Erp;
 
@@ -8,4 +9,9 @@ public interface IErpClient
     ErpConfiguration Configuration { get; }
 
     Task<(OpResult<ShopPage> Result, int Status)> GetShopsAsync(int page, int pageSize, CancellationToken cancellationToken);
+
+    Task<OpResult<IReadOnlyList<ErpShop>>> GetAllShopsAsync(CancellationToken cancellationToken);
+
+    Task<OpResult<OrderImportBatch>> ReadOrdersAsync(
+        int sid, Action<OrderReadProgress>? report, CancellationToken cancellationToken);
 }
