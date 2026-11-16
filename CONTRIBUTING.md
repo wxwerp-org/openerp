@@ -14,7 +14,7 @@
 
 C#/.NET 后端处理可预期失败时优先使用 Result 模式；适用时优先采用 `RokyZevon.OpResult`，避免用异常控制正常流程。
 
-前端沿用两格缩进、单引号、不加分号、PascalCase Vue 文件名及 `<script setup lang="ts">`。遵循仓库的 TypeScript、lint 和格式化配置，不以文档中的工具状态代替检查实际配置。
+前端沿用两格缩进、单引号、不加分号、PascalCase Vue 文件名及 `<script setup lang="ts">`。两格缩进由 `.editorconfig` 约定，单引号、不加分号等继续沿用现有代码约定；ESLint 只做静态质量检查，不启用格式化规则。检查范围和方式见[前端静态检查](docs/development.md#前端静态检查)。遵循仓库的 TypeScript、lint 和格式化配置，不以文档中的工具状态代替检查实际配置。
 
 ## 测试与验证要求
 
