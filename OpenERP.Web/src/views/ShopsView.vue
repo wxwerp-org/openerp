@@ -826,7 +826,7 @@ onUnmounted(() => {
 
 .shops-card {
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: 12px;
 }
 
 .shops-card :deep(.el-card__body) {
