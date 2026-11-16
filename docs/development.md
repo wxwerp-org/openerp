@@ -52,12 +52,14 @@ ESLint 在这里只负责代码质量和潜在错误，不启用缩进、引号�
 
 [WebInstallerTests](../OpenERP.Api.Tests/WebInstallerTests.cs) 使用实际 AppHost 安装参数，在临时目录执行 pnpm 验证无 TTY 的依赖重建与冻结锁文件行为。需要 PATH 中有 Node.js 和 pnpm；fixture 只使用本地依赖，不连接 ERP，也不修改开发目录的 `node_modules`。
 
-浏览器测试入口由 [Playwright 配置](../OpenERP.Web/playwright.config.ts) 指定。执行前确认其 `testDir` 下有实际用例，启动应用并等待 `web` 就绪，将 `PLAYWRIGHT_BASE_URL` 设置为实际地址，再安装浏览器并执行测试：
+浏览器测试入口由 [Playwright 配置](../OpenERP.Web/playwright.config.ts) 指定。默认由配置中的 `webServer` 自动执行生产构建并在 `127.0.0.1:4173` 启动预览服务，无需手工启动应用；安装浏览器后直接运行：
 
 ```bash
 pnpm --dir OpenERP.Web exec playwright install chromium
 pnpm --dir OpenERP.Web test:e2e
 ```
+
+未设置 `OPENERP_TEST_ADMIN_PASSWORD` 时，工作台用例通过页面级 mock 会话执行，账户与会话用例（[authentication.spec.ts](../OpenERP.Web/tests/e2e/authentication.spec.ts)）跳过；前端 PR 检查（[ci-web.yml](../.github/workflows/ci-web.yml)）只运行这类无需后端的用例。设置 `PLAYWRIGHT_BASE_URL` 指向真实宿主时复用外部服务，不再启动 `webServer`。
 
 账户端到端用例需要真实后端与 `OPENERP_TEST_ADMIN_PASSWORD`，会修改测试账户资料和密码。请使用隔离测试宿主，避免对日常开发账户运行这些用例：
 
