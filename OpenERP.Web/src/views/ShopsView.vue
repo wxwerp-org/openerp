@@ -1,20 +1,8 @@
 <script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { apiRequest } from '../account/session'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import {
-  ElAlert,
-  ElButton,
-  ElCard,
-  ElEmpty,
-  ElOption,
-  ElPagination,
-  ElProgress,
-  ElSelect,
-  ElSwitch,
-  ElTable,
-  ElTableColumn,
-  ElTag,
-} from 'element-plus'
+import AppIcon from '../components/navigation/AppIcon.vue'
+import { buildPageList } from '../components/controls/pager'
 
 type Shop = {
   sid: string
@@ -37,6 +25,14 @@ type ConfigStatus = 'loading' | 'configured' | 'unconfigured' | 'error'
 type ShopsStatus = 'idle' | 'loading' | 'success' | 'error'
 type OrderSyncStatus = 'running' | 'succeeded' | 'partial' | 'failed'
 type OrderSyncStage = 'shop' | 'pages' | 'details' | 'saving' | 'done'
+type TagClass = 'green' | 'red' | 'gray' | 'amber'
+
+type PagerItem = {
+  key: string
+  label: string
+  page: number | null
+  current: boolean
+}
 
 type OrderSyncTask = {
   id: string
@@ -92,8 +88,9 @@ const syncScheduleIntervalMinutes = ref(0)
 const syncScheduleShops = ref<SelectableShop[]>([])
 const syncScheduleShopsStatus = ref<SyncShopStatus>('idle')
 const syncScheduleShopsError = ref('')
+const jumpPage = ref('1')
 
-let syncScheduleRequestVersion = 0
+const pageSizeOptions = [20, 50, 100]
 
 const isLoading = computed(
   () => configStatus.value === 'loading' || shopsStatus.value === 'loading',
@@ -112,10 +109,10 @@ const configLabel = computed(() => {
   }
 })
 
-const configTagType = computed(() => {
-  if (configStatus.value === 'configured') return 'success'
-  if (configStatus.value === 'error') return 'danger'
-  return 'info'
+const configTagClass = computed<TagClass>(() => {
+  if (configStatus.value === 'configured') return 'green'
+  if (configStatus.value === 'error') return 'red'
+  return 'gray'
 })
 
 const shopsLabel = computed(() => {
@@ -131,22 +128,23 @@ const shopsLabel = computed(() => {
   }
 })
 
-const shopsTagType = computed(() => {
-  if (shopsStatus.value === 'success') return 'success'
-  if (shopsStatus.value === 'error') return 'danger'
-  return 'info'
+const shopsTagClass = computed<TagClass>(() => {
+  if (shopsStatus.value === 'success') return 'green'
+  if (shopsStatus.value === 'error') return 'red'
+  return 'gray'
 })
-
-const syncScheduleShopOptions = computed(() =>
-  syncScheduleShops.value.map((shop) => ({
-    label: `${shop.name}（${shop.sid}）`,
-    value: shop.sid,
-  })),
-)
 
 const syncScheduleSelectionValid = computed(
   () => !syncScheduleEnabled.value || syncScheduleShopSids.value.length > 0,
 )
+
+const syncSchedulePickerShops = computed<SelectableShop[]>(() => {
+  const known = new Set(syncScheduleShops.value.map((shop) => shop.sid))
+  const missing = syncScheduleShopSids.value
+    .filter((sid) => !known.has(sid))
+    .map((sid) => ({ sid, name: `已选店铺 ${sid}（不在当前可选列表）` }))
+  return [...syncScheduleShops.value, ...missing]
+})
 
 const syncScheduleCanSave = computed(
   () =>
@@ -155,6 +153,27 @@ const syncScheduleCanSave = computed(
     !syncSettingsSaving.value &&
     syncScheduleSelectionValid.value,
 )
+
+const noticeKind = computed<'unconfigured' | 'error' | null>(() => {
+  if (configStatus.value === 'unconfigured') return 'unconfigured'
+  if (shopsStatus.value === 'error') return 'error'
+  return null
+})
+
+const retryLabel = computed(() =>
+  shopsStatus.value === 'error' || configStatus.value === 'error' ? '重试' : '刷新',
+)
+
+const paginationDisabled = computed(() => isLoading.value || pageCount.value < 1)
+const pagerItems = computed<PagerItem[]>(() =>
+  buildPageList(currentPage.value, pageCount.value).map((item, index) =>
+    item === 'ellipsis'
+      ? { key: `ellipsis-${index}`, label: '…', page: null, current: false }
+      : { key: `page-${item}`, label: String(item), page: item, current: item === currentPage.value },
+  ),
+)
+
+let syncScheduleRequestVersion = 0
 
 let requestVersion = 0
 let activeController: AbortController | null = null
@@ -165,6 +184,10 @@ let orderSyncDiscoveryTimeout: ReturnType<typeof setTimeout> | null = null
 const orderSyncPollInterval = 2000
 const orderSyncDiscoveryInterval = 15000
 const orderSyncRequestVersions = new Map<string, number>()
+
+watch(currentPage, (page) => {
+  jumpPage.value = String(page)
+}, { immediate: true })
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -699,11 +722,11 @@ function orderSyncStatusLabel(status: OrderSyncStatus): string {
   }
 }
 
-function orderSyncStatusType(status: OrderSyncStatus): 'success' | 'warning' | 'danger' | 'info' {
-  if (status === 'succeeded') return 'success'
-  if (status === 'partial') return 'warning'
-  if (status === 'failed') return 'danger'
-  return 'info'
+function orderSyncStatusClass(status: OrderSyncStatus): TagClass {
+  if (status === 'succeeded') return 'green'
+  if (status === 'partial') return 'amber'
+  if (status === 'failed') return 'red'
+  return 'gray'
 }
 
 function orderSyncStageLabel(stage: OrderSyncStage): string {
@@ -730,11 +753,11 @@ function orderSyncProgress(task: OrderSyncTask): number {
   return Math.min(99, Math.round(progress))
 }
 
-function orderSyncProgressStatus(task: OrderSyncTask): 'success' | 'warning' | 'exception' | undefined {
-  if (task.status === 'succeeded') return 'success'
-  if (task.status === 'partial') return 'warning'
-  if (task.status === 'failed') return 'exception'
-  return undefined
+function orderSyncProgressColor(task: OrderSyncTask): string {
+  if (task.status === 'succeeded') return 'var(--success)'
+  if (task.status === 'partial') return 'var(--warning)'
+  if (task.status === 'failed') return 'var(--danger)'
+  return 'var(--primary)'
 }
 
 function orderSyncButtonDisabled(sid: string): boolean {
@@ -753,7 +776,7 @@ async function loadPage(page: number, size: number, checkConfiguration = false):
 
   currentPage.value = page
   pageSize.value = size
-  clearShops()
+  shops.value = []
   errorMessage.value = ''
   shopsStatus.value = 'loading'
 
@@ -775,6 +798,7 @@ async function loadPage(page: number, size: number, checkConfiguration = false):
       setOrderSyncEnabled(config.orderSyncEnabled)
 
       if (!config.configured) {
+        clearShops()
         shopsStatus.value = 'idle'
         return
       }
@@ -829,24 +853,44 @@ function handlePageSizeChange(size: number): void {
   if (size !== pageSize.value) void loadPage(1, size)
 }
 
+function handlePageSizeSelect(event: Event): void {
+  const nextSize = Number((event.target as HTMLSelectElement).value)
+  if (Number.isInteger(nextSize) && pageSizeOptions.includes(nextSize)) {
+    handlePageSizeChange(nextSize)
+  }
+}
+
+function goToPage(item: PagerItem): void {
+  if (item.page === null) return
+  handlePageChange(item.page)
+}
+
+function submitJumpPage(): void {
+  const requested = Number.parseInt(jumpPage.value, 10)
+  if (!Number.isInteger(requested) || pageCount.value < 1) {
+    jumpPage.value = String(currentPage.value)
+    return
+  }
+
+  const target = Math.min(Math.max(requested, 1), pageCount.value)
+  jumpPage.value = String(target)
+  if (target !== currentPage.value) void loadPage(target, pageSize.value)
+}
+
 function tokenStatusLabel(status: boolean | null): string {
   if (status === true) return '有效'
   if (status === false) return '无效'
   return '未知'
 }
 
-function tokenStatusType(status: boolean | null): 'success' | 'danger' | 'info' {
-  if (status === true) return 'success'
-  if (status === false) return 'danger'
-  return 'info'
+function tokenStatusClass(status: boolean | null): TagClass {
+  if (status === true) return 'green'
+  if (status === false) return 'red'
+  return 'gray'
 }
 
 function regionLabel(region: string | null): string {
   return region?.trim() || '未知'
-}
-
-function shopFromTableRow(row: unknown): Shop {
-  return row as Shop
 }
 
 onMounted(() => {
@@ -866,55 +910,39 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="shops-page">
-    <section class="shops-heading" aria-labelledby="shops-title">
-      <div class="shops-heading__copy">
-        <p class="eyebrow">TemuPop</p>
-        <h1 id="shops-title">授权店铺</h1>
-        <p class="description">查看当前账号可见的 Temu 半托管跨境店铺及平台授权状态</p>
-      </div>
-      <div class="shops-heading__status" aria-live="polite">
-        <ElTag :type="configTagType" effect="light">{{ configLabel }}</ElTag>
-        <ElTag v-if="shopsLabel" :type="shopsTagType" effect="light">{{ shopsLabel }}</ElTag>
-      </div>
-    </section>
+  <section class="page page-shops active" aria-labelledby="shops-title">
+    <header class="shops-head">
+      <h1 id="shops-title">授权店铺</h1>
+      <p class="description">查看当前账号可见的 Temu 半托管跨境店铺及平台授权状态</p>
+    </header>
 
-    <ElAlert
-      v-if="configStatus === 'unconfigured'"
-      class="shops-notice"
-      title="尚未配置私有 ERP AccessToken"
-      description="请在服务端配置私有 ERP AccessToken 后重试。"
-      type="warning"
-      :closable="false"
-      show-icon
-    />
-    <ElAlert
-      v-else-if="shopsStatus === 'error'"
-      class="shops-notice"
-      :title="errorMessage"
-      type="error"
-      :closable="false"
-      show-icon
-    />
+    <div v-if="noticeKind" class="shops-notice">
+      <div v-if="noticeKind === 'unconfigured'" class="notice amber" role="alert">
+        <AppIcon name="i-warning" />
+        <div>
+          <p class="notice-title">尚未配置私有 ERP AccessToken</p>
+          <p class="notice-desc">请在服务端配置私有 ERP AccessToken 后重试。</p>
+        </div>
+      </div>
+      <div v-else class="notice red" role="alert">
+        <AppIcon name="i-warning" />
+        <p class="notice-title">{{ errorMessage }}</p>
+      </div>
+    </div>
 
-    <ElCard
-      v-if="orderSyncEnabled"
-      class="sync-settings-card"
-      shadow="never"
-      aria-labelledby="sync-settings-title"
-    >
+    <div v-if="orderSyncEnabled" class="sync-settings-card" aria-labelledby="sync-settings-title">
       <div class="sync-settings-card__header">
         <div>
           <h2 id="sync-settings-title">定时同步</h2>
           <p class="description">按固定周期自动同步选中的店铺，仅处理已选店铺。</p>
         </div>
-        <ElTag
+        <span
           v-if="syncSettingsStatus === 'ready'"
-          :type="syncScheduleEnabled ? 'success' : 'info'"
-          effect="light"
+          class="tag"
+          :class="syncScheduleEnabled ? 'green' : 'gray'"
         >
           {{ syncScheduleEnabled ? '已启用' : '未启用' }}
-        </ElTag>
+        </span>
       </div>
 
       <p v-if="syncSettingsStatus === 'loading'" class="sync-settings-card__hint">
@@ -922,7 +950,7 @@ onUnmounted(() => {
       </p>
       <div v-else-if="syncSettingsStatus === 'error'" class="sync-settings-card__error-block">
         <p class="sync-settings-card__error" role="alert">{{ syncSettingsError }}</p>
-        <ElButton size="small" @click="loadSyncSchedule">重试</ElButton>
+        <button class="btn" type="button" @click="loadSyncSchedule">重试</button>
       </div>
       <div v-else class="sync-settings-card__body">
         <div class="sync-settings-card__row">
@@ -930,12 +958,16 @@ onUnmounted(() => {
             <span>启用定时同步</span>
             <small>每 {{ syncScheduleIntervalMinutes }} 分钟尝试一轮；首次执行会等待一个周期，与运行中的批次冲突时本轮跳过。</small>
           </div>
-          <ElSwitch
-            v-model="syncScheduleEnabled"
-            :disabled="syncSettingsSaving || configStatus !== 'configured'"
-            aria-label="启用定时同步"
-            @change="clearSyncSettingsMessage"
-          />
+          <label class="sync-settings-card__switch">
+            <input
+              v-model="syncScheduleEnabled"
+              class="checkbox"
+              type="checkbox"
+              aria-label="启用定时同步"
+              :disabled="syncSettingsSaving || configStatus !== 'configured'"
+              @change="clearSyncSettingsMessage"
+            >
+          </label>
         </div>
 
         <div class="sync-settings-card__row sync-settings-card__row--shops">
@@ -944,59 +976,57 @@ onUnmounted(() => {
             <small>只同步选中的店铺；启用前至少选择一家。</small>
           </div>
           <div class="sync-settings-card__shop-picker">
-            <ElSelect
-              v-model="syncScheduleShopSids"
-              class="sync-settings-card__select"
-              multiple
-              filterable
-              collapse-tags
-              collapse-tags-tooltip
-              placeholder="选择要定时同步的店铺"
-              aria-label="定时同步店铺"
-              :disabled="syncSettingsSaving || syncScheduleShopsStatus !== 'ready'"
-              @change="clearSyncSettingsMessage"
-            >
-              <ElOption
-                v-for="shop in syncScheduleShopOptions"
-                :key="shop.value"
-                :label="shop.label"
-                :value="shop.value"
-              />
-            </ElSelect>
+            <div class="sync-shop-list" role="group" aria-label="定时同步店铺">
+              <label
+                v-for="shop in syncSchedulePickerShops"
+                :key="shop.sid"
+                class="sync-shop-option"
+              >
+                <input
+                  v-model="syncScheduleShopSids"
+                  class="checkbox"
+                  type="checkbox"
+                  :value="shop.sid"
+                  :disabled="syncSettingsSaving || syncScheduleShopsStatus !== 'ready'"
+                  @change="clearSyncSettingsMessage"
+                >
+                <span>{{ shop.name }}（{{ shop.sid }}）</span>
+              </label>
+              <p v-if="syncScheduleShopsStatus === 'loading'" class="sync-settings-card__hint">
+                正在读取可选店铺…
+              </p>
+              <div
+                v-else-if="syncScheduleShopsStatus === 'error'"
+                class="sync-settings-card__shop-error"
+              >
+                <p class="sync-settings-card__error" role="alert">{{ syncScheduleShopsError }}</p>
+                <button
+                  class="btn text"
+                  type="button"
+                  :disabled="syncSettingsSaving"
+                  @click="retrySyncShops"
+                >
+                  重试
+                </button>
+              </div>
+            </div>
             <div class="sync-settings-card__shop-actions">
-              <ElButton
-                text
-                size="small"
+              <button
+                class="btn text"
+                type="button"
                 :disabled="syncScheduleShopsStatus !== 'ready' || syncSettingsSaving"
                 @click="selectAllSyncShops"
               >
                 全选可见店铺
-              </ElButton>
-              <ElButton
-                text
-                size="small"
+              </button>
+              <button
+                class="btn text"
+                type="button"
                 :disabled="syncSettingsSaving || syncScheduleShopSids.length === 0"
                 @click="clearSyncShops"
               >
                 清空
-              </ElButton>
-            </div>
-            <p v-if="syncScheduleShopsStatus === 'loading'" class="sync-settings-card__hint">
-              正在读取可选店铺…
-            </p>
-            <div
-              v-else-if="syncScheduleShopsStatus === 'error'"
-              class="sync-settings-card__shop-error"
-            >
-              <p class="sync-settings-card__error" role="alert">{{ syncScheduleShopsError }}</p>
-              <ElButton
-                text
-                size="small"
-                :disabled="syncSettingsSaving"
-                @click="retrySyncShops"
-              >
-                重试
-              </ElButton>
+              </button>
             </div>
           </div>
         </div>
@@ -1010,14 +1040,15 @@ onUnmounted(() => {
         </p>
 
         <div class="sync-settings-card__footer">
-          <ElButton
-            type="primary"
-            :loading="syncSettingsSaving"
+          <button
+            class="btn primary"
+            type="button"
             :disabled="!syncScheduleCanSave"
+            :aria-busy="syncSettingsSaving ? 'true' : undefined"
             @click="saveSyncSchedule"
           >
             保存
-          </ElButton>
+          </button>
           <span v-if="syncSettingsMessage" class="sync-settings-card__success" role="status">
             {{ syncSettingsMessage }}
           </span>
@@ -1030,443 +1061,517 @@ onUnmounted(() => {
           </span>
         </div>
       </div>
-    </ElCard>
+    </div>
 
-    <ElCard class="shops-card" shadow="never">
-      <div class="shops-card__toolbar">
-        <div class="shops-card__summary" aria-live="polite">
+    <div class="list-toolbar">
+      <div class="toolbar-left">
+        <span class="toolbar-summary" aria-live="polite">
           <template v-if="shopsStatus === 'success'">
             共 {{ totalCount }} 家店铺<span v-if="totalCount > 0">，共 {{ pageCount }} 页</span>
           </template>
           <template v-else-if="shopsStatus === 'loading'">正在加载店铺列表</template>
           <template v-else-if="configStatus === 'unconfigured'">完成服务端配置后可查看店铺</template>
           <template v-else>店铺列表</template>
-        </div>
-        <ElButton
-          type="primary"
-          plain
-          :loading="isLoading"
+        </span>
+        <span class="toolbar-status" aria-live="polite">
+          <span class="tag" :class="configTagClass">{{ configLabel }}</span>
+          <span v-if="shopsLabel" class="tag" :class="shopsTagClass">{{ shopsLabel }}</span>
+        </span>
+      </div>
+      <div class="toolbar-right">
+        <button
+          class="btn-icon"
+          type="button"
+          :title="retryLabel"
+          :aria-label="retryLabel"
+          :disabled="isLoading"
+          :aria-busy="isLoading ? 'true' : undefined"
           @click="retry"
         >
-          {{ shopsStatus === 'error' || configStatus === 'error' ? '重试' : '刷新' }}
-        </ElButton>
+          <AppIcon name="i-refresh" />
+        </button>
       </div>
+    </div>
 
-      <div
-        class="shops-table-wrap"
-        role="region"
-        aria-label="授权店铺表格"
-        tabindex="0"
-      >
-        <div v-if="isLoading" class="shops-loading" role="status">正在加载店铺列表…</div>
-        <ElTable
-          v-else-if="shopsStatus === 'success' && shops.length > 0"
-          :data="shops"
-          row-key="sid"
-          style="width: 100%"
-        >
-          <ElTableColumn prop="sid" label="SID" min-width="130" />
-          <ElTableColumn prop="name" label="名称" min-width="180" />
-          <ElTableColumn prop="platform" label="平台" min-width="130" />
-          <ElTableColumn label="区域" min-width="130">
-            <template #default="{ row }">
-              {{ regionLabel(shopFromTableRow(row).region) }}
-            </template>
-          </ElTableColumn>
-          <ElTableColumn label="授权状态" min-width="180">
-            <template #default="{ row }">
-              <ElTag :type="tokenStatusType(shopFromTableRow(row).isTokenOk)" effect="light">
-                {{ tokenStatusLabel(shopFromTableRow(row).isTokenOk) }}
-              </ElTag>
-              <p v-if="shopFromTableRow(row).statusError" class="shop-status-error">
-                {{ shopFromTableRow(row).statusError }}
-              </p>
-            </template>
-          </ElTableColumn>
-          <ElTableColumn v-if="orderSyncEnabled" label="历史订单" min-width="360">
-            <template #default="{ row }">
-              <div class="shop-order-sync">
-                <ElButton
-                  size="small"
-                  type="primary"
-                  plain
-                  :loading="orderSyncSubmittingSids.has(shopFromTableRow(row).sid)"
-                  :disabled="orderSyncButtonDisabled(shopFromTableRow(row).sid)"
-                  @click="startOrderSync(shopFromTableRow(row))"
-                >
-                  同步历史订单
-                </ElButton>
-                <div v-if="orderSyncTasks[shopFromTableRow(row).sid]" class="shop-order-sync__task">
-                  <div class="shop-order-sync__heading">
-                    <ElTag
-                      :type="orderSyncStatusType(orderSyncTasks[shopFromTableRow(row).sid].status)"
-                      effect="light"
-                    >
-                      {{ orderSyncStatusLabel(orderSyncTasks[shopFromTableRow(row).sid].status) }}
-                    </ElTag>
-                    <span>{{ orderSyncStageLabel(orderSyncTasks[shopFromTableRow(row).sid].stage) }}</span>
-                  </div>
-                  <ElProgress
-                    :percentage="orderSyncProgress(orderSyncTasks[shopFromTableRow(row).sid])"
-                    :status="orderSyncProgressStatus(orderSyncTasks[shopFromTableRow(row).sid])"
-                    :stroke-width="8"
-                  />
-                  <p class="shop-order-sync__counts">
-                    读取 {{ orderSyncTasks[shopFromTableRow(row).sid].read }} / {{ orderSyncTasks[shopFromTableRow(row).sid].total }}
-                    · 已处理 {{ orderSyncTasks[shopFromTableRow(row).sid].processed }}
-                    · 新增 {{ orderSyncTasks[shopFromTableRow(row).sid].added }}
-                    · 更新 {{ orderSyncTasks[shopFromTableRow(row).sid].updated }}
-                    · 未变 {{ orderSyncTasks[shopFromTableRow(row).sid].unchanged }}
-                    · 跳过 {{ orderSyncTasks[shopFromTableRow(row).sid].skipped }}
-                  </p>
-                  <p
-                    v-for="([reason, count]) in Object.entries(orderSyncTasks[shopFromTableRow(row).sid].skipReasons)"
-                    :key="reason"
-                    class="shop-order-sync__reason"
-                  >
-                    {{ reason }}：{{ count }}
-                  </p>
-                  <p
-                    v-if="orderSyncTasks[shopFromTableRow(row).sid].error"
-                    class="shop-order-sync__error"
-                  >
-                    {{ orderSyncTasks[shopFromTableRow(row).sid].error }}
-                  </p>
-                </div>
-                <p
-                  v-if="orderSyncErrors[shopFromTableRow(row).sid]"
-                  class="shop-order-sync__error"
-                  role="alert"
-                >
-                  {{ orderSyncErrors[shopFromTableRow(row).sid] }}
-                </p>
-              </div>
-            </template>
-          </ElTableColumn>
-        </ElTable>
-        <ElEmpty
-          v-else-if="shopsStatus === 'success'"
-          class="shops-empty"
-          description="暂无授权店铺"
-        />
-        <ElEmpty
-          v-else-if="configStatus === 'unconfigured'"
-          class="shops-empty"
-          description="配置完成后，这里会显示 TemuPop 授权店铺"
-        />
-      </div>
+    <div class="table-region">
+      <div class="table-box">
+        <div class="table-area">
+          <div
+            class="table-scroll is-y"
+            role="region"
+            aria-label="授权店铺表格"
+            tabindex="0"
+          >
+            <table class="grid-table shops-table is-wrap">
+              <caption class="visually-hidden">授权店铺列表</caption>
+              <colgroup v-if="orderSyncEnabled">
+                <col style="width:10%">
+                <col style="width:18%">
+                <col style="width:10%">
+                <col style="width:8%">
+                <col style="width:24%">
+                <col style="width:30%">
+              </colgroup>
+              <colgroup v-else>
+                <col style="width:10%">
+                <col style="width:26%">
+                <col style="width:12%">
+                <col style="width:10%">
+                <col style="width:42%">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">SID</th>
+                  <th scope="col">名称</th>
+                  <th scope="col">平台</th>
+                  <th scope="col">区域</th>
+                  <th scope="col">授权状态</th>
+                  <th v-if="orderSyncEnabled" scope="col">历史订单</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="shop in shops" :key="shop.sid">
+                  <td :title="shop.sid">{{ shop.sid }}</td>
+                  <td :title="shop.name">{{ shop.name }}</td>
+                  <td>{{ shop.platform }}</td>
+                  <td>{{ regionLabel(shop.region) }}</td>
+                  <td>
+                    <div class="shop-status">
+                      <span class="tag" :class="tokenStatusClass(shop.isTokenOk)">
+                        {{ tokenStatusLabel(shop.isTokenOk) }}
+                      </span>
+                      <p v-if="shop.statusError" class="shop-status-error">{{ shop.statusError }}</p>
+                    </div>
+                  </td>
+                  <td v-if="orderSyncEnabled">
+                    <div class="shop-order-sync">
+                      <button
+                        class="btn"
+                        type="button"
+                        :aria-label="`同步历史订单：${shop.name}`"
+                        :aria-busy="orderSyncSubmittingSids.has(shop.sid) ? 'true' : undefined"
+                        :disabled="orderSyncButtonDisabled(shop.sid)"
+                        @click="startOrderSync(shop)"
+                      >
+                        同步历史订单
+                      </button>
+                      <div v-if="orderSyncTasks[shop.sid]" class="shop-order-sync__task">
+                        <div class="shop-order-sync__heading">
+                          <span class="tag" :class="orderSyncStatusClass(orderSyncTasks[shop.sid].status)">
+                            {{ orderSyncStatusLabel(orderSyncTasks[shop.sid].status) }}
+                          </span>
+                          <span>{{ orderSyncStageLabel(orderSyncTasks[shop.sid].stage) }}</span>
+                        </div>
+                        <div
+                          class="dist-bar shop-order-sync__progress"
+                          role="progressbar"
+                          aria-label="历史订单同步进度"
+                          aria-valuemin="0"
+                          aria-valuemax="100"
+                          :aria-valuenow="orderSyncProgress(orderSyncTasks[shop.sid])"
+                        >
+                          <span
+                            :style="{
+                              width: `${orderSyncProgress(orderSyncTasks[shop.sid])}%`,
+                              background: orderSyncProgressColor(orderSyncTasks[shop.sid]),
+                            }"
+                          ></span>
+                        </div>
+                        <p class="shop-order-sync__counts">
+                          读取 {{ orderSyncTasks[shop.sid].read }} / {{ orderSyncTasks[shop.sid].total }}
+                          · 已处理 {{ orderSyncTasks[shop.sid].processed }}
+                          · 新增 {{ orderSyncTasks[shop.sid].added }}
+                          · 更新 {{ orderSyncTasks[shop.sid].updated }}
+                          · 未变 {{ orderSyncTasks[shop.sid].unchanged }}
+                          · 跳过 {{ orderSyncTasks[shop.sid].skipped }}
+                        </p>
+                        <p
+                          v-for="([reason, count]) in Object.entries(orderSyncTasks[shop.sid].skipReasons)"
+                          :key="reason"
+                          class="shop-order-sync__reason"
+                        >
+                          {{ reason }}：{{ count }}
+                        </p>
+                        <p v-if="orderSyncTasks[shop.sid].error" class="shop-order-sync__error">
+                          {{ orderSyncTasks[shop.sid].error }}
+                        </p>
+                      </div>
+                      <p v-if="orderSyncErrors[shop.sid]" class="shop-order-sync__error" role="alert">
+                        {{ orderSyncErrors[shop.sid] }}
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="isLoading" class="empty-overlay" role="status">正在加载店铺列表…</div>
+          <div v-else-if="shopsStatus === 'success' && shops.length === 0" class="empty-overlay">
+            暂无授权店铺
+          </div>
+          <div v-else-if="configStatus === 'unconfigured'" class="empty-overlay">
+            配置完成后，这里会显示 TemuPop 授权店铺
+          </div>
+        </div>
 
-      <div v-if="shopsStatus === 'success' && totalCount > 0" class="shops-pagination">
-        <ElPagination
-          :current-page="currentPage"
-          :page-size="pageSize"
-          :page-sizes="[20, 50, 100]"
-          :total="totalCount"
-          :disabled="isLoading"
-          layout="total, sizes, prev, pager, next, jumper"
-          @current-change="handlePageChange"
-          @size-change="handlePageSizeChange"
-        />
+        <div class="table-pagination">
+          <span>共 {{ totalCount }} 条</span>
+          <button
+            class="page-btn"
+            type="button"
+            aria-label="上一页"
+            :disabled="paginationDisabled || pageCount < 1 || currentPage <= 1"
+            @click="handlePageChange(currentPage - 1)"
+          >
+            <AppIcon name="i-chev-left" icon-class="ic-12" />
+          </button>
+          <template v-for="item in pagerItems" :key="item.key">
+            <span v-if="item.page === null" class="page-ellipsis">{{ item.label }}</span>
+            <span v-else-if="item.current" class="page-num" aria-current="page">{{ item.label }}</span>
+            <button
+              v-else
+              class="page-btn"
+              type="button"
+              :aria-label="`第 ${item.label} 页`"
+              :disabled="paginationDisabled"
+              @click="goToPage(item)"
+            >
+              {{ item.label }}
+            </button>
+          </template>
+          <button
+            class="page-btn"
+            type="button"
+            aria-label="下一页"
+            :disabled="paginationDisabled || currentPage >= pageCount"
+            @click="handlePageChange(currentPage + 1)"
+          >
+            <AppIcon name="i-chev-right" icon-class="ic-12" />
+          </button>
+          <label class="page-size" :class="{ 'is-disabled': paginationDisabled }">
+            <select
+              :value="pageSize"
+              :disabled="paginationDisabled"
+              aria-label="每页条数"
+              @change="handlePageSizeSelect"
+            >
+              <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
+            </select>
+            <AppIcon name="i-chev-down" />
+          </label>
+          <span class="page-jump">
+            前往<input
+              v-model="jumpPage"
+              :disabled="paginationDisabled"
+              aria-label="前往页码"
+              inputmode="numeric"
+              @keyup.enter="submitJumpPage"
+              @blur="submitJumpPage"
+            >页
+          </span>
+        </div>
       </div>
-    </ElCard>
+    </div>
   </section>
 </template>
 
-
 <style scoped>
-.shops-page {
-  width: min(100%, 1160px);
-  height: 100%;
-  min-height: 0;
-  margin: 0 auto;
-  padding: 32px 28px 48px;
-  overflow-y: auto;
+.shops-head {
+  flex: none;
+  padding: 0 0 12px;
 }
 
-.shops-heading {
-  display: flex;
-  margin-bottom: 24px;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.shops-heading__copy h1 {
-  margin: 0;
-  color: var(--color-text);
-  font-size: 26px;
-  font-weight: 680;
-  letter-spacing: -0.025em;
-}
-
-.shops-heading__copy .description {
-  margin-top: 9px;
-  color: var(--color-muted);
-  font-size: 14px;
-}
-
-.shops-heading__status {
-  display: flex;
-  padding-top: 3px;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.shops-notice {
-  margin-bottom: 20px;
-}
-
-.shops-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.sync-settings-card {
-  margin-bottom: 20px;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.sync-settings-card :deep(.el-card__body) {
-  padding: 18px 20px;
-}
-
-.sync-settings-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.sync-settings-card__header h2 {
-  margin: 0;
-  color: var(--color-text);
-  font-size: 18px;
-  font-weight: 650;
-}
-
-.sync-settings-card__header .description {
-  margin-top: 6px;
-  color: var(--color-muted);
-  font-size: 13px;
-}
-
-.sync-settings-card__body {
-  display: grid;
-  margin-top: 16px;
-  gap: 18px;
-}
-
-.sync-settings-card__row {
-  display: grid;
-  grid-template-columns: minmax(210px, 270px) minmax(0, 1fr);
-  align-items: start;
-  gap: 20px;
-}
-
-.sync-settings-card__label {
-  display: grid;
-  gap: 4px;
-}
-
-.sync-settings-card__label span {
-  color: var(--color-text);
-  font-size: 14px;
+.shops-head h1 {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 28px;
   font-weight: 600;
 }
 
-.sync-settings-card__label small {
-  color: var(--color-muted);
+.shops-head .description {
+  margin-top: 4px;
+  color: var(--muted);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 18px;
 }
 
-.sync-settings-card__shop-picker {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
+.shops-notice {
+  flex: none;
+  padding: 0 0 12px;
 }
 
-.sync-settings-card__select {
-  width: 100%;
-}
-
-.sync-settings-card__shop-actions {
-  display: flex;
-  margin-inline-start: -8px;
-  flex-wrap: wrap;
-}
-
-.sync-settings-card__shop-error {
-  display: flex;
+.page-shops .list-toolbar {
+  height: 46px;
+  flex: none;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-bottom-color: var(--line-soft);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  background: var(--surface);
 }
 
-.sync-settings-card__hint,
-.sync-settings-card__error,
-.sync-settings-card__success {
-  margin: 0;
+.table-region {
+  flex: 1 0 320px;
+  min-height: 320px;
+  padding: 0 0 16px;
+  background: transparent;
+}
+
+.page-shops .table-box {
+  border-top: 0;
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+}
+
+.page-shops .table-pagination {
+  padding: 0 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.toolbar-summary {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
   font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.sync-settings-card__hint {
-  color: var(--color-muted);
-}
-
-.sync-settings-card__error {
-  color: #b91c1c;
-}
-
-.sync-settings-card__success {
-  color: #15803d;
-}
-
-.sync-settings-card__error-block {
-  display: flex;
-  margin-top: 14px;
+.toolbar-status {
+  display: inline-flex;
+  flex: none;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 6px;
 }
 
-.sync-settings-card__footer {
+.shops-table td {
+  vertical-align: top;
+}
+
+.shop-status {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
-}
-
-.shops-card :deep(.el-card__body) {
-  padding: 0;
-}
-
-.shops-card__toolbar {
-  display: flex;
-  min-height: 64px;
-  padding: 14px 20px;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid #edf0f5;
-}
-
-.shops-card__summary {
-  color: var(--color-muted);
-  font-size: 13px;
-}
-
-.shops-table-wrap {
-  min-width: 0;
-  min-height: 220px;
-  overflow-x: auto;
-}
-
-.shops-loading {
-  display: flex;
-  min-height: 220px;
-  padding: 24px;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-muted);
-  font-size: 14px;
-}
-
-.shops-empty {
-  padding: 26px 0;
-}
-
-.shops-pagination {
-  display: flex;
-  min-height: 66px;
-  padding: 12px 20px;
-  align-items: center;
-  justify-content: flex-end;
-  border-top: 1px solid #edf0f5;
-  overflow-x: auto;
+  gap: 4px 8px;
 }
 
 .shop-status-error {
-  max-width: 360px;
-  margin: 5px 0 0;
-  color: #b45309;
+  margin: 0;
+  color: var(--body);
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
 .shop-order-sync {
-  display: grid;
-  justify-items: start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
 }
 
 .shop-order-sync__task {
+  display: flex;
   width: 100%;
-  min-width: 280px;
-  color: var(--color-muted);
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
   font-size: 12px;
 }
 
 .shop-order-sync__heading {
   display: flex;
-  margin: 2px 0 6px;
   align-items: center;
   gap: 8px;
-  color: #475569;
+  color: var(--body);
 }
 
 .shop-order-sync__counts,
 .shop-order-sync__reason,
 .shop-order-sync__error {
-  margin: 5px 0 0;
+  margin: 0;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
 .shop-order-sync__reason {
-  color: #92400e;
+  color: var(--body);
 }
 
 .shop-order-sync__error {
-  color: #b91c1c;
+  color: var(--danger);
 }
 
-@media (max-width: 800px) {
-  .shops-page {
-    padding: 24px 18px 40px;
-  }
+.sync-settings-card {
+  display: flex;
+  max-height: 50vh;
+  flex: none;
+  flex-direction: column;
+  margin-bottom: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
 
-  .sync-settings-card__row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
-  }
+.sync-settings-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line-soft);
+}
 
-  .sync-settings-card__shop-actions {
-    margin-inline-start: -8px;
-  }
+.sync-settings-card__header h2 {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+}
 
-  .shops-heading {
-    flex-direction: column;
-    gap: 12px;
-  }
+.sync-settings-card__header .description {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
 
-  .shops-heading__status {
-    justify-content: flex-start;
-  }
+.sync-settings-card__body {
+  min-height: 0;
+  padding: 0 20px 16px;
+  overflow-y: auto;
+}
 
-  .shops-card__toolbar {
-    padding: 12px 14px;
-  }
+.sync-settings-card__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
 
-  .shops-pagination {
-    justify-content: flex-start;
-    padding: 12px 14px;
-  }
+.sync-settings-card__row:last-of-type {
+  border-bottom: 0;
+}
+
+.sync-settings-card__label {
+  min-width: 0;
+  padding-top: 2px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.sync-settings-card__label span {
+  display: block;
+  font-weight: 600;
+}
+
+.sync-settings-card__label small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.sync-settings-card__switch {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.sync-settings-card__switch .checkbox:disabled {
+  cursor: default;
+}
+
+.sync-settings-card__shop-picker {
+  width: min(520px, 100%);
+  min-width: 0;
+  flex: none;
+}
+
+.sync-shop-list {
+  display: flex;
+  max-height: 140px;
+  overflow-y: auto;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.sync-shop-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 2px;
+  color: var(--body);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.sync-shop-option:hover {
+  background: #F5F8FD;
+}
+
+.sync-shop-option .checkbox:disabled {
+  cursor: default;
+}
+
+.sync-settings-card__shop-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.sync-settings-card__hint {
+  padding: 6px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.sync-settings-card__error-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+}
+
+.sync-settings-card__shop-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.sync-settings-card__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.sync-settings-card__success {
+  color: var(--success);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.sync-settings-card__footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 14px;
 }
 </style>

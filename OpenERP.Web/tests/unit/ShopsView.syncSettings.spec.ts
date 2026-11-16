@@ -128,7 +128,7 @@ function findButton(wrapper: VueWrapper, text: string) {
 }
 
 async function setScheduleEnabled(wrapper: VueWrapper, enabled: boolean): Promise<void> {
-  await wrapper.get('.sync-settings-card .el-switch__input').setValue(enabled)
+  await wrapper.get('.sync-settings-card input[aria-label="启用定时同步"]').setValue(enabled)
   await flushPromises()
 }
 
@@ -237,6 +237,36 @@ describe('店铺定时同步设置', () => {
     expect(account.value?.mustChangePassword).toBe(true)
   })
 
+  it('Given 已保存店铺不在可选列表 When 取消兜底项并保存 Then 只提交仍选中的店铺', async () => {
+    // Given 服务端保存了 99，但当前可选列表只有 42/77。
+    const putBodies: PutBody[] = []
+    configureFetch({
+      settings: { enabled: true, shopSids: [99], intervalMinutes: 30 },
+      shops: allShops,
+      putSettings: (body) => {
+        putBodies.push(body)
+        return jsonResponse({ ...body, intervalMinutes: 30 })
+      },
+    })
+    wrapper = await mountShops()
+
+    // Then 99 作为可取消的兜底项展示，而不是被静默隐藏。
+    expect(wrapper.text()).toContain('已选店铺 99')
+
+    // When 选择 42 并取消 99 后保存。
+    await wrapper.get('.sync-shop-option input[value="42"]').setValue(true)
+    await wrapper
+      .findAll('.sync-shop-option')
+      .find((option) => option.text().includes('99'))!
+      .get('input')
+      .setValue(false)
+    await findButton(wrapper, '保存')!.trigger('click')
+    await flushPromises()
+
+    // Then 只提交仍选中的 42。
+    expect(putBodies).toEqual([{ enabled: true, shopSids: [42] }])
+  })
+
   it('Given 保存失败 When 提交设置 Then 显示错误并保留已选店铺', async () => {
     // Given 保存接口返回错误。
     configureFetch({
@@ -303,7 +333,7 @@ describe('店铺定时同步设置', () => {
     expect(shopCalls).toBe(2)
     expect(wrapper.text()).toContain('表格店铺')
     expect(
-      (wrapper.get('.sync-settings-card .el-switch__input').element as HTMLInputElement).checked,
+      (wrapper.get('.sync-settings-card input[aria-label="启用定时同步"]').element as HTMLInputElement).checked,
     ).toBe(true)
   })
 
@@ -322,8 +352,7 @@ describe('店铺定时同步设置', () => {
     expect(wrapper.text()).toContain('获取店铺失败')
 
     // When 点击店铺页顶部的刷新。
-    const refresh = wrapper.findAll('button').find((button) => button.text().includes('刷新'))!
-    await refresh.trigger('click')
+    await wrapper.get('button[aria-label="刷新"]').trigger('click')
     await flushPromises()
 
     // Then 选店列表随之恢复。
@@ -456,7 +485,7 @@ describe('店铺定时同步设置', () => {
 
     // Then 设置可读取，但选店、开关和保存都要求先配置 Token。
     expect(wrapper.text()).toContain('配置私有 ERP AccessToken 后可选择店铺。')
-    expect(wrapper.get('.sync-settings-card .el-switch__input').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('.sync-settings-card input[aria-label="启用定时同步"]').attributes('disabled')).toBeDefined()
     expect(findButton(wrapper, '保存')?.attributes('disabled')).toBeDefined()
   })
 })

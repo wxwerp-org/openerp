@@ -42,7 +42,7 @@
 .notice-item-title{font-size:14px;font-weight:700;color:var(--text);line-height:22px}
 .notice-line{margin-top:4px;color:#33363C;line-height:22px}
 .notice-note{margin-top:4px;color:var(--placeholder);line-height:22px}
-.notice-line .el-link{color:var(--primary);text-decoration:underline;text-underline-offset:2px}
+.notice-line .notice-link{color:var(--primary);text-decoration:underline;text-underline-offset:2px}
 .notice-footer{
   padding:24px 20px;border-top:1px solid #EBEBEB;display:flex;justify-content:center;align-items:center;
 }

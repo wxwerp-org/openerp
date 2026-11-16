@@ -87,6 +87,12 @@
 
 /* 用户管理 */
 .page-users{flex-direction:column;background:#fff;overflow:hidden}
+
+/* 服务连接 */
+.page-service{flex-direction:column;background:var(--page);overflow-y:auto}
+
+/* 授权店铺 */
+.page-shops{flex-direction:column;background:var(--page);overflow-y:auto;padding:16px}
 .user-filter .search-box{max-width:237px}
 .user-table .user-name{color:var(--text)}
 .user-table .status-pill{

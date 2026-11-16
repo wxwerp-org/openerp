@@ -2,7 +2,7 @@
 
 OpenERP 是一个基于 Vue 和 ASP.NET Core 的 ERP 项目，目前支持从私有 ERP 查询 Temu 半托管跨境（TemuPop）店铺，并将历史订单同步到本地 PostgreSQL。
 
-前端使用 Vue、TypeScript 和 Element Plus，后端使用 ASP.NET Core Minimal API 和 EF Core；Aspire 统一启动前后端、PostgreSQL、Redis 和 SeaweedFS，并提供日志与追踪面板。
+前端使用 Vue 和 TypeScript，后端使用 ASP.NET Core Minimal API 和 EF Core；Aspire 统一启动前后端、PostgreSQL、Redis 和 SeaweedFS，并提供日志与追踪面板。
 
 目前用于本地开发，业务页面与 API 需要管理员登录。历史订单同步和文件存储 API 仅在 Development 环境开放。
 
