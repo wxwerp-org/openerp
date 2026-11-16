@@ -385,6 +385,26 @@ public sealed class OrderReaderTests
         handler.AssertCompleted();
     }
 
+    [Fact]
+    public async Task ReadsEveryVisibleShopWithoutQueryingAuthorizationStatus()
+    {
+        // Given Token 可见店铺分两页返回，且没有调用授权状态接口。
+        using var handler = new ErpHandler(
+            ("/open-api/shop/get_shops", """!{"success":true,"data_count":2,"page_count":2,"data":{"items":[{"sid":"30","platform":"TemuPop","name":"店铺三十"}]}}"""),
+            ("/open-api/shop/get_shops", """!{"success":true,"data_count":2,"page_count":2,"data":{"items":[{"sid":"31","platform":"TemuPop","name":"店铺三十一"}]}}"""));
+        using var http = new HttpClient(handler);
+
+        // When 一次性读取全部可见店铺。
+        var result = await CreateClient(http).GetAllShopsAsync(TestContext.Current.CancellationToken);
+
+        // Then 合并所有分页，且没有额外的授权状态请求。
+        if (result.IsErr)
+            throw new XunitException(result.Error.Message);
+        Assert.Equal(["30", "31"], result.Value.Select(shop => shop.Sid));
+        Assert.Equal(["店铺三十", "店铺三十一"], result.Value.Select(shop => shop.Name));
+        handler.AssertCompleted();
+    }
+
     private const string OneOrder = """{"data_count":1,"page_count":1}""";
     private const string TimeNotFound = """!{"success":false,"message":"_暂未找到信息"}""";
     private const string Shops = """!{"success":true,"data_count":1,"page_count":1,"data":{"items":[{"sid":"30","platform":"TemuPop"}]}}""";

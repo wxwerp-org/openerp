@@ -82,6 +82,12 @@ function configureFetch(options: {
         : { ...shop, isTokenOk: options.tokenStatus }
       return jsonResponse({ ...shopList, items: [visibleShop] })
     }
+    if (url === '/api/erp/order-sync-settings') {
+      return jsonResponse({ enabled: false, shopSids: [], intervalMinutes: 30 })
+    }
+    if (url === '/api/erp/order-sync-settings/shops') {
+      return jsonResponse({ items: [{ sid: '42', name: '测试店铺' }] })
+    }
     if (url === '/api/erp/shops/42/order-sync' && init?.method === 'POST') {
       return options.postTask?.() ?? jsonResponse(task(), 202)
     }

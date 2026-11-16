@@ -104,6 +104,26 @@ namespace OpenERP.Api.Migrations
                     b.ToTable("Orders", (string)null);
                 });
 
+            modelBuilder.Entity("OpenERP.Api.Orders.OrderSyncSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.PrimitiveCollection<int[]>("ShopSids")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("OrderSyncSettings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OrderSyncSettings_Singleton", "\"Id\" = 1");
+                        });
+                });
+
             modelBuilder.Entity("OpenERP.Api.Orders.PlatformOrderRecord", b =>
                 {
                     b.Property<string>("ErpId")

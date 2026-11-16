@@ -31,13 +31,19 @@ public sealed class ErpConfigurationTests
         });
         builder.Services.AddHttpClient<IErpClient, WxwErpClient>();
         builder.Services.AddSingleton<OrderSyncJobs>();
+        builder.Services.AddSingleton<IOrderSyncSettingsStore>(new TestSettingsStore());
+        builder.Services.AddOptions<OrderSyncSchedulerOptions>();
+        builder.Services.AddSingleton<OrderSyncScheduler>();
         await using var app = builder.Build();
         app.MapErp();
         await app.StartAsync(ct);
         using var http = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
 
         // When 浏览器查询 ERP 配置。
-        var config = await http.GetFromJsonAsync<JsonElement>("/api/erp/config", ct);
+        using var configResponse = await http.GetAsync("/api/erp/config", ct);
+        if (!configResponse.IsSuccessStatusCode)
+            throw new Xunit.Sdk.XunitException(await configResponse.Content.ReadAsStringAsync(ct));
+        var config = await configResponse.Content.ReadFromJsonAsync<JsonElement>(ct);
 
         // Then 只有开发环境声明支持同步，ERP 配置状态仍可读取，凭证不出现在响应中。
         Assert.True(config.GetProperty("configured").GetBoolean());
@@ -54,6 +60,15 @@ public sealed class ErpConfigurationTests
         {
             using var conflict = await http.PostAsync("/api/erp/shops/31/order-sync", null, ct);
             Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        }
+        else
+        {
+            using var settings = await http.GetAsync("/api/erp/order-sync-settings", ct);
+            Assert.Equal(HttpStatusCode.NotFound, settings.StatusCode);
+            using var selection = await http.GetAsync("/api/erp/order-sync-settings/shops", ct);
+            Assert.Equal(HttpStatusCode.NotFound, selection.StatusCode);
+            using var save = await http.PutAsync("/api/erp/order-sync-settings", null, ct);
+            Assert.Equal(HttpStatusCode.NotFound, save.StatusCode);
         }
     }
 }

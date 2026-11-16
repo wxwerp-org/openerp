@@ -43,6 +43,29 @@ public sealed partial class WxwErpClient(HttpClient http, IConfiguration configu
         return (list with { Items = withStatus }, statusCode);
     }
 
+    public async Task<OpResult<IReadOnlyList<ErpShop>>> GetAllShopsAsync(CancellationToken ct)
+    {
+        const int pageSize = 100;
+        const int maxPages = 100;
+        var shops = new List<ErpShop>();
+        for (var page = 1; ; page++)
+        {
+            if (page > maxPages)
+                return OpResults.Err("ERP 店铺数量超出选店接口可读取范围。");
+
+            var (result, _) = await GetShopListAsync(page, pageSize, ct);
+            if (result.IsErr)
+                return result.Error;
+
+            var list = result.Value;
+            shops.AddRange(list.Items);
+            if (page >= list.PageCount)
+                break;
+        }
+
+        return OpResults.Ok<IReadOnlyList<ErpShop>>(shops.DistinctBy(shop => shop.Sid).ToArray());
+    }
+
     private async Task<(OpResult<ShopPage> Result, int Status)> GetShopListAsync(int page, int pageSize, CancellationToken ct)
     {
         if (page < 1 || pageSize is < 1 or > 100)

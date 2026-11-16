@@ -5,8 +5,11 @@ import {
   ElButton,
   ElCard,
   ElEmpty,
+  ElOption,
   ElPagination,
   ElProgress,
+  ElSelect,
+  ElSwitch,
   ElTable,
   ElTableColumn,
   ElTag,
@@ -50,6 +53,17 @@ type OrderSyncTask = {
   error: string | null
 }
 
+type SyncSettings = {
+  enabled: boolean
+  shopSids: number[]
+  intervalMinutes: number
+}
+
+type SelectableShop = {
+  sid: string
+  name: string
+}
+
 const configStatus = ref<ConfigStatus>('loading')
 const shopsStatus = ref<ShopsStatus>('idle')
 const shops = ref<Shop[]>([])
@@ -62,6 +76,22 @@ const orderSyncTasks = ref<Record<string, OrderSyncTask>>({})
 const orderSyncErrors = ref<Record<string, string>>({})
 const orderSyncSubmittingSids = ref(new Set<string>())
 const orderSyncEnabled = ref(false)
+
+type SyncSettingsStatus = 'idle' | 'loading' | 'ready' | 'error'
+type SyncShopStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+const syncSettingsStatus = ref<SyncSettingsStatus>('idle')
+const syncSettingsError = ref('')
+const syncSettingsMessage = ref('')
+const syncSettingsSaving = ref(false)
+const syncScheduleEnabled = ref(false)
+const syncScheduleShopSids = ref<string[]>([])
+const syncScheduleIntervalMinutes = ref(0)
+const syncScheduleShops = ref<SelectableShop[]>([])
+const syncScheduleShopsStatus = ref<SyncShopStatus>('idle')
+const syncScheduleShopsError = ref('')
+
+let syncScheduleRequestVersion = 0
 
 const isLoading = computed(
   () => configStatus.value === 'loading' || shopsStatus.value === 'loading',
@@ -105,6 +135,25 @@ const shopsTagType = computed(() => {
   return 'info'
 })
 
+const syncScheduleShopOptions = computed(() =>
+  syncScheduleShops.value.map((shop) => ({
+    label: `${shop.name}（${shop.sid}）`,
+    value: shop.sid,
+  })),
+)
+
+const syncScheduleSelectionValid = computed(
+  () => !syncScheduleEnabled.value || syncScheduleShopSids.value.length > 0,
+)
+
+const syncScheduleCanSave = computed(
+  () =>
+    syncSettingsStatus.value === 'ready' &&
+    configStatus.value === 'configured' &&
+    !syncSettingsSaving.value &&
+    syncScheduleSelectionValid.value,
+)
+
 let requestVersion = 0
 let activeController: AbortController | null = null
 let orderSyncLifecycle = 0
@@ -134,6 +183,44 @@ function parseConfig(value: unknown): {
     baseUrl: value.baseUrl,
     orderSyncEnabled: value.orderSyncEnabled === true,
   }
+}
+
+function parseSyncSettings(value: unknown): SyncSettings {
+  if (
+    !isRecord(value) ||
+    typeof value.enabled !== 'boolean' ||
+    !Array.isArray(value.shopSids) ||
+    !Number.isInteger(value.intervalMinutes) ||
+    (value.intervalMinutes as number) <= 0 ||
+    value.shopSids.some((sid) => !Number.isInteger(sid) || (sid as number) <= 0)
+  ) {
+    throw new Error('定时同步设置响应格式无效。')
+  }
+
+  return {
+    enabled: value.enabled,
+    shopSids: value.shopSids as number[],
+    intervalMinutes: value.intervalMinutes as number,
+  }
+}
+
+function parseSyncShopSelection(value: unknown): SelectableShop[] {
+  if (!isRecord(value) || !Array.isArray(value.items)) {
+    throw new Error('可选店铺响应格式无效。')
+  }
+
+  return value.items.map((item): SelectableShop => {
+    if (
+      !isRecord(item) ||
+      typeof item.sid !== 'string' ||
+      !/^[1-9]\d*$/.test(item.sid) ||
+      typeof item.name !== 'string'
+    ) {
+      throw new Error('可选店铺响应中包含格式无效的店铺。')
+    }
+
+    return { sid: item.sid, name: item.name }
+  })
 }
 
 function parseShopsResponse(value: unknown): ShopsResponse {
@@ -264,10 +351,133 @@ function clearOrderSyncError(sid: string): void {
   orderSyncErrors.value = nextErrors
 }
 
+function applySyncSettings(settings: SyncSettings): void {
+  syncScheduleEnabled.value = settings.enabled
+  syncScheduleShopSids.value = settings.shopSids.map(String)
+  syncScheduleIntervalMinutes.value = settings.intervalMinutes
+}
+
+async function loadSyncSchedule(): Promise<void> {
+  if (!orderSyncEnabled.value) return
+
+  const version = ++syncScheduleRequestVersion
+  syncSettingsStatus.value = 'loading'
+  syncSettingsError.value = ''
+  syncSettingsMessage.value = ''
+
+  try {
+    const settingsResponse = await fetch('/api/erp/order-sync-settings')
+    if (version !== syncScheduleRequestVersion) return
+    if (!settingsResponse.ok) {
+      throw new Error(await httpErrorMessage(settingsResponse, '无法读取定时同步设置'))
+    }
+
+    const settings = parseSyncSettings(await settingsResponse.json())
+    if (version !== syncScheduleRequestVersion) return
+    applySyncSettings(settings)
+    syncSettingsStatus.value = 'ready'
+  } catch (error) {
+    if (version !== syncScheduleRequestVersion) return
+    syncSettingsStatus.value = 'error'
+    syncSettingsError.value =
+      error instanceof Error ? error.message : '无法读取定时同步设置，请稍后重试。'
+    return
+  }
+
+  if (configStatus.value !== 'configured') {
+    syncScheduleShops.value = []
+    syncScheduleShopsStatus.value = 'error'
+    syncScheduleShopsError.value = configStatus.value === 'unconfigured'
+      ? '配置私有 ERP AccessToken 后可选择店铺。'
+      : '服务端配置读取失败，暂时无法选择店铺。'
+    return
+  }
+
+  syncScheduleShopsStatus.value = 'loading'
+  syncScheduleShopsError.value = ''
+  try {
+    const shopsResponse = await fetch('/api/erp/order-sync-settings/shops')
+    if (version !== syncScheduleRequestVersion) return
+    if (!shopsResponse.ok) {
+      throw new Error(await httpErrorMessage(shopsResponse, '无法读取可选店铺'))
+    }
+
+    const shops = parseSyncShopSelection(await shopsResponse.json())
+    if (version !== syncScheduleRequestVersion) return
+    syncScheduleShops.value = shops
+    syncScheduleShopsStatus.value = 'ready'
+  } catch (error) {
+    if (version !== syncScheduleRequestVersion) return
+    syncScheduleShops.value = []
+    syncScheduleShopsStatus.value = 'error'
+    syncScheduleShopsError.value =
+      error instanceof Error ? error.message : '无法读取可选店铺，请稍后重试。'
+  }
+}
+
+async function saveSyncSchedule(): Promise<void> {
+  if (!syncScheduleCanSave.value) return
+
+  syncSettingsSaving.value = true
+  syncSettingsError.value = ''
+  syncSettingsMessage.value = ''
+  try {
+    const response = await fetch('/api/erp/order-sync-settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: syncScheduleEnabled.value,
+        shopSids: syncScheduleShopSids.value.map(Number),
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(await httpErrorMessage(response, '无法保存定时同步设置'))
+    }
+
+    applySyncSettings(parseSyncSettings(await response.json()))
+    syncSettingsMessage.value = syncScheduleEnabled.value
+      ? '定时同步已启用，将在下一个周期首次执行。'
+      : '定时同步已关闭。'
+  } catch (error) {
+    syncSettingsError.value =
+      error instanceof Error ? error.message : '保存定时同步设置失败，请稍后重试。'
+  } finally {
+    syncSettingsSaving.value = false
+  }
+}
+
+function selectAllSyncShops(): void {
+  if (syncScheduleShopsStatus.value !== 'ready') return
+  syncScheduleShopSids.value = syncScheduleShops.value.map((shop) => shop.sid)
+  syncSettingsMessage.value = ''
+}
+
+function clearSyncShops(): void {
+  syncScheduleShopSids.value = []
+  syncSettingsMessage.value = ''
+}
+
+function clearSyncSettingsMessage(): void {
+  syncSettingsMessage.value = ''
+}
+
 function setOrderSyncEnabled(enabled: boolean): void {
   orderSyncEnabled.value = enabled
-  if (enabled) return
+  if (enabled) {
+    if (syncSettingsStatus.value === 'idle' || syncSettingsStatus.value === 'error') void loadSyncSchedule()
+    return
+  }
 
+  syncScheduleRequestVersion += 1
+  syncSettingsStatus.value = 'idle'
+  syncSettingsError.value = ''
+  syncSettingsMessage.value = ''
+  syncScheduleShops.value = []
+  syncScheduleShopsStatus.value = 'idle'
+  syncScheduleShopsError.value = ''
+  syncScheduleEnabled.value = false
+  syncScheduleShopSids.value = []
+  syncScheduleIntervalMinutes.value = 0
   orderSyncLifecycle += 1
   clearOrderSyncPoll()
   orderSyncTasks.value = {}
@@ -600,6 +810,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   isMounted = false
+  syncScheduleRequestVersion += 1
   orderSyncLifecycle += 1
   clearOrderSyncPoll()
   requestVersion += 1
@@ -639,6 +850,134 @@ onUnmounted(() => {
       :closable="false"
       show-icon
     />
+
+    <ElCard
+      v-if="orderSyncEnabled"
+      class="sync-settings-card"
+      shadow="never"
+      aria-labelledby="sync-settings-title"
+    >
+      <div class="sync-settings-card__header">
+        <div>
+          <h2 id="sync-settings-title">定时同步</h2>
+          <p class="description">按固定周期自动同步选中的店铺，仅处理已选店铺。</p>
+        </div>
+        <ElTag
+          v-if="syncSettingsStatus === 'ready'"
+          :type="syncScheduleEnabled ? 'success' : 'info'"
+          effect="light"
+        >
+          {{ syncScheduleEnabled ? '已启用' : '未启用' }}
+        </ElTag>
+      </div>
+
+      <p v-if="syncSettingsStatus === 'loading'" class="sync-settings-card__hint">
+        正在读取定时同步设置…
+      </p>
+      <div v-else-if="syncSettingsStatus === 'error'" class="sync-settings-card__error-block">
+        <p class="sync-settings-card__error" role="alert">{{ syncSettingsError }}</p>
+        <ElButton size="small" @click="loadSyncSchedule">重试</ElButton>
+      </div>
+      <div v-else class="sync-settings-card__body">
+        <div class="sync-settings-card__row">
+          <div class="sync-settings-card__label">
+            <span>启用定时同步</span>
+            <small>每 {{ syncScheduleIntervalMinutes }} 分钟尝试一轮；首次执行会等待一个周期，与运行中的批次冲突时本轮跳过。</small>
+          </div>
+          <ElSwitch
+            v-model="syncScheduleEnabled"
+            :disabled="syncSettingsSaving || configStatus !== 'configured'"
+            aria-label="启用定时同步"
+            @change="clearSyncSettingsMessage"
+          />
+        </div>
+
+        <div class="sync-settings-card__row sync-settings-card__row--shops">
+          <div class="sync-settings-card__label">
+            <span>选择店铺</span>
+            <small>只同步选中的店铺；启用前至少选择一家。</small>
+          </div>
+          <div class="sync-settings-card__shop-picker">
+            <ElSelect
+              v-model="syncScheduleShopSids"
+              class="sync-settings-card__select"
+              multiple
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+              placeholder="选择要定时同步的店铺"
+              aria-label="定时同步店铺"
+              :disabled="syncSettingsSaving || syncScheduleShopsStatus !== 'ready'"
+              @change="clearSyncSettingsMessage"
+            >
+              <ElOption
+                v-for="shop in syncScheduleShopOptions"
+                :key="shop.value"
+                :label="shop.label"
+                :value="shop.value"
+              />
+            </ElSelect>
+            <div class="sync-settings-card__shop-actions">
+              <ElButton
+                text
+                size="small"
+                :disabled="syncScheduleShopsStatus !== 'ready' || syncSettingsSaving"
+                @click="selectAllSyncShops"
+              >
+                全选可见店铺
+              </ElButton>
+              <ElButton
+                text
+                size="small"
+                :disabled="syncSettingsSaving || syncScheduleShopSids.length === 0"
+                @click="clearSyncShops"
+              >
+                清空
+              </ElButton>
+            </div>
+            <p v-if="syncScheduleShopsStatus === 'loading'" class="sync-settings-card__hint">
+              正在读取可选店铺…
+            </p>
+            <p
+              v-else-if="syncScheduleShopsStatus === 'error'"
+              class="sync-settings-card__error"
+              role="alert"
+            >
+              {{ syncScheduleShopsError }}
+            </p>
+          </div>
+        </div>
+
+        <p
+          v-if="syncScheduleEnabled && syncScheduleShopSids.length === 0"
+          class="sync-settings-card__error"
+          role="alert"
+        >
+          启用定时同步前请至少选择一家店铺。
+        </p>
+
+        <div class="sync-settings-card__footer">
+          <ElButton
+            type="primary"
+            :loading="syncSettingsSaving"
+            :disabled="!syncScheduleCanSave"
+            @click="saveSyncSchedule"
+          >
+            保存
+          </ElButton>
+          <span v-if="syncSettingsMessage" class="sync-settings-card__success" role="status">
+            {{ syncSettingsMessage }}
+          </span>
+          <span
+            v-if="syncSettingsError && syncSettingsStatus === 'ready'"
+            class="sync-settings-card__error"
+            role="alert"
+          >
+            {{ syncSettingsError }}
+          </span>
+        </div>
+      </div>
+    </ElCard>
 
     <ElCard class="shops-card" shadow="never">
       <div class="shops-card__toolbar">
@@ -831,6 +1170,118 @@ onUnmounted(() => {
   border-radius: 12px;
 }
 
+.sync-settings-card {
+  margin-bottom: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.sync-settings-card :deep(.el-card__body) {
+  padding: 18px 20px;
+}
+
+.sync-settings-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sync-settings-card__header h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.sync-settings-card__header .description {
+  margin-top: 6px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.sync-settings-card__body {
+  display: grid;
+  margin-top: 16px;
+  gap: 18px;
+}
+
+.sync-settings-card__row {
+  display: grid;
+  grid-template-columns: minmax(210px, 270px) minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.sync-settings-card__label {
+  display: grid;
+  gap: 4px;
+}
+
+.sync-settings-card__label span {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sync-settings-card__label small {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sync-settings-card__shop-picker {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sync-settings-card__select {
+  width: 100%;
+}
+
+.sync-settings-card__shop-actions {
+  display: flex;
+  margin-inline-start: -8px;
+  flex-wrap: wrap;
+}
+
+.sync-settings-card__hint,
+.sync-settings-card__error,
+.sync-settings-card__success {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.sync-settings-card__hint {
+  color: var(--color-muted);
+}
+
+.sync-settings-card__error {
+  color: #b91c1c;
+}
+
+.sync-settings-card__success {
+  color: #15803d;
+}
+
+.sync-settings-card__error-block {
+  display: flex;
+  margin-top: 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sync-settings-card__footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .shops-card :deep(.el-card__body) {
   padding: 0;
 }
@@ -929,6 +1380,15 @@ onUnmounted(() => {
 @media (max-width: 800px) {
   .shops-page {
     padding: 24px 18px 40px;
+  }
+
+  .sync-settings-card__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .sync-settings-card__shop-actions {
+    margin-inline-start: -8px;
   }
 
   .shops-heading {
