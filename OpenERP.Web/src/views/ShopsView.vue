@@ -85,6 +85,7 @@ const syncSettingsError = ref('')
 const syncSettingsMessage = ref('')
 const syncSettingsSaving = ref(false)
 const syncScheduleEnabled = ref(false)
+const syncScheduleSavedEnabled = ref(false)
 const syncScheduleShopSids = ref<string[]>([])
 const syncScheduleIntervalMinutes = ref(0)
 const syncScheduleShops = ref<SelectableShop[]>([])
@@ -356,6 +357,7 @@ function clearOrderSyncError(sid: string): void {
 
 function applySyncSettings(settings: SyncSettings): void {
   syncScheduleEnabled.value = settings.enabled
+  syncScheduleSavedEnabled.value = settings.enabled
   syncScheduleShopSids.value = settings.shopSids.map(String)
   syncScheduleIntervalMinutes.value = settings.intervalMinutes
 }
@@ -498,6 +500,7 @@ function setOrderSyncEnabled(enabled: boolean): void {
   syncScheduleShopsStatus.value = 'idle'
   syncScheduleShopsError.value = ''
   syncScheduleEnabled.value = false
+  syncScheduleSavedEnabled.value = false
   syncScheduleShopSids.value = []
   syncScheduleIntervalMinutes.value = 0
   orderSyncLifecycle += 1
@@ -584,8 +587,8 @@ function scheduleOrderSyncPoll(): void {
     return
   }
 
-  // 空闲时低频发现后台新启动的定时批次，发现运行任务后再切换到 2 秒轮询。
-  if (syncSettingsStatus.value !== 'ready' || !syncScheduleEnabled.value) return
+  // 空闲时低频发现后台新启动的定时批次；使用已保存状态，避免未保存或保存失败的草稿中断状态更新。
+  if (syncSettingsStatus.value !== 'ready' || !syncScheduleSavedEnabled.value) return
   orderSyncDiscoveryTimeout = setTimeout(() => {
     orderSyncDiscoveryTimeout = null
     void discoverOrderSyncTasks()

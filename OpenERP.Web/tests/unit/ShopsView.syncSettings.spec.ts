@@ -358,6 +358,60 @@ describe('店铺定时同步设置', () => {
     expect(wrapper.text()).toContain('正在同步')
   })
 
+  it('Given 已保存启用但用户关闭开关尚未保存 When 空闲发现到期 Then 继续发现后台任务', async () => {
+    // Given 服务端已启用定时同步，页面加载后用户把开关关掉但尚未保存。
+    vi.useFakeTimers()
+    let statusReads = 0
+    configureFetch({
+      settings: { enabled: true, shopSids: [42], intervalMinutes: 30 },
+      getTask: () => {
+        statusReads += 1
+        return new Response(null, { status: 204 })
+      },
+    })
+    wrapper = await mountShops()
+    await setScheduleEnabled(wrapper, false)
+    const readsBeforeDiscovery = statusReads
+
+    // When 连续经过两个空闲发现周期。
+    await vi.advanceTimersByTimeAsync(15000)
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(15000)
+    await flushPromises()
+
+    // Then 仍按服务端已保存的启用状态继续发现，草稿不中断状态更新。
+    expect(statusReads).toBeGreaterThanOrEqual(readsBeforeDiscovery + 2)
+  })
+
+  it('Given 关闭设置保存失败 When 空闲发现到期 Then 仍按服务端启用状态继续发现', async () => {
+    // Given 服务端已启用定时同步，用户关闭开关后保存失败。
+    vi.useFakeTimers()
+    let statusReads = 0
+    configureFetch({
+      settings: { enabled: true, shopSids: [42], intervalMinutes: 30 },
+      putSettings: () => jsonResponse({ title: '保存定时同步设置失败' }, 500),
+      getTask: () => {
+        statusReads += 1
+        return new Response(null, { status: 204 })
+      },
+    })
+    wrapper = await mountShops()
+    await setScheduleEnabled(wrapper, false)
+    await findButton(wrapper, '保存')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('保存定时同步设置失败')
+    const readsBeforeDiscovery = statusReads
+
+    // When 连续经过两个空闲发现周期。
+    await vi.advanceTimersByTimeAsync(15000)
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(15000)
+    await flushPromises()
+
+    // Then 保存失败不会改变服务端状态，发现轮询继续。
+    expect(statusReads).toBeGreaterThanOrEqual(readsBeforeDiscovery + 2)
+  })
+
   it('Given 未配置 Token When 加载设置 Then 提示配置后可选择店铺', async () => {
     // Given 私有 ERP Token 未配置。
     configureFetch({
