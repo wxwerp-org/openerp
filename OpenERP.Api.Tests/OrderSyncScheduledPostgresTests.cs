@@ -106,6 +106,86 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
         }
     }
 
+    [Fact]
+    public async Task Failed_shop_is_retried_by_the_next_batch_and_recovers()
+    {
+        // Given 一家店首轮读取失败，另一家店成功；次轮两家都成功。
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(_testConnectionString, builder => builder.EnableRetryOnFailure().MaxBatchSize(1))
+            .Options;
+        await using (var db = new AppDbContext(options))
+            await db.Database.MigrateAsync(cancellationToken);
+
+        var shop30Attempts = 0;
+        var order30 = CreateOrder("erp-30", "order-30", 30);
+        var order31 = CreateOrder("erp-31", "order-31", 31);
+        var erp = new TestErpClient
+        {
+            ReadOrders = (sid, _) =>
+            {
+                if (sid == 30 && Interlocked.Increment(ref shop30Attempts) == 1)
+                    return Task.FromResult<OpResult<OrderImportBatch>>(OpResults.Err("店铺 30 首次读取失败。"));
+
+                return Task.FromResult(OpResults.Ok(new OrderImportBatch(
+                    1, [sid == 30 ? order30 : order31], new Dictionary<string, int>())));
+            }
+        };
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IErpClient>(erp);
+        services.AddScoped(_ => new OrderStore(new AppDbContext(options)));
+        using var provider = services.BuildServiceProvider();
+        using var jobs = new OrderSyncJobs(provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<OrderSyncJobs>.Instance);
+        try
+        {
+            await jobs.StartAsync(cancellationToken);
+
+            // When 第一轮定时批次执行。
+            await TestWait.EventuallyAsync(
+                () => jobs.StartScheduledBatch([30, 31]), "首轮定时批次未能受理。", cancellationToken);
+            await TestWait.UntilAsync(
+                () => AtTerminal(jobs, 30) && AtTerminal(jobs, 31),
+                "首轮定时批次没有在超时内结束。", cancellationToken);
+
+            // Then 首轮只有失败店未入库，另一家店正常完成。
+            Assert.Equal("failed", jobs.Latest(30)?.Status);
+            Assert.Equal("succeeded", jobs.Latest(31)?.Status);
+            Assert.Equal(1L, await CountAsync("Orders", cancellationToken));
+
+            // When 下一周期重新扫描全部选中店铺。
+            await TestWait.EventuallyAsync(
+                () => jobs.StartScheduledBatch([30, 31]), "次轮定时批次未能受理。", cancellationToken);
+            await TestWait.UntilAsync(
+                () => AtTerminal(jobs, 30) && AtTerminal(jobs, 31),
+                "次轮定时批次没有在超时内结束。", cancellationToken);
+
+            // Then 失败店恢复入库，已有店保持幂等，最终两家店各一份订单。
+            Assert.Equal("succeeded", jobs.Latest(30)?.Status);
+            Assert.Equal(1, jobs.Latest(30)?.Added);
+            Assert.Equal("succeeded", jobs.Latest(31)?.Status);
+            Assert.Equal(0, jobs.Latest(31)?.Added);
+            Assert.Equal(1, jobs.Latest(31)?.Unchanged);
+            Assert.Equal(2L, await CountAsync("Orders", cancellationToken));
+            Assert.Equal(2L, await CountAsync("PlatformOrders", cancellationToken));
+            Assert.Equal(2L, await CountAsync("OrderLines", cancellationToken));
+        }
+        finally
+        {
+            await jobs.StopAsync(CancellationToken.None);
+        }
+    }
+
+    private static bool AtTerminal(OrderSyncJobs jobs, int sid) =>
+        jobs.Latest(sid)?.Status is "succeeded" or "partial" or "failed";
+
+    private static OrderSnapshot CreateOrder(string erpId, string orderNumber, int sid) => new(
+        erpId, orderNumber, sid, "TemuPop", "pending",
+        new(new("1700000000", "addTime"), null, null, null),
+        [new($"po-{sid}", sid, "1", "待发货")],
+        [new($"product-{sid}", $"oguid-{sid}", $"sku-id-{sid}", $"sku-{sid}", 1, null, null)]);
+
     private async Task<long> CountAsync(string table, CancellationToken cancellationToken)
     {
         await using var connection = new NpgsqlConnection(_testConnectionString);
