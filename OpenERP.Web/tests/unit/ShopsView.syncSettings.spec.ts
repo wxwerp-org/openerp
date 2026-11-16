@@ -328,6 +328,36 @@ describe('店铺定时同步设置', () => {
     expect(statusReads).toBeGreaterThan(readsAfterDiscovery)
   })
 
+  it('Given 页面加载时定时同步关闭 When 保存启用 Then 启动任务发现轮询', async () => {
+    // Given 页面打开时定时同步关闭，初始没有运行中的任务。
+    vi.useFakeTimers()
+    let statusReads = 0
+    configureFetch({
+      settings: { enabled: false, shopSids: [], intervalMinutes: 30 },
+      getTask: () => {
+        statusReads += 1
+        return statusReads === 1
+          ? new Response(null, { status: 204 })
+          : jsonResponse(runningTask)
+      },
+      putSettings: (body) => jsonResponse({ ...body, intervalMinutes: 30 }),
+    })
+    wrapper = await mountShops()
+    const readsBeforeSave = statusReads
+
+    // When 启用、全选店铺并保存。
+    await setScheduleEnabled(wrapper, true)
+    await findButton(wrapper, '全选可见店铺')!.trigger('click')
+    await findButton(wrapper, '保存')!.trigger('click')
+    await flushPromises()
+
+    // Then 保存成功后立即安排低频发现，后台启动任务时无需刷新页面即可看到进度。
+    await vi.advanceTimersByTimeAsync(15000)
+    await flushPromises()
+    expect(statusReads).toBeGreaterThan(readsBeforeSave)
+    expect(wrapper.text()).toContain('正在同步')
+  })
+
   it('Given 未配置 Token When 加载设置 Then 提示配置后可选择店铺', async () => {
     // Given 私有 ERP Token 未配置。
     configureFetch({
