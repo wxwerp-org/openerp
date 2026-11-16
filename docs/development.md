@@ -12,7 +12,7 @@
 | [OpenERP.ServiceDefaults](../OpenERP.ServiceDefaults/) | 健康检查、遥测与服务发现 |
 | [OpenERP.Api.Tests](../OpenERP.Api.Tests/) | 后端单元测试和集成测试 |
 
-[router/index.ts](../OpenERP.Web/src/router/index.ts) 定义 `/` 首页和 `/shops` 店铺页路由，[views](../OpenERP.Web/src/views/) 存放页面，[styles.css](../OpenERP.Web/src/styles.css) 提供共享样式。
+[router/index.ts](../OpenERP.Web/src/router/index.ts) 定义工作台、授权店铺、产品、订单、业务配置、用户与新品开发路由，[views](../OpenERP.Web/src/views/) 存放页面，[components](../OpenERP.Web/src/components/) 提供可复用工作台卡片、导航和控件。[styles](../OpenERP.Web/src/styles/) 按区域组织共享样式，[elementPlusStyles.ts](../OpenERP.Web/src/elementPlusStyles.ts) 集中声明按需加载的 Element Plus 样式。
 
 ## 构建与测试
 

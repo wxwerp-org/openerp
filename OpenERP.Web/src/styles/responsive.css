@@ -1,0 +1,14 @@
+/* ========== Responsive guard (desktop only) ========== */
+@media (max-width: 1500px){
+  .dash-header-right .time-pill:nth-of-type(4){display:none}
+  .trend-periods .mini-seg button{padding:0 6px;min-width:32px}
+  .rank-controls .mini-seg button{min-width:33px;padding:0 6px}
+}
+@media (min-width: 1601px){
+  .form-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media (max-height: 760px){
+  .nav-link,.nav-group-head{height:36px}
+  .nav-sub-item{height:28px}
+  .nav-link .ic,.nav-group-head .ic{width:16px;height:16px}
+}

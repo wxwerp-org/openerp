@@ -76,7 +76,7 @@ onMounted(checkPing)
 </script>
 
 <template>
-  <main class="page-shell">
+  <section class="page-shell">
     <ElCard class="ping-card" shadow="never">
       <div class="card-heading">
         <div>
@@ -116,5 +116,84 @@ onMounted(checkPing)
         </ElButton>
       </div>
     </ElCard>
-  </main>
+  </section>
 </template>
+
+<style scoped>
+.page-shell {
+  display: grid;
+  min-height: 100%;
+  padding: clamp(24px, 4vw, 48px) 20px;
+  place-items: center;
+}
+
+.ping-card {
+  width: min(100%, 560px);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.ping-card :deep(.el-card__body) {
+  padding: 28px;
+}
+
+.card-heading,
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.card-heading {
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.page-shell h1 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.description {
+  margin: 8px 0 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.card-footer {
+  margin-top: 24px;
+}
+
+.endpoint {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.endpoint code {
+  color: var(--color-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (max-width: 640px) {
+  .ping-card :deep(.el-card__body) {
+    padding: 22px;
+  }
+
+  .card-heading,
+  .card-footer {
+    gap: 12px;
+  }
+}
+</style>
