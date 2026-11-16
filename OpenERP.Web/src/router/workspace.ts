@@ -14,3 +14,16 @@ export const workspacePages: WorkspacePage[] = [
   { id: 'business', label: '业务配置', path: '/settings' },
   { id: 'users', label: '用户管理', path: '/users' },
 ]
+
+export type NavigationPage = {
+  id: string
+  label: string
+  path: string
+}
+
+export const standalonePages: NavigationPage[] = [
+  { id: 'service-connection', label: '服务连接', path: '/service-connection' },
+  { id: 'shops', label: '授权店铺', path: '/shops' },
+]
+
+export const navigationPages: NavigationPage[] = [...workspacePages, ...standalonePages]

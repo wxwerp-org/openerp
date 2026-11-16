@@ -7,7 +7,7 @@ import PasswordDialog from '../../account/PasswordDialog.vue'
 import AppSidebar from '../navigation/AppSidebar.vue'
 import IconSprite from '../navigation/IconSprite.vue'
 import WorkspaceTabs from '../navigation/WorkspaceTabs.vue'
-import { workspacePages, type WorkspacePage, type WorkspacePageId } from '../../router/workspace'
+import { navigationPages, workspacePages, type WorkspacePage } from '../../router/workspace'
 import { useToast } from '../../composables/useToast'
 
 const route = useRoute()
@@ -19,8 +19,8 @@ const profileOpen = ref(false)
 const passwordOpen = ref(false)
 const accountMenu = ref<InstanceType<typeof AccountMenu> | null>(null)
 
-const activePage = computed<WorkspacePageId | null>(() => {
-  return workspacePages.find((page) => page.path === route.path)?.id ?? null
+const activePage = computed<string | null>(() => {
+  return navigationPages.find((page) => page.path === route.path)?.id ?? null
 })
 
 watch(activePage, (page) => {
@@ -30,7 +30,7 @@ watch(activePage, (page) => {
 }, { immediate: true })
 
 function navigate(page: string): void {
-  const target = workspacePages.find((item) => item.id === page)
+  const target = navigationPages.find((item) => item.id === page)
   if (target && route.path !== target.path) void router.push(target.path)
 }
 

@@ -1,4 +1,19 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+async function mockShops(page: Page): Promise<void> {
+  await page.route('**/api/erp/config', (route) => route.fulfill({
+    json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+  }))
+  await page.route('**/api/erp/shops?**', (route) => route.fulfill({
+    json: {
+      items: [{ sid: '42', name: '测试店铺', platform: 'Temu', region: 'US', isTokenOk: true, statusError: null }],
+      page: 1,
+      pageSize: 20,
+      totalCount: 1,
+      pageCount: 1,
+    },
+  }))
+}
 
 test('Given 原型工作台 When 打开首页并进入用户管理 Then 全部卡片和四条用户数据可见', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
@@ -61,4 +76,37 @@ test('Given 产品和订单原型 When 打开表单与公告 Then 弹窗可见�
   await page.setViewportSize({ width: 1440, height: 900 })
   const hasPageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
   expect(hasPageOverflow).toBe(false)
+})
+
+test('Given 既有服务页面 When 应用共享视觉变量 Then 卡片边框色和圆角保持不变', async ({ page }) => {
+  await mockShops(page)
+  await page.goto('/shops')
+
+  const shopsCard = page.locator('.shops-card')
+  await expect(shopsCard).toBeVisible()
+  await expect(shopsCard).toHaveCSS('border-top-color', 'rgb(231, 234, 240)')
+  await expect(shopsCard).toHaveCSS('border-top-left-radius', '12px')
+
+  await page.goto('/service-connection')
+  const pingCard = page.locator('.ping-card')
+  await expect(pingCard).toBeVisible()
+  await expect(pingCard).toHaveCSS('border-top-color', 'rgb(231, 234, 240)')
+  await expect(pingCard).toHaveCSS('border-top-left-radius', '14px')
+})
+
+test('Given 独立服务路由 When 从设置侧栏导航 Then 授权店铺和服务连接均可达', async ({ page }) => {
+  await mockShops(page)
+  await page.route('**/api/ping', (route) => route.fulfill({ json: { message: '连接正常' } }))
+  await page.goto('/')
+  await page.locator('[data-group="settings"] .nav-group-head').click()
+
+  await page.locator('[data-nav-page="shops"]').click()
+  await expect(page).toHaveURL(/\/shops$/)
+  await expect(page.locator('.shops-card')).toBeVisible()
+  await expect(page.locator('[data-nav-page="shops"]').first()).toHaveClass(/active/)
+
+  await page.locator('[data-nav-page="service-connection"]').click()
+  await expect(page).toHaveURL(/\/service-connection$/)
+  await expect(page.locator('.ping-card')).toBeVisible()
+  await expect(page.locator('[data-nav-page="service-connection"]').first()).toHaveClass(/active/)
 })

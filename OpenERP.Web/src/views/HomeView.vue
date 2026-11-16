@@ -130,7 +130,7 @@ onMounted(checkPing)
 .ping-card {
   width: min(100%, 560px);
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: 14px;
 }
 
 .ping-card :deep(.el-card__body) {

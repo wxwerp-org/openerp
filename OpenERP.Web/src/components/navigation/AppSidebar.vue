@@ -28,7 +28,7 @@ const groups: NavGroup[] = [
   { id: 'finance', label: '财务', icon: 'i-nav-finance', items: [{ label: '财务结算' }, { label: '利润报表' }] },
   { id: 'stats', label: '统计', icon: 'i-nav-stats', items: [{ label: '销量统计' }, { label: '产品表现' }] },
   { id: 'tools', label: '工具', icon: 'i-nav-tools', items: [{ label: '工具箱' }] },
-  { id: 'settings', label: '设置', icon: 'i-nav-settings', items: [{ label: '业务配置', page: 'business' }, { label: '用户管理', page: 'users' }] },
+  { id: 'settings', label: '设置', icon: 'i-nav-settings', items: [{ label: '业务配置', page: 'business' }, { label: '用户管理', page: 'users' }, { label: '服务连接', page: 'service-connection' }, { label: '授权店铺', page: 'shops' }] },
 ]
 
 const collapsedGroups = ref(new Set(groups.filter((group) => group.id !== 'product').map((group) => group.id)))
