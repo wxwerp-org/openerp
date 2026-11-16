@@ -452,8 +452,9 @@ async function saveSyncSchedule(): Promise<void> {
 
     applySyncSettings(parseSyncSettings(await response.json()))
     syncSettingsMessage.value = syncScheduleEnabled.value
-      ? '定时同步已启用，将在下一个周期首次执行。'
+      ? '定时同步已启用，将在下一个周期执行。'
       : '定时同步已关闭。'
+    scheduleOrderSyncPoll()
   } catch (error) {
     syncSettingsError.value =
       error instanceof Error ? error.message : '保存定时同步设置失败，请稍后重试。'
