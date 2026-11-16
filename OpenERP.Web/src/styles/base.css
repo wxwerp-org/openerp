@@ -1,0 +1,63 @@
+/* ========== 基础与设计变量 ========== */
+:root{
+  --primary:#005BF5;
+  --primary-hover:#0047C7;
+  --primary-soft:rgba(0,91,245,.10);
+  --primary-faint:rgba(0,91,245,.06);
+  --primary-line:#B9D2FF;
+  --text:#0B1019;
+  --body:#55585F;
+  --muted:#888C94;
+  --placeholder:#A6ABB4;
+  --page:#F2F5FA;
+  --page-soft:#F7F9FD;
+  --toolbar:#F0F2F5;
+  --surface:#FFFFFF;
+  --input-border:#CAD2E0;
+  --line:#E6E8EB;
+  --line-soft:#EBEDF0;
+  --danger:#E52E2E;
+  --success:#00941E;
+  --warning:#B96800;
+  --accent:#209FF4;
+  --nav:#F8F9FB;
+  --topnav:#F6F7F9;
+  --radius:4px;
+  --radius-card:6px;
+  --font:Verdana,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{width:100%;height:100%;margin:0;padding:0}
+body{
+  min-width:1440px;
+  overflow:hidden;
+  background:var(--surface);
+  color:var(--body);
+  font-family:var(--font);
+  font-size:12px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{border:0;background:none;padding:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+ul,ol{margin:0;padding:0;list-style:none}
+p,h1,h2,h3,h4{margin:0}
+svg{display:block}
+.ic{width:14px;height:14px;flex:none;display:inline-block;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.ic-12{width:12px;height:12px}
+.ic-16{width:16px;height:16px}
+.ic-18{width:18px;height:18px}
+.ic-fill{fill:currentColor;stroke:none}
+.sprite{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+.tnum{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.text-primary{color:var(--primary)}
+.ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hidden{display:none!important}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:#F2F5FA}
+::-webkit-scrollbar-thumb{background:#C8D4E3;border:2px solid #F2F5FA;border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:#AEBDD0}
+::-webkit-scrollbar-corner{background:#F2F5FA}

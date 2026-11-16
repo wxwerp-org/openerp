@@ -1,0 +1,121 @@
+/* 添加产品全屏表单 */
+.form-layer{
+  position:absolute;left:12px;right:12px;top:12px;bottom:12px;background:#fff;border:1px solid var(--input-border);
+  border-radius:4px;box-shadow:0 0 0 100vmax #F2F5FA,0 4px 18px rgba(30,48,75,.08);display:none;flex-direction:column;overflow:hidden;z-index:110;
+}
+.form-layer.open{display:flex}
+.form-dialog-head{
+  height:54px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 24px;
+  border-bottom:1px solid var(--line);background:#fff;
+}
+.form-dialog-title{font-size:16px;font-weight:600;color:var(--text);line-height:24px}
+.form-close{
+  width:26px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:3px;color:#55585F;
+}
+.form-close:hover{background:#F2F5FA;color:var(--text)}
+.form-dialog-body{flex:1;min-height:0;display:flex;overflow:hidden}
+.form-left{
+  width:192px;flex:none;border-right:1px solid var(--line);background:#fff;overflow-y:auto;
+  scrollbar-width:thin;
+}
+.form-left-top{padding:16px 20px 16px}
+.form-image-box{
+  width:100%;height:152px;border:1px dashed var(--input-border);border-radius:2px;background:#fff;
+  display:flex;align-items:center;justify-content:center;color:#33363C;font-size:12px;cursor:pointer;
+}
+.form-image-box:hover{border-color:var(--primary);color:var(--primary);background:#FBFDFF}
+.form-abbr{font-size:12px;line-height:18px;color:var(--muted);margin-top:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.form-abbr.strong{font-weight:600;color:var(--body);margin-top:8px}
+.form-abbr+.form-abbr{margin-top:4px}
+.form-nav{padding:16px 8px;border-top:1px solid var(--line)}
+.form-nav-item{
+  width:100%;height:32px;padding:0 12px;display:flex;align-items:center;border-radius:2px;
+  color:var(--text);font-size:12px;text-align:left;
+}
+.form-nav-item:hover{background:var(--primary-faint);color:var(--primary)}
+.form-nav-item.active{background:var(--primary-faint);color:var(--primary);font-weight:600}
+.form-right{flex:1;min-width:0;overflow-y:auto;padding:24px 24px 20px;scrollbar-width:thin}
+.form-section{width:100%}
+.form-section-title{
+  position:relative;height:24px;line-height:24px;font-size:14px;font-weight:600;color:var(--text);
+  padding-left:10px;margin-bottom:20px;display:flex;align-items:center;
+}
+.form-section-title::before{content:"";position:absolute;left:0;top:5px;width:2px;height:14px;background:var(--primary)}
+.form-grid{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));column-gap:24px;row-gap:20px;align-items:start;
+}
+.form-item{min-width:0;position:relative}
+.form-item.full{grid-column:1/-1}
+.form-line{display:flex;align-items:flex-start;min-width:0}
+.form-label{
+  width:90px;flex:none;padding-right:12px;line-height:32px;text-align:right;color:#55585F;font-size:12px;
+  position:relative;white-space:nowrap;
+}
+.form-label::after{content:"：";position:absolute;right:0;top:0;width:12px;text-align:left}
+.form-label .req{color:#E52E2E;margin-right:1px}
+.form-label .info-dot{margin-left:1px;position:relative;top:-1px}
+.form-control-wrap{flex:1;min-width:0;position:relative}
+.form-control{
+  width:100%;height:32px;border:1px solid var(--input-border);border-radius:4px;background:#fff;
+  display:flex;align-items:center;position:relative;color:var(--text);
+}
+.form-control input{
+  width:100%;height:30px;border:0;outline:none;background:transparent;border-radius:4px;padding:0 11px;
+  font-size:12px;color:var(--text);line-height:30px;
+}
+.form-control input::placeholder{color:var(--placeholder)}
+.form-control:hover{border-color:#AEB9C9}
+.form-control:focus-within{border-color:var(--primary)}
+.form-control .field-chev{width:10px;height:10px;color:#A6ABB4;position:absolute;right:11px;pointer-events:none}
+.form-control .field-calendar{width:14px;height:14px;color:#A6ABB4;position:absolute;right:11px;pointer-events:none}
+.form-select{
+  width:100%;height:32px;border:1px solid var(--input-border);border-radius:4px;background:#fff;
+  padding:0 29px 0 11px;display:flex;align-items:center;font-size:12px;color:var(--text);text-align:left;position:relative;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.form-select:hover{border-color:#AEB9C9}
+.form-select .field-chev{position:absolute;right:10px}
+.form-select.placeholder{color:var(--placeholder)}
+.form-item.is-error .form-control{border-color:#E52E2E}
+.form-error{
+  position:absolute;left:0;top:100%;padding-top:3px;color:#E52E2E;font-size:12px;line-height:16px;
+  white-space:nowrap;
+}
+.form-attachment{margin-top:20px;display:flex;align-items:center;min-height:28px}
+.form-attachment .form-label{line-height:28px}
+.attachment-link{
+  height:28px;display:inline-flex;align-items:center;gap:5px;color:var(--primary);font-size:12px;
+}
+.attachment-link:hover{color:var(--primary-hover);background:var(--primary-faint);border-radius:3px}
+.form-description{margin-top:24px;display:flex;align-items:flex-start}
+.form-description .form-label{line-height:22px;padding-top:4px}
+.rich-editor{
+  flex:1;min-width:0;height:343px;border:1px solid #C9D8DB;border-radius:4px;background:#fff;
+  display:flex;flex-direction:column;overflow:hidden;position:relative;
+}
+.rich-toolbar{
+  height:40px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:1px;padding:0 6px;
+  color:#55585F;overflow:hidden;
+}
+.rt-btn{
+  width:26px;height:26px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;color:#55585F;
+  flex:none;
+}
+.rt-btn:hover{background:#F2F5FA;color:var(--text)}
+.rt-btn .ic{width:14px;height:14px}
+.rt-sep{width:1px;height:16px;background:var(--line-soft);margin:0 3px;flex:none}
+.editor-body{
+  flex:1;min-height:0;padding:10px 12px 30px;outline:none;font-size:12px;line-height:20px;color:var(--text);
+  overflow-y:auto;white-space:pre-wrap;
+}
+.editor-body:empty::before{content:attr(data-placeholder);color:var(--placeholder);pointer-events:none}
+.editor-count{
+  position:absolute;right:8px;bottom:3px;height:20px;display:flex;align-items:center;justify-content:flex-end;gap:2px;
+  padding:0 2px;color:var(--placeholder);font-size:12px;background:transparent;pointer-events:none;
+}
+.form-footer{
+  height:64px;flex:none;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:flex-end;
+  gap:16px;padding:0 24px;background:#fff;
+}
+.form-footer .btn{width:50px;height:32px;padding:0}
+.form-footer .btn.primary{width:50px}

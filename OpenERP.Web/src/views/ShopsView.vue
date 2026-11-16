@@ -4,7 +4,6 @@ import {
   ElAlert,
   ElButton,
   ElCard,
-  ElConfigProvider,
   ElEmpty,
   ElPagination,
   ElProgress,
@@ -12,7 +11,6 @@ import {
   ElTableColumn,
   ElTag,
 } from 'element-plus'
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
 
 type Shop = {
   sid: string
@@ -611,7 +609,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="shops-page">
+  <section class="shops-page">
     <section class="shops-heading" aria-labelledby="shops-title">
       <div class="shops-heading__copy">
         <p class="eyebrow">TemuPop</p>
@@ -662,7 +660,12 @@ onUnmounted(() => {
         </ElButton>
       </div>
 
-      <div class="shops-table-wrap">
+      <div
+        class="shops-table-wrap"
+        role="region"
+        aria-label="授权店铺表格"
+        tabindex="0"
+      >
         <div v-if="isLoading" class="shops-loading" role="status">正在加载店铺列表…</div>
         <ElTable
           v-else-if="shopsStatus === 'success' && shops.length > 0"
@@ -762,7 +765,6 @@ onUnmounted(() => {
       </div>
 
       <div v-if="shopsStatus === 'success' && totalCount > 0" class="shops-pagination">
-        <ElConfigProvider :locale="zhCn">
         <ElPagination
           :current-page="currentPage"
           :page-size="pageSize"
@@ -773,8 +775,176 @@ onUnmounted(() => {
           @current-change="handlePageChange"
           @size-change="handlePageSizeChange"
         />
-        </ElConfigProvider>
       </div>
     </ElCard>
-  </main>
+  </section>
 </template>
+
+
+<style scoped>
+.shops-page {
+  width: min(100%, 1160px);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 32px 28px 48px;
+}
+
+.shops-heading {
+  display: flex;
+  margin-bottom: 24px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.shops-heading__copy h1 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 26px;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+}
+
+.shops-heading__copy .description {
+  margin-top: 9px;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.shops-heading__status {
+  display: flex;
+  padding-top: 3px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shops-notice {
+  margin-bottom: 20px;
+}
+
+.shops-card {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.shops-card :deep(.el-card__body) {
+  padding: 0;
+}
+
+.shops-card__toolbar {
+  display: flex;
+  min-height: 64px;
+  padding: 14px 20px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.shops-card__summary {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.shops-table-wrap {
+  min-width: 0;
+  min-height: 220px;
+  overflow-x: auto;
+}
+
+.shops-loading {
+  display: flex;
+  min-height: 220px;
+  padding: 24px;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.shops-empty {
+  padding: 26px 0;
+}
+
+.shops-pagination {
+  display: flex;
+  min-height: 66px;
+  padding: 12px 20px;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid #edf0f5;
+  overflow-x: auto;
+}
+
+.shop-status-error {
+  max-width: 360px;
+  margin: 5px 0 0;
+  color: #b45309;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.shop-order-sync {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.shop-order-sync__task {
+  width: 100%;
+  min-width: 280px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.shop-order-sync__heading {
+  display: flex;
+  margin: 2px 0 6px;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+}
+
+.shop-order-sync__counts,
+.shop-order-sync__reason,
+.shop-order-sync__error {
+  margin: 5px 0 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.shop-order-sync__reason {
+  color: #92400e;
+}
+
+.shop-order-sync__error {
+  color: #b91c1c;
+}
+
+@media (max-width: 800px) {
+  .shops-page {
+    padding: 24px 18px 40px;
+  }
+
+  .shops-heading {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .shops-heading__status {
+    justify-content: flex-start;
+  }
+
+  .shops-card__toolbar {
+    padding: 12px 14px;
+  }
+
+  .shops-pagination {
+    justify-content: flex-start;
+    padding: 12px 14px;
+  }
+}
+</style>
