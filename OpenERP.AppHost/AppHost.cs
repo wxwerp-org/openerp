@@ -43,7 +43,8 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Parameters:wxw-erp-access-
 }
 
 var web = builder.AddViteApp("web", "../OpenERP.Web")
-    .WithPnpm(installArgs: ["--frozen-lockfile"])
+    // 安装器没有 TTY；允许 pnpm 重建不兼容的 node_modules，同时保持锁文件校验。
+    .WithPnpm(installArgs: ["--frozen-lockfile", "--config.confirmModulesPurge=false"])
     .WithReference(api)
     .WithEnvironment("API_BASE_URL", api.GetEndpoint("https"))
     .WaitFor(api)
