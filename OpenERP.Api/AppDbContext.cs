@@ -1,16 +1,35 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using OpenERP.Api.Authentication;
 using OpenERP.Api.Orders;
 
 namespace OpenERP.Api;
 
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options), IDataProtectionKeyContext
 {
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+    internal DbSet<AdminAccount> AdminAccounts => Set<AdminAccount>();
+    internal DbSet<AdminSession> AdminSessions => Set<AdminSession>();
     internal DbSet<OrderRecord> Orders => Set<OrderRecord>();
 
     internal DbSet<OrderSyncSettings> OrderSyncSettings => Set<OrderSyncSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AdminAccount>(admin =>
+        {
+            admin.ToTable("AdminAccounts", table => table.HasCheckConstraint("CK_AdminAccounts_Singleton", "\"Id\" = 1"));
+            admin.Property(x => x.Id).ValueGeneratedNever();
+            admin.Property(x => x.Name).HasMaxLength(20);
+            admin.Property(x => x.Phone).HasMaxLength(20);
+        });
+
+        modelBuilder.Entity<AdminSession>(session =>
+        {
+            session.ToTable("AdminSessions");
+            session.HasOne(x => x.Admin).WithMany().HasForeignKey(x => x.AdminId);
+        });
+
         modelBuilder.Entity<OrderRecord>(order =>
         {
             order.ToTable("Orders");

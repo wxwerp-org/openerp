@@ -32,3 +32,5 @@
 .password-dialog{width:440px}
 .password-form{padding-bottom:16px}
 .password-form .form-line+.form-line{margin-top:18px}
+
+.account-error{color:var(--danger);padding:8px 16px}

@@ -22,6 +22,7 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
     private IDistributedApplicationTestingBuilder? _appHost;
     private DistributedApplication? _app;
 
+    internal string AdminPassword { get; } = $" {Convert.ToHexString(RandomNumberGenerator.GetBytes(8))} ";
     internal Uri ApiEndpoint => _app!.GetEndpoint("api", "https");
 
     public async ValueTask InitializeAsync()
@@ -34,6 +35,7 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
             [
                 "--NO_PROXY=localhost,127.0.0.1,::1",
                 "--Parameters:wxw-erp-access-token=",
+                $"--Parameters:admin-initial-password={AdminPassword}",
                 $"--Parameters:postgres-password={Convert.ToHexString(RandomNumberGenerator.GetBytes(24))}",
                 $"--Parameters:seaweedfs-secretKey={Convert.ToHexString(RandomNumberGenerator.GetBytes(24))}",
                 $"--ASPIRE_USER_SECRETS_ID={_volumeName}",
@@ -81,14 +83,47 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
 
     public HttpClient CreateApiClient()
     {
-        var client = _app!.CreateHttpClient("api", "https");
-        client.Timeout = TimeSpan.FromMinutes(3);
-        return client;
+        return new HttpClient(new HttpClientHandler { UseCookies = false, AllowAutoRedirect = false })
+        {
+            BaseAddress = ApiEndpoint,
+            Timeout = TimeSpan.FromMinutes(3)
+        };
     }
 
     internal async Task<string> GetPostgresConnectionStringAsync(CancellationToken cancellationToken) =>
         await _app!.GetConnectionStringAsync("openerp", cancellationToken)
             ?? throw new InvalidOperationException("Aspire 未提供订单测试的数据库连接。");
+
+    internal async Task<Uri> StartWebAsync(CancellationToken ct)
+    {
+        var resources = _appHost!.Resources;
+        foreach (var installer in resources.OfType<JavaScriptInstallerResource>())
+        {
+            var install = await _app!.ResourceCommands.ExecuteCommandAsync(installer.Name, KnownResourceCommands.StartCommand, ct);
+            Assert.True(install.Success, install.Message);
+        }
+
+        var web = resources.OfType<IResourceWithEndpoints>().Single(resource => resource.Name == "web");
+        var start = await _app!.ResourceCommands.ExecuteCommandAsync(web.Name, KnownResourceCommands.StartCommand, ct);
+        Assert.True(start.Success, start.Message);
+        await _app.ResourceNotifications.WaitForResourceHealthyAsync(web.Name, ct);
+        var endpoints = web.GetEndpoints().Select(endpoint => new Uri(endpoint.Url)).ToArray();
+        return Assert.Single(endpoints, endpoint => endpoint.Scheme == Uri.UriSchemeHttps);
+    }
+
+    internal async Task RestartApiAsync(CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(2));
+        var notifications = _app!.ResourceNotifications;
+        var before = await notifications.WaitForResourceHealthyAsync("api", timeout.Token);
+        var restart = await _app.ResourceCommands.ExecuteCommandAsync("api", KnownResourceCommands.RestartCommand, timeout.Token);
+        Assert.True(restart.Success, restart.Message);
+        await notifications.WaitForResourceAsync("api", resource =>
+            resource.Snapshot.State?.Text == KnownResourceStates.Running &&
+            resource.Snapshot.StartTimeStamp > before.Snapshot.StartTimeStamp, timeout.Token);
+        await notifications.WaitForResourceHealthyAsync("api", timeout.Token);
+    }
 
     public async Task RestartStorageAsync(CancellationToken cancellationToken)
     {

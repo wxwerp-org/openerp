@@ -1,4 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
+import { adminPassword, signInForWorkspace } from './authentication'
+
+// eslint-disable-next-line playwright/no-skipped-test -- 真实会话用例由隔离宿主提供初始密码。
+test.skip(!adminPassword, '设置 OPENERP_TEST_ADMIN_PASSWORD 以使用真实管理员会话。')
+
+test.beforeEach(async ({ page }) => {
+  await signInForWorkspace(page.request)
+})
 
 async function mockShops(page: Page, count = 1): Promise<void> {
   await page.route('**/api/erp/config', (route) => route.fulfill({
@@ -62,6 +70,9 @@ test('Given 多平台配置 When 选择店铺设置并打开账户弹窗 Then �
   await page.locator('#confirmPassword').fill('different')
   await page.locator('#savePassword').click()
   await expect(page.getByText('两次输入的密码不一致')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#passwordLayer')).toBeHidden()
+  await expect(page.locator('.account-button')).toBeFocused()
 })
 
 test('Given 产品和订单原型 When 打开表单与公告 Then 弹窗可见且桌面页面无横向溢出', async ({ page }) => {

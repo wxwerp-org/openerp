@@ -1,7 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using OpenERP.Api;
+using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+
+if (args is ["reset-admin-password", ..])
+    return await ResetAdminPassword.RunAsync(args);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +14,7 @@ builder.AddNpgsqlDbContext<AppDbContext>("openerp");
 builder.AddRedisClient("redis");
 builder.AddFileStorage();
 builder.Services.AddSingleton<FileStore>();
+builder.Services.AddAccountAuthentication();
 builder.Services.AddHttpClient<WxwErpClient>(client => client.Timeout = TimeSpan.FromSeconds(15))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
     {
@@ -35,14 +40,27 @@ if (builder.Environment.IsDevelopment())
     builder.Services.AddHostedService(services => services.GetRequiredService<OrderSyncScheduler>());
 }
 
-var app = builder.Build();
+await using var app = builder.Build();
 
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    var stopping = app.Lifetime.ApplicationStopping;
+    if (app.Environment.IsDevelopment())
+        await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync(stopping);
+    var seed = await scope.ServiceProvider.GetRequiredService<AccountStore>()
+        .SeedAsync(app.Configuration[AccountStore.InitialPasswordKey], stopping);
+    if (seed.IsErr)
+    {
+        Console.Error.WriteLine(seed.Error.Message);
+        return 1;
+    }
+}
+
+app.UseAccountAuthentication();
 app.MapDefaultEndpoints();
-// This unauthenticated example is local-development only, like the current app skeleton.
+app.MapAccounts();
 if (app.Environment.IsDevelopment())
 {
-    await using var scope = app.Services.CreateAsyncScope();
-    await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync(app.Lifetime.ApplicationStopping);
     await app.Services.GetRequiredService<FileStore>().EnsureBucketAsync(app.Lifetime.ApplicationStopping);
     app.MapFiles();
 }
@@ -53,4 +71,5 @@ app.MapGet("/api/ping", (ILogger<Program> logger) =>
     return Results.Ok(new { message = "pong" });
 });
 
-app.Run();
+await app.RunAsync();
+return 0;

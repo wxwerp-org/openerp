@@ -15,6 +15,7 @@ public sealed class FileStorageIntegrationTests(AspireIntegrationFixture fixture
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         using var client = fixture.CreateApiClient();
+        await AuthenticationIntegrationTests.SignInAsync(client, cancellationToken, fixture.AdminPassword);
         // 文件请求和重启操作都属于本次测试启动的 AppHost。
         Assert.Equal(fixture.ApiEndpoint, client.BaseAddress);
         var createdKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -100,6 +101,7 @@ public sealed class FileStorageIntegrationTests(AspireIntegrationFixture fixture
     public async Task Upload_rejects_unsupported_or_empty_files(string fileName, string value)
     {
         using var client = fixture.CreateApiClient();
+        await AuthenticationIntegrationTests.SignInAsync(client, TestContext.Current.CancellationToken, fixture.AdminPassword);
         await AssertUnsupportedOrEmptyUploadAsync(client, fileName, value, TestContext.Current.CancellationToken);
     }
 
@@ -119,6 +121,7 @@ public sealed class FileStorageIntegrationTests(AspireIntegrationFixture fixture
     public async Task Upload_rejects_files_over_the_size_limit()
     {
         using var client = fixture.CreateApiClient();
+        await AuthenticationIntegrationTests.SignInAsync(client, TestContext.Current.CancellationToken, fixture.AdminPassword);
         await AssertOversizedUploadAsync(client, TestContext.Current.CancellationToken);
     }
 

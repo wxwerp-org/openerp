@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { apiRequest } from '../account/session'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import {
   ElAlert,
@@ -371,7 +372,7 @@ async function loadSyncSchedule(): Promise<void> {
   syncSettingsMessage.value = ''
 
   try {
-    const settingsResponse = await fetch('/api/erp/order-sync-settings')
+    const settingsResponse = await apiRequest('/api/erp/order-sync-settings')
     if (version !== syncScheduleRequestVersion) return
     if (!settingsResponse.ok) {
       throw new Error(await httpErrorMessage(settingsResponse, '无法读取定时同步设置'))
@@ -409,7 +410,7 @@ async function loadSyncScheduleShops(version: number): Promise<void> {
   syncScheduleShopsStatus.value = 'loading'
   syncScheduleShopsError.value = ''
   try {
-    const shopsResponse = await fetch('/api/erp/order-sync-settings/shops')
+    const shopsResponse = await apiRequest('/api/erp/order-sync-settings/shops')
     if (version !== syncScheduleRequestVersion) return
     if (!shopsResponse.ok) {
       throw new Error(await httpErrorMessage(shopsResponse, '无法读取可选店铺'))
@@ -440,7 +441,7 @@ async function saveSyncSchedule(): Promise<void> {
   syncSettingsError.value = ''
   syncSettingsMessage.value = ''
   try {
-    const response = await fetch('/api/erp/order-sync-settings', {
+    const response = await apiRequest('/api/erp/order-sync-settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -517,7 +518,7 @@ async function refreshOrderSyncStatus(sid: string): Promise<OrderSyncTask | null
   const lifecycle = orderSyncLifecycle
 
   try {
-    const response = await fetch(`/api/erp/shops/${encodeURIComponent(sid)}/order-sync`)
+    const response = await apiRequest(`/api/erp/shops/${encodeURIComponent(sid)}/order-sync`)
     if (!isMounted || lifecycle !== orderSyncLifecycle || orderSyncRequestVersions.get(sid) !== version) {
       return null
     }
@@ -645,7 +646,7 @@ async function startOrderSync(shop: Shop): Promise<void> {
   orderSyncErrors.value = nextErrors
 
   try {
-    const response = await fetch(`/api/erp/shops/${encodeURIComponent(sid)}/order-sync`, {
+    const response = await apiRequest(`/api/erp/shops/${encodeURIComponent(sid)}/order-sync`, {
       method: 'POST',
     })
 
@@ -762,7 +763,7 @@ async function loadPage(page: number, size: number, checkConfiguration = false):
     if (checkConfiguration || configStatus.value === 'loading' || configStatus.value === 'error') {
       configStatus.value = 'loading'
 
-      const configResponse = await fetch('/api/erp/config', { signal: controller.signal })
+      const configResponse = await apiRequest('/api/erp/config', { signal: controller.signal })
       if (!isCurrentRequest()) return
       if (!configResponse.ok) {
         throw new Error(await httpErrorMessage(configResponse, '无法读取服务端配置'))
@@ -785,7 +786,7 @@ async function loadPage(page: number, size: number, checkConfiguration = false):
     }
 
     const query = new URLSearchParams({ page: String(page), pageSize: String(size) })
-    const shopsResponse = await fetch(`/api/erp/shops?${query.toString()}`, {
+    const shopsResponse = await apiRequest(`/api/erp/shops?${query.toString()}`, {
       signal: controller.signal,
     })
     if (!isCurrentRequest()) return

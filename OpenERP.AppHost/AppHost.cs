@@ -35,6 +35,17 @@ var api = builder.AddProject<Projects.OpenERP_Api>("api")
     .WaitFor(redis)
     .WaitFor(storage);
 
+// 自动生成并保存临时密码；API 仅在首次建号时使用，首次登录必须在 Web 修改。
+var initialPassword = builder.AddParameter("admin-initial-password", new GenerateParameterDefault
+{
+    MinLength = 16,
+    Lower = true,
+    Upper = true,
+    Numeric = true,
+    Special = false
+}, secret: true, persist: true);
+api.WithEnvironment("Authentication__InitialPassword", initialPassword);
+
 // Token 仅注入后端；未配置时仍可启动并在店铺页提示。
 if (!string.IsNullOrWhiteSpace(builder.Configuration["Parameters:wxw-erp-access-token"]))
 {

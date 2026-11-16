@@ -15,6 +15,7 @@ import ProductFormDialog from '../../src/forms/ProductFormDialog.vue'
 import OrderNoticeDialog from '../../src/forms/OrderNoticeDialog.vue'
 import ProfileDialog from '../../src/account/ProfileDialog.vue'
 import PasswordDialog from '../../src/account/PasswordDialog.vue'
+import { adminAccount } from './adminAccount'
 
 describe('工作台数据控件与无障碍质量', () => {
   it.each([
@@ -67,7 +68,7 @@ describe('工作台数据控件与无障碍质量', () => {
     const dialogComponents: unknown[] = [ProductFormDialog, OrderNoticeDialog, ProfileDialog, PasswordDialog]
 
     for (const component of components) {
-      const wrapper = mount(component, { props: dialogComponents.includes(component) ? { open: false } : {} })
+      const wrapper = mount(component, { props: dialogComponents.includes(component) ? { open: false, account: adminAccount } : {} })
       for (const button of wrapper.findAll('button').filter((item) => !item.text().trim())) {
         expect(button.attributes('aria-label'), `${component.name} 存在无名称图标按钮`).toBeTruthy()
       }

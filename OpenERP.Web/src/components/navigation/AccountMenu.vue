@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
+import type { Account } from '../../account/session'
 import AppIcon from './AppIcon.vue'
+
+defineProps<{ account: Account }>()
 
 const emit = defineEmits<{
   action: [action: 'profile' | 'password' | 'settings' | 'logout']
@@ -75,7 +78,7 @@ onUnmounted(() => document.removeEventListener('click', closeOnOutsideClick))
       @keydown.down.prevent="openAndFocusFirst"
     >
       <span class="avatar"><AppIcon name="i-avatar" /></span>
-      <span>超级管理员</span>
+      <span>{{ account.name }}</span>
       <AppIcon name="i-chev-down" icon-class="caret" />
     </button>
   </div>
@@ -83,7 +86,7 @@ onUnmounted(() => document.removeEventListener('click', closeOnOutsideClick))
   <div v-show="open" id="accountMenu" ref="accountMenu" class="account-menu" role="menu" @keydown="handleMenuKeydown">
     <div class="account-menu-head">
       <span class="avatar"><AppIcon name="i-avatar" /></span>
-      <div class="account-menu-user"><b>超级管理员</b><span>admin@openerp.com</span></div>
+      <div class="account-menu-user"><b>{{ account.name }}</b><span>{{ account.email || account.username }}</span></div>
     </div>
     <hr class="account-menu-sep">
     <button type="button" role="menuitem" data-account-action="profile" @click="choose('profile')"><AppIcon name="i-user" />修改个人信息</button>

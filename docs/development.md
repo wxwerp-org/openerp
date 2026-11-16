@@ -59,6 +59,14 @@ pnpm --dir OpenERP.Web exec playwright install chromium
 pnpm --dir OpenERP.Web test:e2e
 ```
 
+账户端到端用例需要真实后端与 `OPENERP_TEST_ADMIN_PASSWORD`，会修改测试账户资料和密码。请使用隔离测试宿主，避免对日常开发账户运行这些用例：
+
+```bash
+OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class '*BrowserAcceptanceTests'
+```
+
+该入口创建测试专用数据库和管理员，启动 HTTPS 前端，将实际端点及测试密码通过环境传给 Playwright，并串行运行浏览器用例；完成后由 Aspire 测试夹具清理测试资源。它先通过 .NET 严格校验前端证书，再将该证书的公钥临时提供给 Node 客户端，不跳过证书校验；临时文件在结束后删除。独立运行 Playwright 时，Node 如不识别本机开发证书，需用 `NODE_EXTRA_CA_CERTS` 指定对应的公开 PEM 证书。不设置开关时，此浏览器入口明确跳过，不计作浏览器验收通过。
+
 ### 真实 ERP 验证
 
 常规后端测试自行准备隔离 PostgreSQL，不需要连接开发数据库。可选的 [OrderLiveAcceptanceTests](../OpenERP.Api.Tests/OrderLiveAcceptanceTests.cs) 使用进程环境变量：
@@ -69,6 +77,51 @@ pnpm --dir OpenERP.Web test:e2e
 | `OPENERP_TEST_POSTGRES` | 与上述 Token 一起启用 SID `30` 的源端与入库结果比对；指向已完成该店手动同步的数据库 |
 
 数据库比对用例的前置步骤是在浏览器完成 SID `30` 的两次手动同步；测试本身只读源端和数据库，不执行同步或建表。未设置相应变量时用例跳过。凭证仅通过进程环境提供，不写入文档或版本库；测试命令见本页[构建与测试](#构建与测试)。
+
+## 管理员账户与会话
+
+系统只有一个管理员，用户名固定为 `admin`，不提供注册、员工权限或邮箱找回密码。姓名必填（最多 20 个字符），手机号可选（最多 20 个字符），邮箱可选并校验格式；手机号、邮箱仅作为个人资料。菜单中的资料与最近登录时间来自数据库，保存资料不会改变最近登录时间。
+
+### 初始化与密码重置
+
+AppHost 在未配置 `Parameters:admin-initial-password` 时自动生成 16 位随机临时密码，并持久化到 User Secrets，再通过 `Authentication__InitialPassword` 注入 API。可在 Aspire Dashboard 的 `api` 资源详情中查看该环境变量；不会输出到应用日志或提交到仓库。已有显式 Secret 时沿用原值。
+
+新建管理员带有持久化的首次改密标记。使用临时密码登录后进入 Web 强制改密页，设置一个不同的新密码并重新登录后才能使用业务。重启不会清除此标记或覆盖数据库密码；升级前已有账户的标记默认为关闭，不影响原登录方式。
+
+直接运行 API 时仍需通过进程配置提供 `Authentication__InitialPassword`（6–20 个字符，不自动去除首尾空白）。首次创建缺少或不合法时报告配置错误并非零退出，不抛出未处理异常。管理员已存在时跳过初始化，不覆盖密码或资料，也不再要求该配置。
+
+Development 环境先应用 EF Core 迁移，再初始化账户；其他环境须由运维预先应用迁移。本功能不改变生产迁移和部署流程。
+
+忘记密码时，在已配置目标数据库连接的 API 运行环境执行 `reset-admin-password` 命令。该命令只连接数据库更新已有管理员，不启动 HTTP 服务、订单任务或存储服务，不迁移数据库，不创建缺失账户。交互模式隐藏输入并要求确认；自动化通过显式 `--stdin` 从标准输入提供密码，不接受明文密码命令行参数。命令失败返回非零退出码；不要通过修改 seed Secret、清空数据库或删除数据卷来重置密码。
+
+例如，构建后从仓库根目录执行以下命令；发布环境将 DLL 路径替换为实际发布路径。进程配置须包含目标数据库的 `ConnectionStrings__openerp`，它不会自动继承另一个 Aspire 进程中的环境变量。
+
+```bash
+dotnet OpenERP.Api/bin/Debug/net10.0/OpenERP.Api.dll reset-admin-password
+```
+
+自动化时由 Secret 管理工具将一行新密码传入相同命令的标准输入，并追加 `--stdin`；不要将真实密码写进脚本或终端命令历史。
+
+### 会话规则与接口
+
+每次登录建立独立的 24 小时会话，不滑动续期，浏览器关闭或 API 重启不会提前撤销有效会话。普通退出只撤销当前会话；网页修改密码和命令行重置会撤销所有会话，所有设备需重新登录。首次设置凭已验证的受限会话完成，只需填写新密码和确认密码；以后主动改密必须提供旧密码。首次改密完成后清除限制；命令行重置直接设置最终密码。已受理的订单同步继续执行。
+
+Cookie 使用 `Secure`、`HttpOnly`、`SameSite=Lax`，必须通过 HTTPS 访问。会话和 Data Protection 密钥存储于 PostgreSQL；数据库不可用时返回服务错误，不将故障视为退出登录。
+
+| 接口 | 用途 |
+| --- | --- |
+| `GET /api/auth/csrf` | 匿名获取 `{ requestToken }` |
+| `POST /api/auth/login` | 提交 `{ username, password }` 登录 |
+| `GET /api/auth/me` | 查询当前账户及会话到期时间 |
+| `POST /api/auth/logout` | 撤销当前会话 |
+| `POST /api/auth/change-password` | 首次设置提交 `{ newPassword }`；普通改密提交 `{ oldPassword, newPassword }`。服务端根据账户状态及有效会话判断 |
+| `PUT /api/account/profile` | 提交 `{ name, phone, email }` 保存资料 |
+
+业务 API（包括 `/api/ping`、ERP 和文件）默认需要登录，健康检查保持匿名。所有写请求（包括登录、退出和文件上传）均须携带 `X-CSRF-TOKEN` 请求头及对应 Cookie。客户端先请求 CSRF 令牌，登录成功后再获取绑定当前身份的新令牌；身份变化后不能沿用旧令牌，不自动重试写请求。
+
+登录、当前账户和资料保存返回 `username`、`name`、`phone`、`email`、`lastLoginAt`、`expiresAt`、`mustChangePassword`；时间使用 ISO 8601。首次改密完成前，只允许当前账户、防伪令牌、改密、退出及匿名健康接口，业务接口和资料保存返回 `403`，ProblemDetails 顶层 `code` 为 `password_change_required`。前端据此进入强制改密页，其他 `403` 不作此处理。
+
+退出和改密成功返回 `204`。错误使用 ProblemDetails：输入或旧密码错误为 `400`，凭证或会话失效为 `401`，数据库不可用为 `503`。
 
 ## ERP 接入与接口
 
@@ -111,20 +164,22 @@ pnpm --dir OpenERP.Web test:e2e
 
 ## 本地诊断
 
+在 Aspire Dashboard 的资源列表中查看状态、端点、控制台日志和追踪。终端诊断命令直接使用 PATH 中的 `aspire`；启动与停止见 [README](../README.md#启动并访问)。
+
 从仓库根目录检查实际资源名、端点和就绪状态，再查看 API 日志与追踪：
 
 ```bash
-dotnet tool run aspire describe --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
-dotnet tool run aspire wait web --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
-dotnet tool run aspire otel logs api --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
-dotnet tool run aspire otel traces api --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
+aspire describe --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
+aspire wait web --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
+aspire otel logs api --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
+aspire otel traces api --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
 ```
 
 浏览器日志使用 `web-browser-logs` 子资源，需要 Chrome 或 Edge。打开受跟踪的浏览器后查看该资源的控制台日志：
 
 ```bash
-dotnet tool run aspire resource web-browser-logs open-tracked-browser --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
-dotnet tool run aspire logs web-browser-logs --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
+aspire resource web-browser-logs open-tracked-browser --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
+aspire logs web-browser-logs --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
 ```
 
 资源名以 `describe` 输出为准。浏览器输出不在 `aspire otel logs web` 中。
@@ -137,6 +192,15 @@ dotnet tool run aspire logs web-browser-logs --apphost OpenERP.AppHost/OpenERP.A
 - SeaweedFS 的 Master/Volume 健康检查之外，AppHost 另用签名 S3 `ListBuckets` 检查等待存储就绪，再启动 API 建桶。这是项目自定义的启动保护，不保证建桶必然成功；存储后续失去健康也不会自动暂停已运行的 API。
 - Development 环境的 `/health` 检查 PostgreSQL、Redis 和 SeaweedFS S3 连接；`/alive` 只检查进程存活。
 
+### 更新运行中的代码
+
+- **后端 C# 代码**：在 Dashboard 资源列表找到 `api`，打开操作菜单，选择 **Rebuild（重新构建）**。等待资源恢复健康后，再回到业务页面刷新并重试。该操作重新构建并启动 API；只点 Restart（重启）不能当作已经重新编译的证据。
+- **前端代码**：Vite 开发服务器通常会通过 HMR 自动更新页面。前端已更新不代表 API 已加载新代码；若出现新表单仍收到旧接口错误，先检查 `api` 的日志与重建状态。
+- **自动热重载**：只有对应 IDE Hot Reload 或运行时 watch 已启用时，才依赖它应用后端修改；普通启动不代表自动启用了后端热重载。
+- **AppHost 编排或配置**：需要应用新的资源配置时，在原仓库或 worktree 中重新执行相同的启动命令；隔离实例使用 `aspire start --isolated`。编辑器启动的实例由编辑器管理重启。
+
+仅一个资源的实现发生变化时，优先使用该资源的 Rebuild 或已有热重载流程，不重启整个 AppHost。终端操作可先用 `aspire describe` 查看资源；资源提供重建命令时使用 `aspire resource api rebuild`，随后 `aspire wait api` 等待就绪。若 Dashboard 没有 Rebuild 操作，先确认资源类型和启动方式，不把 Restart 视为等价替代。
+
 ### 开发数据与密钥
 
 PostgreSQL、Redis 和 SeaweedFS 均使用持久容器与数据卷。PostgreSQL 挂载到 `/var/lib/postgresql`，Redis 和 SeaweedFS 挂载到 `/data`。卷名由 Aspire 根据应用身份与资源名生成，以当前环境为准；macOS Docker Desktop 的卷保存在其 Linux 虚拟机内，不在源码目录。
@@ -144,7 +208,7 @@ PostgreSQL、Redis 和 SeaweedFS 均使用持久容器与数据卷。PostgreSQL 
 开发密码保存在 .NET User Secrets 中。只查看密钥文件位置、避免打印秘密值时使用：
 
 ```bash
-dotnet tool run aspire secret path --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
+aspire secret path --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
 ```
 
 正常停止会保留持久资源；`aspire stop --force` 会删除持久资源，不能用于普通停止。保留数据卷时也应保留开发密钥及 `UserSecretsId`，避免密码不匹配。Redis 使用快照持久化，异常断电可能丢失最近的内存写入。
@@ -157,4 +221,4 @@ PostgreSQL `18-alpine` 和 Redis `8-alpine` 使用浮动大版本标签，小版
 
 仓库代理规则由 [AGENTS.md](../AGENTS.md) 提供，专项流程位于 `.agents/skills/`。
 
-仓库的 [.mcp.json](../.mcp.json) 与 [.vscode/mcp.json](../.vscode/mcp.json) 使用 `aspire agent init` 生成的 `aspire agent mcp` 配置。使用支持 MCP 的客户端时，确保其 PATH 能找到 `aspire`。终端命令通过 `dotnet tool run aspire` 使用仓库锁定的本地 CLI，两者是不同入口。
+仓库的 [.mcp.json](../.mcp.json) 与 [.vscode/mcp.json](../.vscode/mcp.json) 使用 `aspire agent init` 生成的 `aspire agent mcp` 配置。客户端与终端均直接使用 PATH 中的 `aspire` CLI，不额外套用 `dotnet tool run`。代理启动及其他生命周期操作遵循项目内 [Aspire Skill](../.agents/skills/aspire/SKILL.md) 及其路由的子 Skill。

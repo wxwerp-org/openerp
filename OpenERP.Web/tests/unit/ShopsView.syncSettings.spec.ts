@@ -1,6 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import ShopsView from '../../src/views/ShopsView.vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { adminAccount } from './adminAccount'
 
 const tableShop = {
   sid: '42',
@@ -40,6 +40,7 @@ type FetchOptions = {
   configured?: boolean
   settings?: SyncSettings
   shops?: { sid: string; name: string }[]
+  getSettings?: () => Response
   getShops?: () => Response
   getTask?: () => Response
   putSettings?: (body: PutBody) => Response
@@ -72,6 +73,12 @@ function configureFetch(options: FetchOptions = {}) {
   const settings = options.settings ?? { enabled: false, shopSids: [], intervalMinutes: 30 }
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
+    if (url === '/api/auth/me') {
+      return jsonResponse(adminAccount)
+    }
+    if (url === '/api/auth/csrf') {
+      return jsonResponse({ requestToken: 'schedule-token' })
+    }
     if (url === '/api/erp/config') {
       return jsonResponse({
         configured: options.configured ?? true,
@@ -86,11 +93,14 @@ function configureFetch(options: FetchOptions = {}) {
       return options.getShops?.() ?? jsonResponse({ items: options.shops ?? allShops })
     }
     if (url === '/api/erp/order-sync-settings' && init?.method === 'PUT') {
+      if (new Headers(init.headers).get('X-CSRF-TOKEN') !== 'schedule-token') {
+        return jsonResponse({ title: '防伪校验失败' }, 400)
+      }
       const body = JSON.parse(String(init.body)) as PutBody
       return options.putSettings?.(body) ?? jsonResponse({ ...body, intervalMinutes: 30 })
     }
     if (url === '/api/erp/order-sync-settings') {
-      return jsonResponse(settings)
+      return options.getSettings?.() ?? jsonResponse(settings)
     }
     if (url === '/api/erp/shops/42/order-sync') {
       return options.getTask?.() ?? new Response(null, { status: 204 })
@@ -104,6 +114,9 @@ function configureFetch(options: FetchOptions = {}) {
 }
 
 async function mountShops(): Promise<VueWrapper> {
+  const { checkSession } = await import('../../src/account/session')
+  await checkSession()
+  const { default: ShopsView } = await import('../../src/views/ShopsView.vue')
   const wrapper = mount(ShopsView)
   await flushPromises()
   await flushPromises()
@@ -121,6 +134,8 @@ async function setScheduleEnabled(wrapper: VueWrapper, enabled: boolean): Promis
 
 describe('店铺定时同步设置', () => {
   let wrapper: VueWrapper | undefined
+
+  beforeEach(() => vi.resetModules())
 
   afterEach(() => {
     wrapper?.unmount()
@@ -181,7 +196,7 @@ describe('店铺定时同步设置', () => {
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
   })
 
-  it('Given 全选可见店铺 When 保存 Then 提交全部店铺并显示启用反馈', async () => {
+  it('Given 全选可见店铺 When 保存 Then 通过防伪校验并显示启用反馈', async () => {
     // Given 可选店铺覆盖表格当前页之外的另一家店。
     const putBodies: PutBody[] = []
     configureFetch({
@@ -203,6 +218,23 @@ describe('店铺定时同步设置', () => {
     // Then 提交全部店铺 SID，并提示下一个周期首次执行。
     expect(putBodies).toEqual([{ enabled: true, shopSids: [42, 77] }])
     expect(wrapper.text()).toContain('定时同步已启用')
+  })
+
+  it('Given 管理员会话已通过初始检查 When 读取定时同步设置返回 401 Then 会话变为未登录', async () => {
+    configureFetch({ getSettings: () => new Response(null, { status: 401 }) })
+    wrapper = await mountShops()
+
+    const { account, sessionState } = await import('../../src/account/session')
+    expect(sessionState.value).toBe('anonymous')
+    expect(account.value).toBeNull()
+  })
+
+  it('Given 管理员已登录 When 读取可选店铺返回强制改密 403 Then 会话进入强制改密状态', async () => {
+    configureFetch({ getShops: () => jsonResponse({ code: 'password_change_required' }, 403) })
+    wrapper = await mountShops()
+
+    const { account } = await import('../../src/account/session')
+    expect(account.value?.mustChangePassword).toBe(true)
   })
 
   it('Given 保存失败 When 提交设置 Then 显示错误并保留已选店铺', async () => {
