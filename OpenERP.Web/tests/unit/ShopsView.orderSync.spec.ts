@@ -116,8 +116,11 @@ function syncButton(wrapper: VueWrapper) {
 }
 
 function orderSyncProgress(wrapper: VueWrapper): number {
-  const width = wrapper.get('.el-progress-bar__inner').attributes('style')?.match(/width:\s*([\d.]+)%/)?.[1]
-  return Number(width)
+  return Number(wrapper.get('[role="progressbar"]').attributes('aria-valuenow'))
+}
+
+function findRefreshButton(wrapper: VueWrapper) {
+  return wrapper.get('button[aria-label="刷新"]')
 }
 
 describe('店铺历史订单同步', () => {
@@ -172,7 +175,7 @@ describe('店铺历史订单同步', () => {
     expect(wrapper.text()).toContain('测试店铺')
     expect(syncButton(wrapper)).toBeUndefined()
 
-    const refreshButton = wrapper.findAll('button').find((button) => button.text().includes('刷新'))!
+    const refreshButton = findRefreshButton(wrapper)
     await refreshButton.trigger('click')
     await flushPromises()
 
@@ -206,7 +209,7 @@ describe('店铺历史订单同步', () => {
     const pollTimer = setTimeoutSpy.mock.results[pollTimerIndex]?.value
 
     orderSyncEnabled = false
-    const refreshButton = wrapper.findAll('button').find((button) => button.text().includes('刷新'))!
+    const refreshButton = findRefreshButton(wrapper)
     await refreshButton.trigger('click')
     await flushPromises()
 
@@ -243,7 +246,7 @@ describe('店铺历史订单同步', () => {
     wrapper = await mountShops()
     const pagesProgress = orderSyncProgress(wrapper)
 
-    const refreshButton = wrapper.findAll('button').find((button) => button.text().includes('刷新'))!
+    const refreshButton = findRefreshButton(wrapper)
     await refreshButton.trigger('click')
     await flushPromises()
 
@@ -268,7 +271,7 @@ describe('店铺历史订单同步', () => {
     wrapper = await mountShops()
     const initialProgress = orderSyncProgress(wrapper)
 
-    const refreshButton = wrapper.findAll('button').find((button) => button.text().includes('刷新'))!
+    const refreshButton = findRefreshButton(wrapper)
     await refreshButton.trigger('click')
     await flushPromises()
 
@@ -303,6 +306,33 @@ describe('店铺历史订单同步', () => {
 
     expect(wrapper.text()).toContain('保存结果')
     expect(orderSyncProgress(wrapper)).toBeLessThan(100)
+  })
+
+  it('Given 商品详情阶段失败 When 处理数增加直至等于总数 Then 进度按公式推进且封顶 99', async () => {
+    let taskReadCount = 0
+    configureFetch({
+      getTask: () => {
+        taskReadCount += 1
+        return jsonResponse(task({
+          status: 'failed',
+          stage: 'details',
+          total: 10,
+          read: 10,
+          processed: taskReadCount === 1 ? 5 : 10,
+          error: '商品详情读取失败',
+        }))
+      },
+    })
+    wrapper = await mountShops()
+
+    expect(wrapper.text()).toContain('同步失败')
+    expect(orderSyncProgress(wrapper)).toBe(75)
+
+    const refreshButton = findRefreshButton(wrapper)
+    await refreshButton.trigger('click')
+    await flushPromises()
+
+    expect(orderSyncProgress(wrapper)).toBe(99)
   })
 
   it.each(['succeeded', 'partial'] as const)(
@@ -421,7 +451,7 @@ describe('店铺历史订单同步', () => {
     wrapper = await mountShops()
 
     expect(wrapper.text()).not.toContain('正在同步')
-    const refreshButton = wrapper.findAll('button').find((button) => button.text().includes('刷新'))!
+    const refreshButton = findRefreshButton(wrapper)
     await refreshButton.trigger('click')
     await flushPromises()
 
@@ -431,6 +461,58 @@ describe('店铺历史订单同步', () => {
     expect(statusCalls).toHaveLength(2)
     expect(wrapper.text()).toContain('正在同步')
     expect(wrapper.text()).toContain('读取 7 / 10')
+  })
+
+  it('Given 第一页店铺正在同步 When 换到第二页 Then 清除不可见任务且只查询可见店铺状态', async () => {
+    vi.useFakeTimers()
+    let status42Calls = 0
+    let status43Calls = 0
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/erp/config') {
+        return jsonResponse({ configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: true })
+      }
+      if (url.startsWith('/api/erp/shops?')) {
+        const page = new URL(url, 'https://local.test').searchParams.get('page')
+        const visibleShop = page === '2'
+          ? { ...shop, sid: '43', name: '第二页店铺' }
+          : shop
+        return jsonResponse({
+          items: [visibleShop],
+          page: Number(page),
+          pageSize: 20,
+          totalCount: 2,
+          pageCount: 2,
+        })
+      }
+      if (url === '/api/erp/shops/42/order-sync') {
+        status42Calls += 1
+        return jsonResponse(task({ sid: 42 }))
+      }
+      if (url === '/api/erp/shops/43/order-sync') {
+        status43Calls += 1
+        return new Response(null, { status: 204 })
+      }
+
+      throw new Error(`意外的请求：${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    wrapper = await mountShops()
+
+    expect(wrapper.text()).toContain('正在同步')
+    await wrapper.get('button[aria-label="下一页"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('第二页店铺')
+    expect(wrapper.text()).not.toContain('正在同步')
+    expect(status42Calls).toBe(1)
+    expect(status43Calls).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+
+    expect(status42Calls).toBe(1)
+    expect(status43Calls).toBe(1)
   })
 
   it('Given 页面正在轮询运行任务 When 页面卸载 Then 清除轮询定时器', async () => {

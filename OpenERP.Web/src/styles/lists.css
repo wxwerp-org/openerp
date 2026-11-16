@@ -36,6 +36,7 @@
 }
 .table-area{flex:1;min-height:0;position:relative;overflow:hidden;background:#fff}
 .table-scroll{height:100%;overflow-x:auto;overflow-y:hidden;position:relative;background:#fff}
+.table-scroll.is-y{overflow-y:auto}
 .table-scroll::-webkit-scrollbar{height:10px;width:10px}
 .table-scroll::-webkit-scrollbar-track{background:#F2F5FA}
 .table-scroll::-webkit-scrollbar-thumb{background:#CBD5E1;border:2px solid #F2F5FA;border-radius:8px}
@@ -50,6 +51,10 @@
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--body);font-size:12px;background:#fff;
 }
 .grid-table th:last-child,.grid-table td:last-child{border-right:0}
+.grid-table.is-wrap td{
+  height:auto;padding-top:14px;padding-bottom:14px;white-space:normal;overflow:visible;text-overflow:clip;
+  vertical-align:top;overflow-wrap:anywhere;
+}
 .grid-table tbody tr:hover td{background:#FAFCFF}
 .grid-table .col-check{
   position:sticky;left:0;z-index:4;width:28px;padding:0 0 0 8px;background:#fff;
@@ -92,7 +97,7 @@
 }
 .page-btn{
   width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;
-  background:#fff;color:#B0B7C3;border:1px solid transparent;
+  background:#fff;color:var(--body);border:1px solid transparent;
 }
 .page-btn:hover:not(:disabled){color:var(--primary);background:#F5F8FF}
 .page-btn:disabled{cursor:default;color:#C7CDD6}
@@ -100,17 +105,28 @@
   min-width:28px;height:28px;padding:0 6px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;
   color:var(--primary);background:#EAF2FF;border:1px solid #D7E4FF;font-variant-numeric:tabular-nums;
 }
+.page-ellipsis{min-width:18px;display:inline-flex;align-items:center;justify-content:center;color:#B0B7C3}
 .page-size{
   height:28px;min-width:100px;display:inline-flex;align-items:center;justify-content:space-between;gap:10px;
   padding:0 9px;border:1px solid var(--input-border);border-radius:4px;color:var(--text);background:#fff;
 }
 .page-size .ic{width:10px;height:10px;color:#A6ABB4}
+label.page-size{cursor:pointer}
+label.page-size:focus-within{border-color:var(--primary)}
+label.page-size.is-disabled{cursor:default;color:var(--muted);background:#F7F9FC}
+.page-size select{
+  appearance:none;-webkit-appearance:none;min-width:0;height:26px;border:0;outline:none;padding:0;
+  background:transparent;color:inherit;font-size:12px;cursor:inherit;
+}
+.page-size select:disabled{cursor:default}
 .page-jump{display:inline-flex;align-items:center;gap:7px;color:var(--body);padding-left:3px}
 .page-jump input{
   width:46px;height:28px;border:1px solid var(--input-border);border-radius:4px;text-align:center;
   outline:none;font-size:12px;color:var(--text);background:#fff;padding:0 4px;
 }
 .page-jump input:focus{border-color:var(--primary)}
+.page-jump input:disabled{background:#F7F9FC;color:var(--muted);cursor:default}
+.page-jump input:disabled:focus{border-color:var(--input-border)}
 
 /* 产品列表 */
 .product-filter .toggle-sku button{min-width:52px;padding:0 10px}

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { ElConfigProvider } from 'element-plus'
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { START_LOCATION, useRoute, useRouter } from 'vue-router'
 import { account, checkSession, expireSession, sessionState } from './account/session'
@@ -47,15 +45,13 @@ onUnmounted(() => window.removeEventListener('focus', recheckSession))
 </script>
 
 <template>
-  <ElConfigProvider :locale="zhCn">
-    <RouterView v-if="route.name === 'login' || (route.name === 'required-password-change' && account?.mustChangePassword)" />
-    <AppShell v-else-if="account && !account.mustChangePassword && routeReady" :account="account" />
-    <AuthLayout v-else>
-      <template v-if="sessionState === 'unavailable'">
-        <p role="alert">无法验证登录状态，请稍后重试。</p>
-        <button class="btn primary" type="button" @click="checkSession">重试</button>
-      </template>
-      <p v-else role="status">正在验证登录状态…</p>
-    </AuthLayout>
-  </ElConfigProvider>
+  <RouterView v-if="route.name === 'login' || (route.name === 'required-password-change' && account?.mustChangePassword)" />
+  <AppShell v-else-if="account && !account.mustChangePassword && routeReady" :account="account" />
+  <AuthLayout v-else>
+    <template v-if="sessionState === 'unavailable'">
+      <p role="alert">无法验证登录状态，请稍后重试。</p>
+      <button class="btn primary" type="button" @click="checkSession">重试</button>
+    </template>
+    <p v-else role="status">正在验证登录状态…</p>
+  </AuthLayout>
 </template>
