@@ -110,6 +110,34 @@ public sealed class OrderSyncSchedulerTests
         }
     }
 
+    [Fact]
+    public async Task Transient_settings_failure_retries_after_one_period_not_two()
+    {
+        // Given 设置读取第一次失败，周期为 1 秒。
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var (scheduler, jobs, store, provider) = CreateScheduler(TimeSpan.FromSeconds(1));
+        store.Settings = new(true, [30]);
+        store.FailuresRemaining = 1;
+        var startedAt = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            // When 启动调度循环，等待首次批次受理。
+            await scheduler.StartAsync(cancellationToken);
+            await TestWait.UntilAsync(
+                () => jobs.Latest(30) is not null,
+                "暂时性设置读取失败后没有重试。", cancellationToken);
+
+            // Then 只等待一个周期，而不是异常路径再叠加一个周期。
+            Assert.True(startedAt.Elapsed < TimeSpan.FromSeconds(1.7),
+                $"异常后的首次重试耗时 {startedAt.Elapsed.TotalSeconds:F2}s，超过一个周期加余量。");
+        }
+        finally
+        {
+            await scheduler.StopAsync(CancellationToken.None);
+            await DisposeAsync(provider, scheduler);
+        }
+    }
+
     private static (OrderSyncScheduler Scheduler, OrderSyncJobs Jobs, FakeSettingsStore Store, ServiceProvider Provider)
         CreateScheduler(TimeSpan? interval = null)
     {
@@ -134,8 +162,18 @@ public sealed class OrderSyncSchedulerTests
     {
         public OrderSyncSettingsSnapshot Settings { get; set; } = new(false, []);
 
-        public Task<OrderSyncSettingsSnapshot> GetAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(Settings);
+        public int FailuresRemaining { get; set; }
+
+        public Task<OrderSyncSettingsSnapshot> GetAsync(CancellationToken cancellationToken)
+        {
+            if (FailuresRemaining > 0)
+            {
+                FailuresRemaining--;
+                throw new InvalidOperationException("transient settings failure");
+            }
+
+            return Task.FromResult(Settings);
+        }
 
         public Task<OpResult<OrderSyncSettingsSnapshot>> SaveAsync(
             bool enabled, IReadOnlyList<int> shopSids, CancellationToken cancellationToken)

@@ -40,7 +40,25 @@ type FetchOptions = {
   configured?: boolean
   settings?: SyncSettings
   shops?: { sid: string; name: string }[]
+  getShops?: () => Response
+  getTask?: () => Response
   putSettings?: (body: PutBody) => Response
+}
+
+const runningTask = {
+  id: 'task-1',
+  sid: 42,
+  status: 'running',
+  stage: 'pages',
+  total: 10,
+  read: 4,
+  processed: 3,
+  added: 1,
+  updated: 1,
+  unchanged: 1,
+  skipped: 0,
+  skipReasons: {},
+  error: null,
 }
 
 function jsonResponse(value: unknown, status = 200): Response {
@@ -65,7 +83,7 @@ function configureFetch(options: FetchOptions = {}) {
       return jsonResponse(shopList)
     }
     if (url === '/api/erp/order-sync-settings/shops') {
-      return jsonResponse({ items: options.shops ?? allShops })
+      return options.getShops?.() ?? jsonResponse({ items: options.shops ?? allShops })
     }
     if (url === '/api/erp/order-sync-settings' && init?.method === 'PUT') {
       const body = JSON.parse(String(init.body)) as PutBody
@@ -75,7 +93,7 @@ function configureFetch(options: FetchOptions = {}) {
       return jsonResponse(settings)
     }
     if (url === '/api/erp/shops/42/order-sync') {
-      return new Response(null, { status: 204 })
+      return options.getTask?.() ?? new Response(null, { status: 204 })
     }
 
     throw new Error(`意外的请求：${url}`)
@@ -108,6 +126,7 @@ describe('店铺定时同步设置', () => {
     wrapper?.unmount()
     wrapper = undefined
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it('Given 同步能力开启 When 店铺页加载 Then 显示定时同步卡片和固定周期', async () => {
@@ -227,6 +246,86 @@ describe('店铺定时同步设置', () => {
     // Then 只关闭启用状态，已选店铺保留。
     expect(putBodies).toEqual([{ enabled: false, shopSids: [42] }])
     expect(wrapper.text()).toContain('定时同步已关闭')
+  })
+
+  it('Given 选店接口暂时失败 When 点击卡片重试 Then 恢复选店且保留开关草稿', async () => {
+    // Given 设置读取成功但选店接口第一次失败。
+    let shopCalls = 0
+    configureFetch({
+      getShops: () => {
+        shopCalls += 1
+        return shopCalls === 1
+          ? jsonResponse({ title: '获取店铺失败' }, 502)
+          : jsonResponse({ items: allShops })
+      },
+    })
+    wrapper = await mountShops()
+    expect(wrapper.text()).toContain('获取店铺失败')
+
+    // When 用户已打开开关，并点击卡片内的选店重试。
+    await setScheduleEnabled(wrapper, true)
+    await findButton(wrapper, '重试')!.trigger('click')
+    await flushPromises()
+
+    // Then 选店列表恢复，草稿中的启用状态没有被设置接口覆盖。
+    expect(shopCalls).toBe(2)
+    expect(wrapper.text()).toContain('表格店铺')
+    expect(
+      (wrapper.get('.sync-settings-card .el-switch__input').element as HTMLInputElement).checked,
+    ).toBe(true)
+  })
+
+  it('Given 选店接口暂时失败 When 点击页面刷新 Then 也会重试选店', async () => {
+    // Given 设置读取成功但选店接口第一次失败。
+    let shopCalls = 0
+    configureFetch({
+      getShops: () => {
+        shopCalls += 1
+        return shopCalls === 1
+          ? jsonResponse({ title: '获取店铺失败' }, 502)
+          : jsonResponse({ items: allShops })
+      },
+    })
+    wrapper = await mountShops()
+    expect(wrapper.text()).toContain('获取店铺失败')
+
+    // When 点击店铺页顶部的刷新。
+    const refresh = wrapper.findAll('button').find((button) => button.text().includes('刷新'))!
+    await refresh.trigger('click')
+    await flushPromises()
+
+    // Then 选店列表随之恢复。
+    expect(shopCalls).toBe(2)
+    expect(wrapper.text()).toContain('表格店铺')
+  })
+
+  it('Given 定时同步已启用且页面空闲 When 后台启动任务 Then 低频发现并切换到轮询', async () => {
+    // Given 定时同步已启用，页面初始没有运行中的任务。
+    vi.useFakeTimers()
+    let statusReads = 0
+    configureFetch({
+      settings: { enabled: true, shopSids: [42], intervalMinutes: 30 },
+      getTask: () => {
+        statusReads += 1
+        return statusReads === 1
+          ? new Response(null, { status: 204 })
+          : jsonResponse(runningTask)
+      },
+    })
+    wrapper = await mountShops()
+    expect(statusReads).toBe(1)
+
+    // When 15 秒后后台已经有定时批次在运行。
+    await vi.advanceTimersByTimeAsync(15000)
+    await flushPromises()
+
+    // Then 发现运行任务并展示进度，随后按 2 秒轮询。
+    expect(statusReads).toBeGreaterThanOrEqual(2)
+    expect(wrapper.text()).toContain('正在同步')
+    const readsAfterDiscovery = statusReads
+    await vi.advanceTimersByTimeAsync(2000)
+    await flushPromises()
+    expect(statusReads).toBeGreaterThan(readsAfterDiscovery)
   })
 
   it('Given 未配置 Token When 加载设置 Then 提示配置后可选择店铺', async () => {

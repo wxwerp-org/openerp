@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using OpResult;
 
@@ -43,25 +44,21 @@ public sealed class OrderSyncSettingsStore(AppDbContext db) : IOrderSyncSettings
         bool enabled, IReadOnlyList<int> shopSids, CancellationToken cancellationToken)
     {
         var normalized = shopSids.Distinct().Order().ToArray();
-        var settings = await db.OrderSyncSettings
-            .SingleOrDefaultAsync(row => row.Id == OrderSyncSettings.SingletonId, cancellationToken);
-        if (settings is null)
-        {
-            settings = new OrderSyncSettings();
-            db.OrderSyncSettings.Add(settings);
-        }
-
-        settings.Enabled = enabled;
-        settings.ShopSids = normalized;
         try
         {
-            await db.SaveChangesAsync(cancellationToken);
+            // 单条插入或更新语句原子替换整份配置，避免并发保存把 Enabled 和 ShopSids 合并成用户未提交的组合。
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "OrderSyncSettings" ("Id", "Enabled", "ShopSids")
+                VALUES ({OrderSyncSettings.SingletonId}, {enabled}, {normalized})
+                ON CONFLICT ("Id") DO UPDATE
+                SET "Enabled" = EXCLUDED."Enabled", "ShopSids" = EXCLUDED."ShopSids"
+                """, cancellationToken);
         }
-        catch (DbUpdateException)
+        catch (DbException)
         {
             return OpResults.Err("保存定时同步设置失败，请重试。");
         }
 
-        return new OrderSyncSettingsSnapshot(settings.Enabled, settings.ShopSids);
+        return new OrderSyncSettingsSnapshot(enabled, normalized);
     }
 }

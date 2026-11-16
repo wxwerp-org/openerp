@@ -93,6 +93,7 @@ public sealed class OrderSyncScheduler : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("定时同步调度器已启动，周期 {IntervalMinutes} 分钟。", _interval.TotalMinutes);
+        var wait = _interval;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -102,13 +103,18 @@ public sealed class OrderSyncScheduler : BackgroundService
                 {
                     // 关闭或无任务时不轮询数据库，等待配置保存后唤醒。
                     await WaitAsync(Timeout.InfiniteTimeSpan, stoppingToken);
+                    wait = _interval;
                     continue;
                 }
 
-                if (await WaitAsync(_interval, stoppingToken))
+                if (await WaitAsync(wait, stoppingToken))
+                {
+                    wait = _interval;
                     continue;
+                }
 
                 await RunCycleAsync(stoppingToken);
+                wait = _interval;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -117,7 +123,9 @@ public sealed class OrderSyncScheduler : BackgroundService
             catch (Exception error)
             {
                 _logger.LogError("定时同步本轮执行失败，将在下一周期重试，异常类型 {ErrorType}。", error.GetType().Name);
+                // 这里只等待一次；下一轮直接重试，避免异常路径叠加下一次周期等待。
                 await WaitAsync(_interval, stoppingToken);
+                wait = TimeSpan.Zero;
             }
         }
     }

@@ -159,6 +159,9 @@ let activeController: AbortController | null = null
 let orderSyncLifecycle = 0
 let isMounted = false
 let orderSyncPollTimeout: ReturnType<typeof setTimeout> | null = null
+let orderSyncDiscoveryTimeout: ReturnType<typeof setTimeout> | null = null
+const orderSyncPollInterval = 2000
+const orderSyncDiscoveryInterval = 15000
 const orderSyncRequestVersions = new Map<string, number>()
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -384,6 +387,14 @@ async function loadSyncSchedule(): Promise<void> {
     return
   }
 
+  await loadSyncScheduleShops(version)
+  if (version === syncScheduleRequestVersion) {
+    scheduleOrderSyncPoll()
+  }
+}
+
+async function loadSyncScheduleShops(version: number): Promise<void> {
+  if (!orderSyncEnabled.value) return
   if (configStatus.value !== 'configured') {
     syncScheduleShops.value = []
     syncScheduleShopsStatus.value = 'error'
@@ -413,6 +424,11 @@ async function loadSyncSchedule(): Promise<void> {
     syncScheduleShopsError.value =
       error instanceof Error ? error.message : '无法读取可选店铺，请稍后重试。'
   }
+}
+
+async function retrySyncShops(): Promise<void> {
+  if (!orderSyncEnabled.value || syncSettingsSaving.value) return
+  await loadSyncScheduleShops(++syncScheduleRequestVersion)
 }
 
 async function saveSyncSchedule(): Promise<void> {
@@ -464,7 +480,12 @@ function clearSyncSettingsMessage(): void {
 function setOrderSyncEnabled(enabled: boolean): void {
   orderSyncEnabled.value = enabled
   if (enabled) {
-    if (syncSettingsStatus.value === 'idle' || syncSettingsStatus.value === 'error') void loadSyncSchedule()
+    if (syncSettingsStatus.value === 'idle' || syncSettingsStatus.value === 'error') {
+      void loadSyncSchedule()
+      return
+    }
+
+    if (syncScheduleShopsStatus.value === 'error') void retrySyncShops()
     return
   }
 
@@ -541,19 +562,39 @@ function clearOrderSyncPoll(): void {
     clearTimeout(orderSyncPollTimeout)
     orderSyncPollTimeout = null
   }
+  if (orderSyncDiscoveryTimeout !== null) {
+    clearTimeout(orderSyncDiscoveryTimeout)
+    orderSyncDiscoveryTimeout = null
+  }
 }
 
 function scheduleOrderSyncPoll(): void {
   clearOrderSyncPoll()
+  if (!isMounted || !orderSyncEnabled.value) return
+
   const hasVisibleRunningTask = shops.value.some(
     (shop) => orderSyncTasks.value[shop.sid]?.status === 'running',
   )
-  if (!isMounted || !orderSyncEnabled.value || !hasVisibleRunningTask) return
+  if (hasVisibleRunningTask) {
+    orderSyncPollTimeout = setTimeout(() => {
+      orderSyncPollTimeout = null
+      void pollRunningOrderSyncTasks()
+    }, orderSyncPollInterval)
+    return
+  }
 
-  orderSyncPollTimeout = setTimeout(() => {
-    orderSyncPollTimeout = null
-    void pollRunningOrderSyncTasks()
-  }, 2000)
+  // 空闲时低频发现后台新启动的定时批次，发现运行任务后再切换到 2 秒轮询。
+  if (syncSettingsStatus.value !== 'ready' || !syncScheduleEnabled.value) return
+  orderSyncDiscoveryTimeout = setTimeout(() => {
+    orderSyncDiscoveryTimeout = null
+    void discoverOrderSyncTasks()
+  }, orderSyncDiscoveryInterval)
+}
+
+async function discoverOrderSyncTasks(): Promise<void> {
+  if (!isMounted || !orderSyncEnabled.value) return
+  await Promise.all(shops.value.map((shop) => refreshOrderSyncStatus(shop.sid)))
+  scheduleOrderSyncPoll()
 }
 
 async function pollRunningOrderSyncTasks(): Promise<void> {
@@ -725,8 +766,8 @@ async function loadPage(page: number, size: number, checkConfiguration = false):
 
       const config = parseConfig(await configResponse.json())
       if (!isCurrentRequest()) return
-      setOrderSyncEnabled(config.orderSyncEnabled)
       configStatus.value = config.configured ? 'configured' : 'unconfigured'
+      setOrderSyncEnabled(config.orderSyncEnabled)
 
       if (!config.configured) {
         shopsStatus.value = 'idle'
@@ -938,13 +979,20 @@ onUnmounted(() => {
             <p v-if="syncScheduleShopsStatus === 'loading'" class="sync-settings-card__hint">
               正在读取可选店铺…
             </p>
-            <p
+            <div
               v-else-if="syncScheduleShopsStatus === 'error'"
-              class="sync-settings-card__error"
-              role="alert"
+              class="sync-settings-card__shop-error"
             >
-              {{ syncScheduleShopsError }}
-            </p>
+              <p class="sync-settings-card__error" role="alert">{{ syncScheduleShopsError }}</p>
+              <ElButton
+                text
+                size="small"
+                :disabled="syncSettingsSaving"
+                @click="retrySyncShops"
+              >
+                重试
+              </ElButton>
+            </div>
           </div>
         </div>
 
@@ -1244,6 +1292,13 @@ onUnmounted(() => {
   display: flex;
   margin-inline-start: -8px;
   flex-wrap: wrap;
+}
+
+.sync-settings-card__shop-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .sync-settings-card__hint,

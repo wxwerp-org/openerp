@@ -104,6 +104,45 @@ public sealed class OrderSyncSettingsPostgresTests(AspireIntegrationFixture fixt
         Assert.False(final.Enabled);
         Assert.Equal([30, 31, 644928], final.ShopSids);
 
+        // When 关闭并清空店铺。
+        var cleared = await new OrderSyncSettingsStore(reloadedDb).SaveAsync(false, [], cancellationToken);
+        if (cleared.IsErr)
+            throw new XunitException(cleared.Error.Message);
+
+        // Then 空数组也能原子替换，仍然只有一行。
+        Assert.Empty(cleared.Value.ShopSids);
+        var clearedReload = await new OrderSyncSettingsStore(reloadedDb).GetAsync(cancellationToken);
+        Assert.Empty(clearedReload.ShopSids);
+
+        await using var connection = new NpgsqlConnection(_testConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var count = new NpgsqlCommand("""SELECT count(*) FROM "OrderSyncSettings" """, connection);
+        Assert.Equal(1L, Assert.IsType<long>(await count.ExecuteScalarAsync(cancellationToken)));
+    }
+
+    [Fact]
+    public async Task Concurrent_first_saves_keep_one_complete_configuration()
+    {
+        // Given 已执行迁移的数据库和两个独立上下文。
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var migrate = CreateContext();
+        await migrate.Database.MigrateAsync(cancellationToken);
+        await using var first = CreateContext();
+        await using var second = CreateContext();
+
+        // When 两个请求同时首次保存不同的启用状态和店铺。
+        var saves = await Task.WhenAll(
+            new OrderSyncSettingsStore(first).SaveAsync(true, [30], cancellationToken),
+            new OrderSyncSettingsStore(second).SaveAsync(false, [31], cancellationToken));
+
+        // Then 两个保存都成功，最终只保留其中一份完整配置，不能合并成未提交的组合。
+        Assert.All(saves, result => Assert.False(result.IsErr));
+        await using var read = CreateContext();
+        var final = await new OrderSyncSettingsStore(read).GetAsync(cancellationToken);
+        Assert.True(
+            (final.Enabled && final.ShopSids.SequenceEqual([30])) ||
+            (!final.Enabled && final.ShopSids.SequenceEqual([31])),
+            "并发保存产生了用户未提交的启用状态与店铺组合。");
         await using var connection = new NpgsqlConnection(_testConnectionString);
         await connection.OpenAsync(cancellationToken);
         await using var count = new NpgsqlCommand("""SELECT count(*) FROM "OrderSyncSettings" """, connection);
