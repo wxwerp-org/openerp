@@ -1,11 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
-import { adminPassword, signInForWorkspace } from './authentication'
-
-// eslint-disable-next-line playwright/no-skipped-test -- 真实会话用例由隔离宿主提供初始密码。
-test.skip(!adminPassword, '设置 OPENERP_TEST_ADMIN_PASSWORD 以使用真实管理员会话。')
+import { enterWorkspace } from './authentication'
 
 test.beforeEach(async ({ page }) => {
-  await signInForWorkspace(page.request)
+  await enterWorkspace(page)
 })
 
 async function mockShops(page: Page, count = 1): Promise<void> {
