@@ -51,7 +51,7 @@ test('Given 多平台配置 When 选择店铺设置并打开账户弹窗 Then �
   await expect(page.locator('#profileLayer')).toBeVisible()
   await expect(page.locator('#profileName')).toBeFocused()
   await page.keyboard.press('Escape')
-  await expect(page.locator('#profileLayer')).not.toBeVisible()
+  await expect(page.locator('#profileLayer')).toBeHidden()
   await expect(page.locator('.account-button')).toBeFocused()
 
   await page.locator('.account-button').click()
