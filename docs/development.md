@@ -209,4 +209,4 @@ PostgreSQL `18-alpine` 和 Redis `8-alpine` 使用浮动大版本标签，小版
 
 [后端工作流](../.github/workflows/ci-backend.yml) 对 PR 执行完整 `OpenERP.slnx` C# 测试，不按测试类别过滤；它另行还原和构建真实 wxw 分页验收项目，但不会在 PR 中调用真实 wxw。容器运行时、开发证书、资源启动和清理均属于后端集成测试的必要条件。
 
-[前端工作流](../.github/workflows/ci-web.yml) 执行 ESLint、类型检查、Vitest 单元测试和生产构建。[Playwright 工作流](../.github/workflows/playwright.yml) 独立运行浏览器 E2E；PR 使用受控 wxw 替身，手动派发可选择真实 wxw 验收。项目、命令、测试范围和报告说明见[测试说明](../tests/README.md)。
+[前端工作流](../.github/workflows/ci-web.yml) 执行 ESLint、类型检查、Vitest 单元测试和生产构建。[Playwright 工作流](../.github/workflows/playwright.yml) 仅手动派发运行浏览器 E2E，默认使用 wxw 替身，也可选择受控真实 wxw；不随 PR 自动运行。项目、命令、测试范围和报告说明见[测试说明](../tests/README.md)。
