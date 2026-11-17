@@ -1,4 +1,4 @@
-export type WorkspacePageId = 'dashboard' | 'newdev' | 'product' | 'orders' | 'business' | 'users'
+export type WorkspacePageId = 'dashboard' | 'newdev' | 'product' | 'orders' | 'business' | 'users' | 'order-report'
 
 export type WorkspacePage = {
   id: WorkspacePageId
@@ -11,6 +11,7 @@ export const workspacePages: WorkspacePage[] = [
   { id: 'newdev', label: '新品开发', path: '/newdev' },
   { id: 'product', label: '产品管理', path: '/products' },
   { id: 'orders', label: '订单列表', path: '/orders' },
+  { id: 'order-report', label: '商品量报表', path: '/reports/orders' },
   { id: 'business', label: '业务配置', path: '/settings' },
   { id: 'users', label: '用户管理', path: '/users' },
 ]

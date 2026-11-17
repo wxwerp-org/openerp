@@ -548,6 +548,12 @@
         "resolved": "10.0.14",
         "contentHash": "lVqovhCt3HlZe7ONG5ydaj6BYwYI004gldVfMMkJl/lR5ueeCtWNpW4nejOX75sPmzm8vXCxB69GqwHaYCnyUQ=="
       },
+      "openerp.core": {
+        "type": "Project",
+        "dependencies": {
+          "RokyZevon.OpResult": "[0.3.0, )"
+        }
+      },
       "openerp.servicedefaults": {
         "type": "Project",
         "dependencies": {
