@@ -15,7 +15,6 @@ jobs:
     timeout-minutes: 90
     env:
       DOTNET_VERSION: 10.0.404
-      DOTNET_INSTALL_DIR: ${{ runner.temp }}/openerp-dotnet
       ASPIRE_VERSION: 13.6.5
       PNPM_VERSION: 11.16.0
       IMAGE_NAME: openerp:ci-${{ github.run_id }}-${{ github.run_attempt }}
@@ -26,6 +25,7 @@ jobs:
       - name: 准备验收产物目录
         run: |
           echo "ARTIFACTS_DIR=$RUNNER_TEMP/openerp-container-ci" >> "$GITHUB_ENV"
+          echo "DOTNET_INSTALL_DIR=$RUNNER_TEMP/openerp-dotnet" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/openerp-container-ci"
 
       - name: 安装 .NET SDK
