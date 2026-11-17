@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
@@ -15,6 +17,13 @@ public sealed class AspireIntegrationCollection : ICollectionFixture<AspireInteg
 
 public sealed class AspireIntegrationFixture : IAsyncLifetime
 {
+    public AspireIntegrationFixture() : this(initializeAdmin: true)
+    {
+    }
+
+    internal AspireIntegrationFixture(bool initializeAdmin) => _initializeAdmin = initializeAdmin;
+
+    private readonly bool _initializeAdmin;
     private const string StorageName = "seaweedfs";
     private readonly string _volumeName = $"openerp-test-seaweedfs-{Guid.NewGuid():N}";
     private DirectoryInfo? _testSecretsDirectory;
@@ -35,7 +44,6 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
             [
                 "--NO_PROXY=localhost,127.0.0.1,::1",
                 "--Parameters:wxw-erp-access-token=",
-                $"--Parameters:admin-initial-password={AdminPassword}",
                 $"--Parameters:postgres-password={Convert.ToHexString(RandomNumberGenerator.GetBytes(24))}",
                 $"--Parameters:seaweedfs-secretKey={Convert.ToHexString(RandomNumberGenerator.GetBytes(24))}",
                 $"--ASPIRE_USER_SECRETS_ID={_volumeName}",
@@ -79,6 +87,14 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
 #pragma warning restore ASPIRECONTAINERRUNTIME001
         await _app.StartAsync(timeout.Token);
         await _app.ResourceNotifications.WaitForResourceHealthyAsync("api", timeout.Token);
+        if (_initializeAdmin)
+        {
+            using var client = CreateApiClient();
+            await AuthenticationIntegrationTests.RefreshCsrfAsync(client, timeout.Token);
+            using var response = await client.PostAsJsonAsync("/api/auth/initialize",
+                new { newPassword = AdminPassword }, timeout.Token);
+            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        }
     }
 
     public HttpClient CreateApiClient()
@@ -88,6 +104,27 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
             BaseAddress = ApiEndpoint,
             Timeout = TimeSpan.FromMinutes(3)
         };
+    }
+
+    internal async Task<IReadOnlyList<string>> GetApiLogLinesAsync(string marker, CancellationToken ct)
+    {
+        var logger = _app!.Services.GetRequiredService<ResourceLoggerService>();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        var api = await _app.ResourceNotifications.WaitForResourceHealthyAsync("api", timeout.Token);
+        await foreach (var batch in logger.WatchAsync(api.ResourceId).WithCancellation(timeout.Token))
+        {
+            if (batch.Any(line => line.Content.Contains(marker, StringComparison.Ordinal)))
+                break;
+        }
+
+        var matches = new List<string>();
+        await foreach (var batch in logger.GetAllAsync(api.ResourceId).WithCancellation(timeout.Token))
+        {
+            matches.AddRange(batch.Select(line => line.Content).Where(line => line.Contains(marker, StringComparison.Ordinal)));
+        }
+
+        return matches;
     }
 
     internal async Task<string> GetPostgresConnectionStringAsync(CancellationToken cancellationToken) =>

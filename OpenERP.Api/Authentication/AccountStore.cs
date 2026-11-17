@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using OpResult;
 
 namespace OpenERP.Api.Authentication;
 
@@ -11,27 +10,45 @@ internal sealed class AccountStore(
     IPasswordHasher<AdminAccount> passwords,
     TimeProvider clock)
 {
-    internal const string InitialPasswordKey = "Authentication:InitialPassword";
     internal static readonly TimeSpan SessionLifetime = TimeSpan.FromHours(24);
 
     internal static bool IsValidPassword(string? password) => password is { Length: >= 6 and <= 20 };
 
-    internal async Task<OpResult.OpResult> SeedAsync(string? initialPassword, CancellationToken ct)
+    internal async Task SeedAsync(CancellationToken ct)
     {
-        if (await db.AdminAccounts.AnyAsync(ct))
-            return OpResults.Ok();
-
-        if (!IsValidPassword(initialPassword))
-            return OpResults.Err($"首次启动请配置 {InitialPasswordKey}（环境变量 Authentication__InitialPassword），密码长度须为 6–20 个字符。");
-
         var admin = new AdminAccount();
-        var hash = passwords.HashPassword(admin, initialPassword!);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO "AdminAccounts" ("Id", "Name", "PasswordHash", "MustChangePassword")
-            VALUES ({admin.Id}, {admin.Name}, {hash}, TRUE)
+        await using var write = CreateWriteContext();
+        await write.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "AdminAccounts" ("Id", "Name", "PasswordHash")
+            VALUES ({admin.Id}, {admin.Name}, NULL)
             ON CONFLICT ("Id") DO NOTHING
             """, ct);
-        return OpResults.Ok();
+    }
+
+    internal async Task<bool> IsInitializedAsync(CancellationToken ct) =>
+        await db.AdminAccounts.Where(admin => admin.Id == AdminAccount.SingletonId)
+            .Select(admin => (bool?)(admin.PasswordHash != null)).SingleOrDefaultAsync(ct)
+        ?? throw new AccountStoreUnavailableException();
+
+    internal async Task<bool> InitializeAsync(string newPassword, CancellationToken ct)
+    {
+        if (await IsInitializedAsync(ct))
+            return false;
+
+        var hash = passwords.HashPassword(new AdminAccount(), newPassword);
+        await using var write = CreateWriteContext();
+        // UPDATE 与登录和 CLI 重置争用同一行，等待后由 PostgreSQL 重新判定 NULL 条件。
+        var updated = await write.AdminAccounts
+            .Where(admin => admin.Id == AdminAccount.SingletonId && admin.PasswordHash == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(admin => admin.PasswordHash, hash), ct);
+        if (updated == 1)
+            return true;
+
+        // 区分另一个请求已经初始化和运行中的数据库丢失管理员行。
+        if (!await IsInitializedAsync(ct))
+            throw new AccountStoreUnavailableException();
+
+        return false;
     }
 
     internal async Task<AdminSession?> LoginAsync(string? username, string? password, CancellationToken ct)
@@ -43,7 +60,10 @@ internal sealed class AccountStore(
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var admin = await LockAdminAsync(write, ct);
         if (admin is null)
-            throw new InvalidOperationException("未找到管理员账号，请检查数据库初始化。");
+            throw new AccountStoreUnavailableException();
+
+        if (admin.PasswordHash is null)
+            return null;
 
         var verification = passwords.VerifyHashedPassword(admin, admin.PasswordHash, password!);
         if (verification == PasswordVerificationResult.Failed)
@@ -66,10 +86,13 @@ internal sealed class AccountStore(
 
     internal Task<AdminSession?> FindSessionAsync(Guid id, CancellationToken ct) =>
         db.AdminSessions.AsNoTracking().Include(session => session.Admin)
-            .SingleOrDefaultAsync(session => session.Id == id && session.ExpiresAt > clock.GetUtcNow(), ct);
+            .SingleOrDefaultAsync(session => session.Id == id && session.ExpiresAt > clock.GetUtcNow() && session.Admin.PasswordHash != null, ct);
 
-    internal Task RevokeAsync(Guid id, CancellationToken ct) =>
-        db.AdminSessions.Where(session => session.Id == id).ExecuteDeleteAsync(ct);
+    internal async Task RevokeAsync(Guid id, CancellationToken ct)
+    {
+        await using var write = CreateWriteContext();
+        await write.AdminSessions.Where(session => session.Id == id).ExecuteDeleteAsync(ct);
+    }
 
     internal async Task<PasswordChangeResult> ChangePasswordAsync(
         Guid sessionId, string? oldPassword, string newPassword, CancellationToken ct)
@@ -77,19 +100,17 @@ internal sealed class AccountStore(
         await using var write = CreateWriteContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var admin = await LockAdminAsync(write, ct);
+        if (admin is null)
+            throw new AccountStoreUnavailableException();
+
         // 认证中间件与持锁之间，改密或重置可能已撤销本次会话。
-        if (admin is null || !await write.AdminSessions.AnyAsync(
+        if (admin.PasswordHash is null || !await write.AdminSessions.AnyAsync(
                 session => session.Id == sessionId && session.ExpiresAt > clock.GetUtcNow(), ct))
             return PasswordChangeResult.SessionExpired;
 
-        // 首次设置由已验证的受限会话授权；普通改密仍须再次验证原密码。
-        if (!admin.MustChangePassword && (!IsValidPassword(oldPassword) ||
-            passwords.VerifyHashedPassword(admin, admin.PasswordHash, oldPassword!) == PasswordVerificationResult.Failed))
+        if (!IsValidPassword(oldPassword) ||
+            passwords.VerifyHashedPassword(admin, admin.PasswordHash, oldPassword!) == PasswordVerificationResult.Failed)
             return PasswordChangeResult.InvalidPassword;
-
-        if (admin.MustChangePassword &&
-            passwords.VerifyHashedPassword(admin, admin.PasswordHash, newPassword) != PasswordVerificationResult.Failed)
-            return PasswordChangeResult.MustUseDifferentPassword;
 
         await ReplacePasswordAsync(write, admin, newPassword, ct);
         await transaction.CommitAsync(ct);
@@ -115,9 +136,12 @@ internal sealed class AccountStore(
         await using var write = CreateWriteContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var admin = await LockAdminAsync(write, ct);
+        if (admin is null)
+            throw new AccountStoreUnavailableException();
+
         var session = await write.AdminSessions.SingleOrDefaultAsync(
             session => session.Id == sessionId && session.ExpiresAt > clock.GetUtcNow(), ct);
-        if (admin is null || session is null)
+        if (admin.PasswordHash is null || session is null)
             return null;
 
         admin.Name = name;
@@ -149,7 +173,6 @@ internal sealed class AccountStore(
     private async Task ReplacePasswordAsync(AppDbContext write, AdminAccount admin, string newPassword, CancellationToken ct)
     {
         admin.PasswordHash = passwords.HashPassword(admin, newPassword);
-        admin.MustChangePassword = false;
         await write.SaveChangesAsync(ct);
         await write.AdminSessions.Where(session => session.AdminId == admin.Id).ExecuteDeleteAsync(ct);
     }
@@ -159,6 +182,8 @@ internal enum PasswordChangeResult
 {
     Changed,
     InvalidPassword,
-    SessionExpired,
-    MustUseDifferentPassword
+    SessionExpired
 }
+
+internal sealed class AccountStoreUnavailableException(Exception? innerException = null)
+    : Exception("管理员认证存储不可用。", innerException);

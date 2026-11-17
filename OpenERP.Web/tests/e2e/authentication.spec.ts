@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { expect, test, type Page } from '@playwright/test'
 import { adminPassword, csrfHeaders, signInForWorkspace, signInWithApi } from './authentication'
 
-// eslint-disable-next-line playwright/no-skipped-test -- 真实会话用例由隔离宿主提供初始密码。
+// eslint-disable-next-line playwright/no-skipped-test -- 真实会话用例使用隔离宿主和测试设置的密码。
 test.skip(!adminPassword, '设置 OPENERP_TEST_ADMIN_PASSWORD 以使用真实管理员会话。')
 
 async function restorePassword(page: Page, newPassword: string): Promise<number> {
@@ -24,48 +24,59 @@ async function submitLogin(page: Page, password: string): Promise<void> {
   await page.getByRole('button', { name: '登录', exact: true }).click()
 }
 
-test('Given 新数据库中的临时管理员 When 首次登录后刷新和访问业务页 Then 仅填写并确认新密码再登录才能进入工作台', async ({ page, browser, baseURL }, testInfo) => {
+test('Given 全新数据库尚未初始化 When 浏览器设置管理员密码 Then 重新登录后返回原地址且其他页签转到登录', async ({ page, browser, baseURL }, testInfo) => {
   const secondDevice = await browser.newContext({ baseURL })
-  const newPassword = ` ${randomBytes(6).toString('hex')} `
-  let restore = async () => 204
   try {
-    const temporaryLogin = await signInWithApi(secondDevice.request)
-    expect(temporaryLogin.status()).toBe(200)
-    expect((await temporaryLogin.json()).mustChangePassword).toBe(true)
-    await page.goto('/users?first=1')
-    await submitLogin(page, adminPassword)
-    await expect(page.getByRole('heading', { name: '首次登录须修改密码' })).toBeVisible()
+    const status = await page.request.get('/api/auth/status')
+    await expect(status).toBeOK()
+    expect(status.headers()['cache-control']).toContain('no-store')
+    expect(await status.json()).toEqual({ initialized: false })
+
+    const blocked = await page.request.get('/api/ping')
+    expect(blocked.status()).toBe(409)
+    expect((await blocked.json()).code).toBe('initialization_required')
+    const preInitializationLogin = await signInWithApi(secondDevice.request)
+    expect(preInitializationLogin.status()).toBe(409)
+    expect((await preInitializationLogin.json()).code).toBe('initialization_required')
+
+    const secondPage = await secondDevice.newPage()
+    await secondPage.goto('/orders')
+    await expect(secondPage.getByRole('heading', { name: '初始化 OpenERP' })).toBeVisible()
+
+    await page.goto('/users?first=1#main')
+    await expect(page).toHaveURL(/\/initialize\?returnTo=/)
+    await expect(page.getByRole('heading', { name: '初始化 OpenERP' })).toBeVisible()
     await expect(page.locator('.sidebar')).toHaveCount(0)
+    await expect(page.getByLabel('用户名')).toHaveValue('admin')
+    await expect(page.getByLabel('用户名')).not.toBeEditable()
     await expect(page.getByLabel('原密码')).toHaveCount(0)
-    await page.screenshot({ path: testInfo.outputPath('required-password-change.png') })
+    await page.screenshot({ path: testInfo.outputPath('initialize.png') })
 
     await page.reload()
-    await expect(page.getByRole('heading', { name: '首次登录须修改密码' })).toBeVisible()
-    await page.goto('/users?first=1')
-    await expect(page).toHaveURL(/\/change-password\?returnTo=/)
-    const blocked = await page.request.get('/api/ping')
-    expect(blocked.status()).toBe(403)
-    expect((await blocked.json()).code).toBe('password_change_required')
-
-    await expect(page.getByLabel('原密码')).toHaveCount(0)
-    await page.locator('#newPassword').fill(newPassword)
-    await page.locator('#confirmPassword').fill(newPassword)
-    restore = () => restorePassword(page, newPassword)
-    await page.getByRole('button', { name: '确认修改' }).click()
+    await expect(page.getByRole('heading', { name: '初始化 OpenERP' })).toBeVisible()
+    await page.getByLabel('新密码', { exact: true }).fill(adminPassword)
+    await page.getByLabel('确认新密码').fill(adminPassword)
+    await page.getByRole('button', { name: '设置管理员密码' }).click()
     await expect(page.getByRole('heading', { name: '登录 OpenERP' })).toBeVisible()
+    await expect(page.getByRole('status')).toHaveText('管理员密码初始化成功，请登录。')
+    await page.screenshot({ path: testInfo.outputPath('initialized-login.png') })
     expect((await page.request.get('/api/auth/me')).status()).toBe(401)
-    expect((await secondDevice.request.get('/api/auth/me')).status()).toBe(401)
-    expect((await signInWithApi(secondDevice.request)).status()).toBe(401)
 
-    await submitLogin(page, newPassword)
-    await expect(page).toHaveURL(/\/users\?first=1$/)
+    const duplicate = await secondDevice.request.post('/api/auth/initialize', {
+      headers: await csrfHeaders(secondDevice.request),
+      data: { newPassword: 'another-password' },
+    })
+    expect(duplicate.status()).toBe(409)
+    expect((await duplicate.json()).code).toBe('already_initialized')
+    await secondPage.evaluate(() => window.dispatchEvent(new Event('focus')))
+    await expect(secondPage.getByRole('heading', { name: '登录 OpenERP' })).toBeVisible()
+    await expect(secondPage.getByRole('status')).toHaveText('管理员账号已初始化，请登录。')
+
+    await submitLogin(page, adminPassword)
+    await expect(page).toHaveURL(/\/users\?first=1#main$/)
     await expect(page.locator('.account-button')).toBeVisible()
   } finally {
-    try {
-      expect(await restore()).toBe(204)
-    } finally {
-      await secondDevice.close()
-    }
+    await secondDevice.close()
   }
 })
 

@@ -47,13 +47,7 @@ await using (var scope = app.Services.CreateAsyncScope())
     var stopping = app.Lifetime.ApplicationStopping;
     if (app.Environment.IsDevelopment())
         await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync(stopping);
-    var seed = await scope.ServiceProvider.GetRequiredService<AccountStore>()
-        .SeedAsync(app.Configuration[AccountStore.InitialPasswordKey], stopping);
-    if (seed.IsErr)
-    {
-        Console.Error.WriteLine(seed.Error.Message);
-        return 1;
-    }
+    await scope.ServiceProvider.GetRequiredService<AccountStore>().SeedAsync(stopping);
 }
 
 app.UseAccountAuthentication();

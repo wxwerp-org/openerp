@@ -7,27 +7,44 @@ export type Account = {
   email: string | null
   lastLoginAt: string | null
   expiresAt: string
-  mustChangePassword: boolean
 }
 
+export type SessionState = 'pending' | 'unavailable' | 'uninitialized' | 'anonymous' | 'authenticated'
+
 const currentAccount = ref<Account | null>(null)
-const state = ref<'pending' | 'unavailable' | 'anonymous' | 'authenticated'>('pending')
+const state = ref<SessionState>('pending')
+const initializedHere = ref(false)
+const initializing = ref(false)
 let revision = 0
-let checking: Promise<void> | undefined
+let checking: { revision: number; promise: Promise<void> } | undefined
 let csrfToken: Promise<string> | undefined
 
 export const account = readonly(currentAccount)
 export const sessionState = readonly(state)
+export const initializationCompleted = readonly(initializedHere)
+export const initializationPending = readonly(initializing)
 
-function setAccount(value: Account | null): void {
+function setAccount(value: Account | null, emptyState: 'anonymous' | 'uninitialized' = 'anonymous'): void {
   currentAccount.value = value
-  state.value = value ? 'authenticated' : 'anonymous'
+  state.value = value ? 'authenticated' : emptyState
 }
 
-function changeSession(value: Account | null): void {
+function changeSession(value: Account | null, emptyState: 'anonymous' | 'uninitialized' = 'anonymous'): void {
   revision++
   csrfToken = undefined
-  setAccount(value)
+  initializedHere.value = false
+  setAccount(value, emptyState)
+}
+
+function setUninitialized(): void {
+  if (state.value === 'anonymous' || state.value === 'authenticated') changeSession(null, 'uninitialized')
+  else setAccount(null, 'uninitialized')
+}
+
+async function initializationRequired(response: Response): Promise<boolean> {
+  if (response.status !== 409) return false
+  const problem = await response.clone().json().catch(() => null)
+  return problem?.code === 'initialization_required'
 }
 
 async function responseError(response: Response, fallback: string): Promise<string> {
@@ -68,40 +85,58 @@ export async function apiRequest(path: string, init: RequestInit = {}): Promise<
   if (requestRevision !== revision) return response
   if (path !== '/api/auth/login' && response.status === 401) {
     changeSession(null)
-  } else if (response.status === 403 && currentAccount.value && !currentAccount.value.mustChangePassword) {
-    const problem = await response.clone().json().catch(() => null)
-    if (requestRevision === revision && currentAccount.value && problem?.code === 'password_change_required') {
-      setAccount({ ...currentAccount.value, mustChangePassword: true })
-    }
   } else if (tokenRequest && response.status === 400 && csrfToken === tokenRequest) {
     // 防伪校验也返回 400，用户下次提交时重新取令牌。
     csrfToken = undefined
+  } else if (response.status === 409 && await initializationRequired(response) && requestRevision === revision) {
+    changeSession(null, 'uninitialized')
   }
   return response
 }
 
 export function checkSession(): Promise<void> {
-  if (checking) return checking
+  if (checking?.revision === revision) return checking.promise
 
   const snapshot = currentAccount.value
   const checkRevision = revision
-  if (!snapshot) state.value = 'pending'
-  checking = (async () => {
+  if (state.value === 'unavailable') state.value = 'pending'
+  const current = () => checking?.promise === check && checkRevision === revision && currentAccount.value === snapshot
+  const check = Promise.resolve().then(async () => {
     try {
-      const response = await apiRequest('/api/auth/me', { cache: 'no-store' })
-      if (checkRevision !== revision || currentAccount.value !== snapshot) return
+      const status = await fetch('/api/auth/status', { cache: 'no-store' })
+      if (!status.ok) throw new Error('无法验证登录状态。')
+      const { initialized } = await status.json()
+      if (!current()) return
+      if (typeof initialized !== 'boolean') throw new Error('无法验证登录状态。')
+      if (!initialized) {
+        setUninitialized()
+        return
+      }
+
+      const response = await fetch('/api/auth/me', { cache: 'no-store' })
+      if (!current()) return
+      if (response.status === 401) {
+        if (snapshot) changeSession(null)
+        else setAccount(null)
+        return
+      }
+      if (await initializationRequired(response)) {
+        if (current()) setUninitialized()
+        return
+      }
       if (!response.ok) throw new Error('无法验证登录状态。')
       const session: Account = await response.json()
-      if (checkRevision !== revision || currentAccount.value !== snapshot) return
-      if (snapshot && snapshot.expiresAt !== session.expiresAt) changeSession(session)
+      if (!current()) return
+      if (snapshot?.expiresAt !== session.expiresAt) changeSession(session)
       else setAccount(session)
     } catch {
-      if (checkRevision === revision && !snapshot) state.value = 'unavailable'
+      if (current() && !snapshot) state.value = 'unavailable'
     } finally {
-      checking = undefined
+      if (checking?.promise === check) checking = undefined
     }
-  })()
-  return checking
+  })
+  checking = { revision: checkRevision, promise: check }
+  return check
 }
 
 export function expireSession(): boolean {
@@ -119,13 +154,50 @@ function jsonRequest(method: string, body: object): RequestInit {
 }
 
 export async function login(username: string, password: string): Promise<void> {
+  const requestRevision = revision
   const response = await apiRequest('/api/auth/login', jsonRequest('POST', { username, password }))
   if (!response.ok) {
     const fallback = response.status === 401 ? '用户名或密码错误' : '登录失败，请稍后重试。'
     throw new Error(await responseError(response, fallback))
   }
-  changeSession(await response.json())
+  const session: Account = await response.json()
+  if (requestRevision !== revision) return
+  changeSession(session)
   warmCsrfToken()
+}
+
+export async function initialize(newPassword: string): Promise<void> {
+  if (state.value !== 'uninitialized' || initializing.value) return
+  initializing.value = true
+  try {
+    await submitInitialization(newPassword)
+  } finally {
+    initializing.value = false
+  }
+}
+
+async function submitInitialization(newPassword: string): Promise<void> {
+  const requestRevision = revision
+  const fallback = '初始化失败，请稍后重试。'
+  let error = fallback
+  try {
+    const response = await apiRequest('/api/auth/initialize', jsonRequest('POST', { newPassword }))
+    if (requestRevision !== revision) return
+    if (response.status === 204) {
+      changeSession(null)
+      initializedHere.value = true
+      return
+    }
+    error = await responseError(response, fallback)
+  } catch (cause) {
+    if (cause instanceof Error && !(cause instanceof TypeError)) error = cause.message
+  }
+
+  if (requestRevision !== revision) return
+  // 必须查询写入尝试之后的状态。写入前已发出的检查可能仍会返回未初始化。
+  checking = undefined
+  await checkSession()
+  if (requestRevision === revision && state.value === 'uninitialized') throw new Error(error)
 }
 
 async function accountRequest(path: string, init: RequestInit, fallback: string): Promise<Response> {
@@ -158,7 +230,7 @@ export function logout(): Promise<void> {
   return endSession('/api/auth/logout', { method: 'POST' }, '退出登录失败，请稍后重试。')
 }
 
-export function changePassword(fields: { oldPassword?: string; newPassword: string }): Promise<void> {
+export function changePassword(fields: { oldPassword: string; newPassword: string }): Promise<void> {
   return endSession(
     '/api/auth/change-password',
     jsonRequest('POST', fields),

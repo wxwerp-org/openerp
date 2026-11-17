@@ -67,7 +67,7 @@ pnpm --dir OpenERP.Web test:e2e
 OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class '*BrowserAcceptanceTests'
 ```
 
-该入口创建测试专用数据库和管理员，启动 HTTPS 前端，将实际端点及测试密码通过环境传给 Playwright，并串行运行浏览器用例；完成后由 Aspire 测试夹具清理测试资源。它先通过 .NET 严格校验前端证书，再将该证书的公钥临时提供给 Node 客户端，不跳过证书校验；临时文件在结束后删除。独立运行 Playwright 时，Node 如不识别本机开发证书，需用 `NODE_EXTRA_CA_CERTS` 指定对应的公开 PEM 证书。不设置开关时，此浏览器入口明确跳过，不计作浏览器验收通过。
+该入口创建测试专用数据库，从未初始化状态启动 HTTPS 前端，将实际端点及本次测试要设置的密码通过环境传给 Playwright，并串行运行浏览器用例；测试密码不会注入 API 作为预置密码。初始化用例保存设置页和设置成功后的登录页截图，完成后由 Aspire 测试夹具清理测试资源。它先通过 .NET 严格校验前端证书，再将该证书的公钥临时提供给 Node 客户端，不跳过证书校验；临时文件在结束后删除。独立运行 Playwright 时，Node 如不识别本机开发证书，需用 `NODE_EXTRA_CA_CERTS` 指定对应的公开 PEM 证书。不设置开关时，此浏览器入口明确跳过，不计作浏览器验收通过。
 
 ### 真实 ERP 验证
 
@@ -86,15 +86,17 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 ### 初始化与密码重置
 
-AppHost 在未配置 `Parameters:admin-initial-password` 时自动生成 16 位随机临时密码，并持久化到 User Secrets，再通过 `Authentication__InitialPassword` 注入 API。可在 Aspire Dashboard 的 `api` 资源详情中查看该环境变量；不会输出到应用日志或提交到仓库。已有显式 Secret 时沿用原值。
+新部署启动后只有未初始化的管理员占位账户，不生成或保存预置密码。部署完成后立即打开应用 HTTPS 地址，在「设置管理员密码」页输入并确认密码，然后使用固定用户名 `admin` 登录。密码长度为 6–20 个字符，不自动去除首尾空白。AppHost 与直接运行的 API 均不需要初始密码配置。
 
-新建管理员带有持久化的首次改密标记。使用临时密码登录后进入 Web 强制改密页，设置一个不同的新密码并重新登录后才能使用业务。重启不会清除此标记或覆盖数据库密码；升级前已有账户的标记默认为关闭，不影响原登录方式。
+初始化状态以数据库中 `PasswordHash` 是否为 `NULL` 区分。启动只在管理员行缺失时创建占位行，重复启动不覆盖已有密码或资料。初始化通过数据库条件更新完成，并发只能一方成功；后续提交不会覆盖密码。初始化不签发会话，也不更新最近登录时间。
 
-直接运行 API 时仍需通过进程配置提供 `Authentication__InitialPassword`（6–20 个字符，不自动去除首尾空白）。首次创建缺少或不合法时报告配置错误并非零退出，不抛出未处理异常。管理员已存在时跳过初始化，不覆盖密码或资料，也不再要求该配置。
+升级迁移保留全部存量密码、资料及会话，包括旧的首次改密账户。首次改密限制取消，原受限会话也能正常访问业务，仍按原时间到期。初始化成功记录 UTC 时间、连接来源 IP 和 User-Agent，不记录密码，不新增审计表。反向代理环境下连接来源可能是代理地址；此日志不直接信任任意客户端转发头。
 
-Development 环境先应用 EF Core 迁移，再初始化账户；其他环境须由运维预先应用迁移。本功能不改变生产迁移和部署流程。
+初始化入口匿名开放，CSRF 校验不是部署者身份凭证。公网可达时第一个完成设置的人将成为管理员，因此部署输出应直接给出应用地址，并提示部署完成后立即初始化。全新实例被抢占且尚无业务数据时可重新部署；已有数据时通过命令行重置恢复，不删除数据库或数据卷。
 
-忘记密码时，在已配置目标数据库连接的 API 运行环境执行 `reset-admin-password` 命令。该命令只连接数据库更新已有管理员，不启动 HTTP 服务、订单任务或存储服务，不迁移数据库，不创建缺失账户。交互模式隐藏输入并要求确认；自动化通过显式 `--stdin` 从标准输入提供密码，不接受明文密码命令行参数。命令失败返回非零退出码；不要通过修改 seed Secret、清空数据库或删除数据卷来重置密码。
+Development 环境先应用 EF Core 迁移，再准备管理员占位账户；其他环境仍须由运维预先应用迁移。本次迁移删除旧的首次改密字段，升级时应停止旧 API、应用迁移，再启动新版本，不能让旧 API 继续访问新结构。若数据库仍有未初始化的 `NULL` 密码占位行，向下迁移恢复 `NOT NULL` 会被拒绝，不会自动填入替代密码。
+
+忘记密码时，在已配置目标数据库连接的 API 运行环境执行 `reset-admin-password` 命令。该命令只连接数据库更新已有管理员，不启动 HTTP 服务、订单任务或存储服务，不迁移数据库，不创建缺失账户。已有未初始化占位账户时，命令设置最终密码并完成初始化，此后网页初始化会被拒绝。交互模式隐藏输入并要求确认；自动化通过显式 `--stdin` 从标准输入提供密码，不接受明文密码命令行参数。命令失败返回非零退出码；不要清空数据库或删除数据卷来重置密码。
 
 例如，构建后从仓库根目录执行以下命令；发布环境将 DLL 路径替换为实际发布路径。进程配置须包含目标数据库的 `ConnectionStrings__openerp`，它不会自动继承另一个 Aspire 进程中的环境变量。
 
@@ -106,24 +108,26 @@ dotnet OpenERP.Api/bin/Debug/net10.0/OpenERP.Api.dll reset-admin-password
 
 ### 会话规则与接口
 
-每次登录建立独立的 24 小时会话，不滑动续期，浏览器关闭或 API 重启不会提前撤销有效会话。普通退出只撤销当前会话；网页修改密码和命令行重置会撤销所有会话，所有设备需重新登录。首次设置凭已验证的受限会话完成，只需填写新密码和确认密码；以后主动改密必须提供旧密码。首次改密完成后清除限制；命令行重置直接设置最终密码。已受理的订单同步继续执行。
+每次登录建立独立的 24 小时会话，不滑动续期，浏览器关闭或 API 重启不会提前撤销有效会话。普通退出只撤销当前会话；网页修改密码和命令行重置会撤销所有会话，所有设备需重新登录。网页修改密码必须提供旧密码；命令行重置直接设置最终密码。已受理的订单同步继续执行。
 
 Cookie 使用 `Secure`、`HttpOnly`、`SameSite=Lax`，必须通过 HTTPS 访问。会话和 Data Protection 密钥存储于 PostgreSQL；数据库不可用时返回服务错误，不将故障视为退出登录。
 
 | 接口 | 用途 |
 | --- | --- |
 | `GET /api/auth/csrf` | 匿名获取 `{ requestToken }` |
+| `GET /api/auth/status` | 匿名查询 `{ initialized }`，响应禁止缓存 |
+| `POST /api/auth/initialize` | 未初始化时提交 `{ newPassword }` 设置管理员密码，成功后正常登录 |
 | `POST /api/auth/login` | 提交 `{ username, password }` 登录 |
 | `GET /api/auth/me` | 查询当前账户及会话到期时间 |
 | `POST /api/auth/logout` | 撤销当前会话 |
-| `POST /api/auth/change-password` | 首次设置提交 `{ newPassword }`；普通改密提交 `{ oldPassword, newPassword }`。服务端根据账户状态及有效会话判断 |
+| `POST /api/auth/change-password` | 提交 `{ oldPassword, newPassword }` 修改密码 |
 | `PUT /api/account/profile` | 提交 `{ name, phone, email }` 保存资料 |
 
-业务 API（包括 `/api/ping`、ERP 和文件）默认需要登录，健康检查保持匿名。所有写请求（包括登录、退出和文件上传）均须携带 `X-CSRF-TOKEN` 请求头及对应 Cookie。客户端先请求 CSRF 令牌，登录成功后再获取绑定当前身份的新令牌；身份变化后不能沿用旧令牌，不自动重试写请求。
+业务 API（包括 `/api/ping`、ERP 和文件）默认需要登录，健康检查保持匿名。所有写请求（包括初始化、登录、退出和文件上传）均须携带 `X-CSRF-TOKEN` 请求头及对应 Cookie。客户端先请求 CSRF 令牌，登录成功后再获取绑定当前身份的新令牌；身份变化后不能沿用旧令牌，不自动重试写请求。
 
-登录、当前账户和资料保存返回 `username`、`name`、`phone`、`email`、`lastLoginAt`、`expiresAt`、`mustChangePassword`；时间使用 ISO 8601。首次改密完成前，只允许当前账户、防伪令牌、改密、退出及匿名健康接口，业务接口和资料保存返回 `403`，ProblemDetails 顶层 `code` 为 `password_change_required`。前端据此进入强制改密页，其他 `403` 不作此处理。
+登录、当前账户和资料保存返回 `username`、`name`、`phone`、`email`、`lastLoginAt`、`expiresAt`；时间使用 ISO 8601。未初始化时登录及受保护接口返回 `409`，ProblemDetails 顶层 `code` 为 `initialization_required`；初始化重复请求或并发败者返回 `409`、`already_initialized`。前端保留安全的原目标地址，完成初始化和登录后回到该地址。
 
-退出和改密成功返回 `204`。错误使用 ProblemDetails：输入或旧密码错误为 `400`，凭证或会话失效为 `401`，数据库不可用为 `503`。
+初始化、退出和改密成功返回 `204`。错误使用 ProblemDetails：输入或旧密码错误为 `400`，凭证或会话失效为 `401`，数据库不可用或管理员记录异常缺失为 `503`。初始化请求断线或服务错误后只重新查询状态，不自动重放写请求；查询已初始化不代表刚才的请求一定是赢家，应转到登录页确认。
 
 ## ERP 接入与接口
 

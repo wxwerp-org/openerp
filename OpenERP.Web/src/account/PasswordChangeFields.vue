@@ -3,8 +3,8 @@ import { nextTick, reactive, ref, watch } from 'vue'
 import { changePassword } from './session'
 
 const props = withDefaults(
-  defineProps<{ active?: boolean; disabled?: boolean; requireOldPassword?: boolean }>(),
-  { active: true, requireOldPassword: true },
+  defineProps<{ active?: boolean }>(),
+  { active: true },
 )
 const emit = defineEmits<{ saved: [] }>()
 
@@ -26,14 +26,13 @@ watch(() => props.active, async (open) => {
   Object.assign(errors, { old: false, next: false, confirm: false })
   if (!open) return
   await nextTick()
-  const firstInput = props.requireOldPassword ? oldPasswordInput.value : newPasswordInput.value
-  firstInput?.focus()
+  oldPasswordInput.value?.focus()
 }, { immediate: true })
 
 async function save(): Promise<void> {
-  if (submitting.value || props.disabled) return
+  if (submitting.value) return
   serverError.value = ''
-  errors.old = props.requireOldPassword && !oldPassword.value
+  errors.old = !oldPassword.value
   errors.next = newPassword.value.length < 6 || newPassword.value.length > 20
   errors.confirm = !confirmPassword.value || confirmPassword.value !== newPassword.value
   if (errors.old) oldPasswordInput.value?.focus()
@@ -43,7 +42,7 @@ async function save(): Promise<void> {
   submitting.value = true
   try {
     await changePassword({
-      oldPassword: props.requireOldPassword ? oldPassword.value : undefined,
+      oldPassword: oldPassword.value,
       newPassword: newPassword.value,
     })
     emit('saved')
@@ -61,11 +60,11 @@ defineExpose({ save, submitting })
 
 <template>
   <div class="profile-form password-form">
-    <div v-if="requireOldPassword" class="form-line form-item" :class="{ 'is-error': errors.old }">
+    <div class="form-line form-item" :class="{ 'is-error': errors.old }">
       <label class="form-label" for="oldPassword"><span class="req">*</span>原密码</label>
       <div class="form-control-wrap">
         <div class="form-control">
-          <input id="oldPassword" ref="oldPasswordInput" v-model="oldPassword" type="password" required :disabled="submitting || disabled" :aria-invalid="errors.old" aria-describedby="oldPasswordError" @input="errors.old = false" placeholder="请输入原密码" autocomplete="current-password">
+          <input id="oldPassword" ref="oldPasswordInput" v-model="oldPassword" type="password" required :disabled="submitting" :aria-invalid="errors.old" aria-describedby="oldPasswordError" @input="errors.old = false" placeholder="请输入原密码" autocomplete="current-password">
         </div>
         <div id="oldPasswordError" class="form-error" role="alert">请输入原密码</div>
       </div>
@@ -74,7 +73,7 @@ defineExpose({ save, submitting })
       <label class="form-label" for="newPassword"><span class="req">*</span>新密码</label>
       <div class="form-control-wrap">
         <div class="form-control">
-          <input id="newPassword" ref="newPasswordInput" v-model="newPassword" type="password" required :disabled="submitting || disabled" :aria-invalid="errors.next" aria-describedby="newPasswordError" @input="errors.next = false" placeholder="6-20 位字符" maxlength="20" autocomplete="new-password">
+          <input id="newPassword" ref="newPasswordInput" v-model="newPassword" type="password" required :disabled="submitting" :aria-invalid="errors.next" aria-describedby="newPasswordError" @input="errors.next = false" placeholder="6-20 位字符" maxlength="20" autocomplete="new-password">
         </div>
         <div id="newPasswordError" class="form-error" role="alert">密码长度需为 6-20 位</div>
       </div>
@@ -83,7 +82,7 @@ defineExpose({ save, submitting })
       <label class="form-label" for="confirmPassword"><span class="req">*</span>确认新密码</label>
       <div class="form-control-wrap">
         <div class="form-control">
-          <input id="confirmPassword" ref="confirmPasswordInput" v-model="confirmPassword" type="password" required :disabled="submitting || disabled" :aria-invalid="errors.confirm" aria-describedby="confirmPasswordError" @input="errors.confirm = false" placeholder="请再次输入新密码" maxlength="20" autocomplete="new-password">
+          <input id="confirmPassword" ref="confirmPasswordInput" v-model="confirmPassword" type="password" required :disabled="submitting" :aria-invalid="errors.confirm" aria-describedby="confirmPasswordError" @input="errors.confirm = false" placeholder="请再次输入新密码" maxlength="20" autocomplete="new-password">
         </div>
         <div id="confirmPasswordError" class="form-error" role="alert">两次输入的密码不一致</div>
       </div>

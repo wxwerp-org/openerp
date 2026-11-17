@@ -4,14 +4,14 @@ import { START_LOCATION, useRoute, useRouter } from 'vue-router'
 import { account, checkSession, expireSession, sessionState } from './account/session'
 import AppShell from './components/layout/AppShell.vue'
 import AuthLayout from './components/layout/AuthLayout.vue'
-import { isAuthRoute, loginRoute, passwordChangeRoute, returnDestination } from './router/authRoutes'
+import { sessionRedirect } from './router/authRoutes'
 
 const router = useRouter()
 const route = useRoute()
 const routeReady = computed(() => router.currentRoute.value !== START_LOCATION)
 
 function recheckSession(): void {
-  if (account.value && !expireSession()) void checkSession()
+  if (!expireSession()) void checkSession()
 }
 
 watch(() => account.value?.expiresAt, (expiresAt, _, cleanup) => {
@@ -27,17 +27,10 @@ watch(() => account.value?.expiresAt, (expiresAt, _, cleanup) => {
   cleanup(() => window.clearTimeout(timer))
 })
 
-watch([sessionState, () => account.value?.mustChangePassword], ([state, mustChangePassword]) => {
-  if (!routeReady.value || route.name === 'login') return
-
-  if (state === 'anonymous') {
-    const destination = isAuthRoute(route.name) ? returnDestination(router, route.query.returnTo) : route.fullPath
-    void router.replace(loginRoute(destination))
-  } else if (mustChangePassword && !isAuthRoute(route.name)) {
-    void router.replace(passwordChangeRoute(route.fullPath))
-  } else if (state === 'authenticated' && !mustChangePassword && route.name === 'required-password-change') {
-    void router.replace(returnDestination(router, route.query.returnTo))
-  }
+watch(sessionState, (state) => {
+  if (!routeReady.value) return
+  const redirect = sessionRedirect(router, route, state)
+  if (redirect) void router.replace(redirect)
 })
 
 onMounted(() => window.addEventListener('focus', recheckSession))
@@ -45,8 +38,8 @@ onUnmounted(() => window.removeEventListener('focus', recheckSession))
 </script>
 
 <template>
-  <RouterView v-if="route.name === 'login' || (route.name === 'required-password-change' && account?.mustChangePassword)" />
-  <AppShell v-else-if="account && !account.mustChangePassword && routeReady" :account="account" />
+  <RouterView v-if="(route.name === 'login' && sessionState === 'anonymous') || (route.name === 'initialize' && sessionState === 'uninitialized')" />
+  <AppShell v-else-if="account && routeReady && route.name !== 'login' && route.name !== 'initialize'" :account="account" />
   <AuthLayout v-else>
     <template v-if="sessionState === 'unavailable'">
       <p role="alert">无法验证登录状态，请稍后重试。</p>
