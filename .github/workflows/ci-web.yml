@@ -1,8 +1,11 @@
-name: 前端 PR 检查
+name: 前端检查
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  # 合入 main 后对同一套前端检查再跑一次，作为主干门禁。
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +13,8 @@ permissions:
 
 concurrency:
   group: ci-web-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: true
+  # main 的推送结果不被后续提交取消；PR 与手动派发仍取消旧运行。
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   checks:
@@ -34,18 +38,25 @@ jobs:
           cache_dependency_path: OpenERP.Web/pnpm-lock.yaml
 
       - name: 安装依赖
+        id: deps
         run: pnpm --dir OpenERP.Web install --frozen-lockfile
 
+      # 任一项失败后其余检查仍执行，一轮即暴露全部问题；依赖安装失败时不继续，
+      # 避免在缺少依赖时产生级联失败。
       - name: lint
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: pnpm --dir OpenERP.Web lint
 
       - name: typecheck
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: pnpm --dir OpenERP.Web typecheck
 
       - name: 单元测试
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: pnpm --dir OpenERP.Web test
 
       - name: 生产构建
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: pnpm --dir OpenERP.Web build
 
   e2e:
@@ -55,6 +66,7 @@ jobs:
     timeout-minutes: 20
     env:
       PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ github.workspace }}/e2e-results.json
+      PLAYWRIGHT_HTML_OPEN: never
     steps:
       - name: 检出代码
         uses: actions/checkout@v7
@@ -81,7 +93,7 @@ jobs:
       # 认证用例（authentication.spec.ts）在无密码时跳过；真实会话验收由隔离宿主
       # BrowserAcceptanceTests 显式启用入口覆盖。
       - name: 运行浏览器端到端测试
-        run: pnpm --dir OpenERP.Web exec playwright test --reporter=line,json
+        run: pnpm --dir OpenERP.Web exec playwright test --reporter=line,json,github,html
 
       # 防止用例被全部跳过时仍显示成功：成功执行的用例不能为零。
       - name: 确认浏览器用例真实执行
@@ -94,6 +106,15 @@ jobs:
               process.exit(1)
             }
           '
+
+      # 失败时保留现场：HTML 报告自包含失败用例截图与 trace，下载后可本地打开。
+      - name: 上传浏览器测试报告
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ github.run_attempt }}
+          path: OpenERP.Web/playwright-report
+          retention-days: 7
 
   results:
     name: 结果汇总
@@ -111,6 +132,6 @@ jobs:
           echo "前端检查=$CHECKS"
           echo "浏览器端到端=$E2E"
           if [ "$CHECKS" != "success" ] || [ "$E2E" != "$EXPECTED_E2E" ]; then
-            echo "前端 PR 检查未通过。"
+            echo "前端检查未通过。"
             exit 1
           fi
