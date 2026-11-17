@@ -1,0 +1,126 @@
+name: Backend PR checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  backend:
+    name: Backend build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OPENERP_RUN_BROWSER_TESTS: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      TESTINGPLATFORM_TELEMETRY_OPTOUT: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: OpenERP.Web/package.json
+          cache: true
+          cache_dependency_path: OpenERP.Web/pnpm-lock.yaml
+
+      - name: Restore locked .NET dependencies
+        run: |
+          dotnet restore OpenERP.slnx --locked-mode
+          dotnet restore OpenERP.ExternalAcceptance.Tests/OpenERP.ExternalAcceptance.Tests.csproj --locked-mode
+
+      - name: Build backend
+        run: |
+          dotnet build OpenERP.slnx --no-restore
+          dotnet build OpenERP.ExternalAcceptance.Tests/OpenERP.ExternalAcceptance.Tests.csproj --no-restore
+
+      - name: Install browser dependencies
+        run: |
+          pnpm --dir OpenERP.Web install --frozen-lockfile
+          pnpm --dir OpenERP.Web exec playwright install --with-deps chromium
+
+      - name: Check container runtime
+        run: docker info
+
+      - name: Trust HTTPS development certificate
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libnss3-tools
+          mkdir -p "$HOME/.pki/nssdb"
+          certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password
+          export SSL_CERT_DIR="$HOME/.aspnet/dev-certs/trust:/usr/lib/ssl/certs"
+          dotnet dev-certs https --trust
+          dotnet dev-certs https --check --trust
+          echo "SSL_CERT_DIR=$SSL_CERT_DIR" >> "$GITHUB_ENV"
+
+      - name: Prepare fresh test results
+        id: reports
+        run: |
+          results_directory=$(mktemp -d "$RUNNER_TEMP/openerp-backend.XXXXXX")
+          echo "OPENERP_CI_RESULTS_DIR=$results_directory" >> "$GITHUB_ENV"
+          echo "directory=$results_directory" >> "$GITHUB_OUTPUT"
+
+      - name: Run all backend and real browser tests
+        id: tests
+        run: |
+          dotnet test --solution OpenERP.slnx --no-build --timeout 20m \
+            --zero-tests-policy strict --fail-skips on \
+            --report-xunit-ctrf --report-xunit-ctrf-filename backend.json \
+            --report-xunit-markdown --report-xunit-markdown-filename backend.md \
+            --results-directory "$OPENERP_CI_RESULTS_DIR"
+
+      # The native runner owns test outcomes. Reporting never clears its failure.
+      - name: Publish test summary
+        if: ${{ !cancelled() && steps.reports.outcome == 'success' }}
+        run: |
+          if [ ! -s "$OPENERP_CI_RESULTS_DIR/backend.md" ]; then
+            echo "::error::The test runner did not produce backend.md. Check the test step for startup or timeout failures."
+            exit 1
+          fi
+          cat "$OPENERP_CI_RESULTS_DIR/backend.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test reports and resource diagnostics
+        if: ${{ !cancelled() && steps.reports.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-results-${{ github.run_attempt }}
+          path: ${{ steps.reports.outputs.directory }}
+          if-no-files-found: error
+          retention-days: 7
+
+  results:
+    name: Backend results
+    if: ${{ !cancelled() }}
+    needs: [backend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require successful backend checks
+        env:
+          BACKEND: ${{ needs.backend.result }}
+        run: |
+          echo "Backend build and tests=$BACKEND"
+          test "$BACKEND" = success

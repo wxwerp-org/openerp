@@ -6,20 +6,17 @@ using OpenERP.Api.Orders;
 using Xunit;
 using Xunit.Sdk;
 
-namespace OpenERP.Api.Tests;
+namespace OpenERP.ExternalAcceptance.Tests;
 
 public sealed class OrderLiveAcceptanceTests(ITestOutputHelper output)
 {
-    public static bool ErpConfigured => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENERP_TEST_ERP_TOKEN"));
-    public static bool DatabaseConfigured => ErpConfigured &&
-        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENERP_TEST_POSTGRES"));
-
-    [Fact(Skip = "未配置真实 ERP 验收凭证。", SkipUnless = nameof(ErpConfigured))]
+    [Fact]
     public async Task Sid644928HasSameOrderIdsAndChildOwnershipAcrossPageSizes()
     {
         // Given 可读取真实历史订单的测试 Token。
+        var settings = RequireTestSettings("OPENERP_TEST_ERP_TOKEN");
         using var http = CreateHttp();
-        var erp = CreateErp(http);
+        var erp = CreateErp(http, settings["OPENERP_TEST_ERP_TOKEN"]);
         var ct = TestContext.Current.CancellationToken;
 
         // When 使用同一订单读取器按两种每页数量扫完整列表。
@@ -45,20 +42,21 @@ public sealed class OrderLiveAcceptanceTests(ITestOutputHelper output)
             output.WriteLine($"跳过 {count} 单，{reason}。");
     }
 
-    [Fact(Skip = "未配置真实 ERP 验收凭证或 PostgreSQL 连接。", SkipUnless = nameof(DatabaseConfigured))]
+    [Fact]
     public async Task Sid30StoredOrdersMatchErpDetails()
     {
         // Given 已在浏览器完成 SID 30 的两次手动同步。
+        var settings = RequireTestSettings("OPENERP_TEST_ERP_TOKEN", "OPENERP_TEST_POSTGRES");
         using var http = CreateHttp();
         var ct = TestContext.Current.CancellationToken;
-        var source = await CreateErp(http).ReadOrdersAsync(30, null, ct);
+        var source = await CreateErp(http, settings["OPENERP_TEST_ERP_TOKEN"]).ReadOrdersAsync(30, null, ct);
         if (source.IsErr)
             throw new XunitException(source.Error.Message);
         Assert.NotEmpty(source.Value.Orders);
         var acceptedIds = source.Value.Orders.Select(order => order.ErpId).ToArray();
 
         // When 直接读取 PostgreSQL 三张表中的本轮有效订单。
-        await using var db = new NpgsqlConnection(Environment.GetEnvironmentVariable("OPENERP_TEST_POSTGRES"));
+        await using var db = new NpgsqlConnection(settings["OPENERP_TEST_POSTGRES"]);
         await db.OpenAsync(ct);
         var parentRows = await QueryAsync(db, """
             SELECT "ErpId", "OrderNumber", "Sid", "Platform", "Status", "CreatedRaw", "CreatedSource", "PaidRaw", "PaidSource",
@@ -98,11 +96,20 @@ public sealed class OrderLiveAcceptanceTests(ITestOutputHelper output)
         Timeout = TimeSpan.FromSeconds(15)
     };
 
-    private static WxwErpClient CreateErp(HttpClient http) => new(http, new ConfigurationBuilder()
+    private static WxwErpClient CreateErp(HttpClient http, string token) => new(http, new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Erp:AccessToken"] = Environment.GetEnvironmentVariable("OPENERP_TEST_ERP_TOKEN")
+            ["Erp:AccessToken"] = token
         }).Build());
+
+    private static Dictionary<string, string> RequireTestSettings(params string[] names)
+    {
+        var settings = names.ToDictionary(name => name, Environment.GetEnvironmentVariable);
+        var missing = settings.Where(setting => string.IsNullOrWhiteSpace(setting.Value)).Select(setting => setting.Key);
+        var missingNames = missing.ToArray();
+        Assert.True(missingNames.Length == 0, $"缺少必需环境变量：{string.Join("、", missingNames)}。");
+        return settings.ToDictionary(setting => setting.Key, setting => setting.Value!);
+    }
 
     private static async Task<List<string>> QueryAsync(NpgsqlConnection db, string sql, string[] acceptedIds, CancellationToken ct)
     {
