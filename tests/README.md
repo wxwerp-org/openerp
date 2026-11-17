@@ -65,4 +65,4 @@ pnpm test:e2e
 
 - [`ci-backend.yml`](../.github/workflows/ci-backend.yml)：锁定还原并构建默认 solution，完整运行 C# 常规测试；另外还原、构建 Live 项目但不访问真实 wxw。通过运行器的 strict zero-tests/fail-skips 策略拒绝零用例和跳过，并保存原生 xUnit CTRF 报告。
 - [`ci-web.yml`](../.github/workflows/ci-web.yml)：执行前端 lint、typecheck、Vitest 单元测试和生产构建。
-- [`playwright.yml`](../.github/workflows/playwright.yml)：单独运行 Playwright；PR 使用 stub 模式，手动派发可选真实 wxw。原生 HTML/JSON 测试报告作为 Actions artifact 保存，工作流保留测试运行器的失败结果。
+- [`playwright.yml`](../.github/workflows/playwright.yml)：仅手动派发运行 Playwright，默认使用 wxw 替身，也可选择受控真实 wxw；不随 PR 自动运行。原生 HTML/JSON 测试报告作为 Actions artifact 保存，工作流保留测试运行器的失败结果。
