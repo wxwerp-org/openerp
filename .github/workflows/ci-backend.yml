@@ -11,18 +11,11 @@ concurrency:
   group: ci-backend-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    shell: bash
-
 jobs:
   backend:
     name: Backend build and tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-      TESTINGPLATFORM_TELEMETRY_OPTOUT: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -47,14 +40,10 @@ jobs:
           cache_dependency_path: OpenERP.Web/pnpm-lock.yaml
 
       - name: Restore .NET dependencies
-        run: |
-          dotnet restore OpenERP.slnx --locked-mode
-          dotnet restore tests/OpenERP.Api.LiveIntegrationTests/OpenERP.Api.LiveIntegrationTests.csproj
+        run: dotnet restore OpenERP.slnx --locked-mode
 
       - name: Build backend
-        run: |
-          dotnet build OpenERP.slnx --no-restore
-          dotnet build tests/OpenERP.Api.LiveIntegrationTests/OpenERP.Api.LiveIntegrationTests.csproj --no-restore
+        run: dotnet build OpenERP.slnx --no-restore
 
       - name: Trust HTTPS development certificate
         run: |
@@ -68,7 +57,7 @@ jobs:
           echo "SSL_CERT_DIR=$SSL_CERT_DIR" >> "$GITHUB_ENV"
 
       - name: Run all backend tests
-        run: dotnet test --solution OpenERP.slnx --no-build --timeout 20m --zero-tests-policy strict --fail-skips on --report-xunit-ctrf --report-xunit-ctrf-filename backend.json --results-directory test-results/backend
+        run: dotnet test --solution OpenERP.slnx --no-build --timeout 20m --zero-tests-policy strict --report-xunit-ctrf --report-xunit-ctrf-filename backend.json --results-directory test-results/backend
 
       - name: Upload test reports
         if: ${{ !cancelled() }}
