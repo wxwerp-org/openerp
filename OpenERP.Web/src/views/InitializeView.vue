@@ -90,7 +90,7 @@ async function submit(): Promise<void> {
   line-height: 20px;
   transition: border-color .15s, box-shadow .15s;
 }
-.initialize-form input:hover:not(:disabled) { border-color: #AEB9C9; }
+.initialize-form input:hover:not(:disabled):not([aria-invalid='true']) { border-color: #AEB9C9; }
 .initialize-form input:focus-visible {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
