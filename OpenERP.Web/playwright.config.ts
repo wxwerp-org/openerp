@@ -10,6 +10,9 @@ export default defineConfig({
     baseURL: externalBaseUrl ?? 'http://127.0.0.1:4173',
     browserName: 'chromium',
     viewport: { width: 1440, height: 900 },
+    // 失败时保留截图与 trace；CI 上传的 HTML 报告会包含这些现场。
+    screenshot: 'only-on-failure',
+    trace: 'retain-on-failure',
   },
   // 未指定外部地址时由 Playwright 构建并启动预览服务；真实宿主入口会传入 PLAYWRIGHT_BASE_URL。
   webServer: externalBaseUrl

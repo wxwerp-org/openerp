@@ -86,7 +86,7 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 测试使用运行器原生 `--zero-tests-policy strict` 拒绝零用例，原生 xUnit CTRF 报告保存为 `backend-results` artifact。CI 不注入真实 ERP 凭证，也不设置浏览器启用开关；两个 `OrderLiveAcceptanceTests` 和 `BrowserAcceptanceTests` 保留上述条件跳过，报告中的跳过不计作验证通过。完整后端套件包含真实容器集成测试，执行耗时不能按纯单元测试估算。
 
-[前端 PR 检查](../.github/workflows/ci-web.yml)继续自动执行 lint、类型检查、单元测试与构建；其浏览器 job 只在 `workflow_dispatch` 时执行，手动运行失败仍会传递到结果汇总。
+[前端检查](../.github/workflows/ci-web.yml)在 PR 与 `main` 推送时自动执行 lint、类型检查、单元测试与构建，四项互相独立：某项失败后其余仍会执行，一次运行即可看到全部结论。浏览器 job 只在 `workflow_dispatch` 时执行，手动运行失败仍会传递到结果汇总；失败时在运行页下载 `playwright-report-<attempt>` 产物，用 `pnpm --dir OpenERP.Web exec playwright show-report <下载的 zip>` 查看失败用例的截图与 trace。产物只在测试步骤失败时上传，运行被取消或超时会跳过该步骤，此时没有可下载的报告。
 
 ## 管理员账户与会话
 
