@@ -3,7 +3,9 @@
 // Then UI 显示成功或有效业务跳过后的部分完成，第二次不新增重复订单，数据库完整列与上游一致。
 import { expect, test, type Page } from './fixtures'
 import type { Locator } from '@playwright/test'
-import { adminPassword, signInForWorkspace } from './authentication'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { signInForWorkspace } from './authentication'
 import { expectedDatabase, testShopName } from './wxw-stub'
 
 type SyncTask = {
@@ -74,11 +76,6 @@ function hasSameMultiset<T extends object>(
   return expectedCounts.size === 0
 }
 
-function requiredControlUrl(): string {
-  const value = process.env.OPENERP_E2E_CONTROL_URL
-  if (!value) throw new Error('E2E 宿主未提供数据库验收地址。')
-  return value
-}
 
 type E2eMode = 'stub' | 'live'
 type TerminalStatus = 'succeeded' | 'partial'
@@ -186,18 +183,15 @@ async function startAndWaitForSync(
   return completed!
 }
 
-async function requestControl(page: Page, path: string): Promise<unknown> {
-  const password = adminPassword
-  if (!password) throw new Error('隔离 E2E 宿主未提供管理员密码。')
-  const response = await page.request.get(new URL(path, `${requiredControlUrl().replace(/\/$/, '')}/`).toString(), {
-    headers: { Authorization: `Bearer ${password}` },
-  })
-  expect(response.status(), `控制端点 ${path} 应返回成功`).toBe(200)
-  return response.json()
+async function readDatabase(mode: E2eMode, sid: number): Promise<unknown> {
+  const { stdout } = await promisify(execFile)('dotnet',
+    ['run', '--file', 'e2e/verify-orders.cs', '--no-build', '--', mode, String(sid)],
+    { timeout: 5 * 60_000, maxBuffer: 16 * 1024 * 1024 })
+  return JSON.parse(stdout)
 }
 
-async function verifyStubDatabase(page: Page, sid: number): Promise<void> {
-  const database = await requestControl(page, `/database?sid=${sid}`)
+async function verifyStubDatabase(sid: number): Promise<void> {
+  const database = await readDatabase('stub', sid)
   const actualOrders = rowsAt(database, 'orders')
   const actualPlatformOrders = rowsAt(database, 'platformOrders')
   const actualOrderLines = rowsAt(database, 'orderLines')
@@ -206,15 +200,15 @@ async function verifyStubDatabase(page: Page, sid: number): Promise<void> {
   expect(hasSameMultiset(actualOrderLines, expectedDatabase.orderLines, [...orderLineFields]), 'OrderLines 所有验收列必须与 wxw 来源多重集完全一致且保留重复商品行').toBe(true)
 }
 
-async function verifyLiveDatabase(page: Page, sid: number): Promise<void> {
-  const verification = await requestControl(page, `/verify?sid=${sid}`)
+async function verifyLiveDatabase(sid: number): Promise<void> {
+  const verification = await readDatabase('live', sid)
   if (!isRecord(verification)) throw new Error('真实 wxw 对账响应格式无效。')
   expect(Array.isArray(verification.errors) && verification.errors.length === 0, '真实 wxw 与数据库完整列对账必须无差异').toBe(true)
   for (const field of ['total', 'orders'])
     expect(typeof verification[field] === 'number' && verification[field] > 0, `真实 wxw 对账应返回非零 ${field} 计数`).toBe(true)
 }
 
-const verifyDatabaseByMode: Record<E2eMode, (page: Page, sid: number) => Promise<void>> = {
+const verifyDatabaseByMode: Record<E2eMode, (sid: number) => Promise<void>> = {
   stub: verifyStubDatabase,
   live: verifyLiveDatabase,
 }
@@ -268,8 +262,8 @@ test('Given wxw 店铺可访问 When 从页面连续同步两次 Then 订单全�
   const syncButton = shopRow.getByRole('button', { name: /^同步历史订单：/ })
 
   const firstTask = await startAndWaitForSync(page, sid, syncButton, shopRow, mode)
-  await verifyDatabaseByMode[mode](page, sid)
+  await verifyDatabaseByMode[mode](sid)
   const secondTask = await startAndWaitForSync(page, sid, syncButton, shopRow, mode, firstTask.id)
   assertSyncCountsByMode[mode](firstTask, secondTask)
-  await verifyDatabaseByMode[mode](page, sid)
+  await verifyDatabaseByMode[mode](sid)
 })

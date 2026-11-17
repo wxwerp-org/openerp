@@ -15,7 +15,6 @@ export default defineConfig({
     ['line'],
     ['json', { outputFile: 'test-results/results.json' }],
     ['html', { open: 'never' }],
-    ['./e2e/require-execution-reporter.ts'],
   ],
   use: {
     browserName: 'chromium',

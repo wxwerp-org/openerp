@@ -56,9 +56,6 @@ jobs:
           dotnet build OpenERP.slnx --no-restore
           dotnet build tests/OpenERP.Api.LiveIntegrationTests/OpenERP.Api.LiveIntegrationTests.csproj --no-restore
 
-      - name: Check container runtime
-        run: docker info
-
       - name: Trust HTTPS development certificate
         run: |
           sudo apt-get update
@@ -70,38 +67,15 @@ jobs:
           dotnet dev-certs https --check --trust
           echo "SSL_CERT_DIR=$SSL_CERT_DIR" >> "$GITHUB_ENV"
 
-      - name: Prepare fresh test results
-        id: reports
-        run: |
-          results_directory=$(mktemp -d "$RUNNER_TEMP/openerp-backend.XXXXXX")
-          echo "OPENERP_CI_RESULTS_DIR=$results_directory" >> "$GITHUB_ENV"
-          echo "directory=$results_directory" >> "$GITHUB_OUTPUT"
-
       - name: Run all backend tests
-        id: tests
-        run: |
-          dotnet test --solution OpenERP.slnx --no-build --timeout 20m \
-            --zero-tests-policy strict --fail-skips on \
-            --report-xunit-ctrf --report-xunit-ctrf-filename backend.json \
-            --report-xunit-markdown --report-xunit-markdown-filename backend.md \
-            --results-directory "$OPENERP_CI_RESULTS_DIR"
+        run: dotnet test --solution OpenERP.slnx --no-build --timeout 20m --zero-tests-policy strict --fail-skips on --report-xunit-ctrf --report-xunit-ctrf-filename backend.json --results-directory test-results/backend
 
-      # The native runner owns test outcomes. Reporting never clears its failure.
-      - name: Publish test summary
-        if: ${{ !cancelled() && steps.reports.outcome == 'success' }}
-        run: |
-          if [ ! -s "$OPENERP_CI_RESULTS_DIR/backend.md" ]; then
-            echo "::error::The test runner did not produce backend.md. Check the test step for startup or timeout failures."
-            exit 1
-          fi
-          cat "$OPENERP_CI_RESULTS_DIR/backend.md" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload test reports and resource diagnostics
-        if: ${{ !cancelled() && steps.reports.outcome == 'success' }}
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: backend-results-${{ github.run_attempt }}
-          path: ${{ steps.reports.outputs.directory }}
+          path: test-results/backend
           if-no-files-found: error
           retention-days: 7
 
@@ -112,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require successful backend checks
+      - name: Summarize backend checks
         env:
           BACKEND: ${{ needs.backend.result }}
         run: |
