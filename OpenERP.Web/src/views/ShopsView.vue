@@ -1288,7 +1288,7 @@ onUnmounted(() => {
 
 <style scoped>
 .shops-head {
-  flex: none;
+  display: block;
   padding: 0 0 12px;
 }
 
@@ -1315,10 +1315,10 @@ onUnmounted(() => {
   height: 46px;
   flex: none;
   align-items: center;
+  margin: 0;
   padding: 0 16px;
-  border: 1px solid var(--line);
-  border-bottom-color: var(--line-soft);
-  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  border: 0;
+  border-radius: 6px 6px 0 0;
   background: var(--surface);
 }
 
@@ -1330,8 +1330,12 @@ onUnmounted(() => {
 }
 
 .page-shops .table-box {
-  border-top: 0;
-  border-radius: 0 0 var(--radius-card) var(--radius-card);
+  border: 0;
+  border-radius: 0 0 6px 6px;
+}
+
+.page-shops .grid-table th {
+  background: var(--page);
 }
 
 .page-shops .table-pagination {
@@ -1419,10 +1423,10 @@ onUnmounted(() => {
   max-height: 50vh;
   flex: none;
   flex-direction: column;
-  margin-bottom: 12px;
+  margin: 0 0 12px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
+  border: 0;
+  border-radius: 6px;
   background: var(--surface);
 }
 
@@ -1431,7 +1435,7 @@ onUnmounted(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 20px;
+  padding: 16px;
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -1450,17 +1454,20 @@ onUnmounted(() => {
 }
 
 .sync-settings-card__body {
+  --sync-label-width: 240px;
+  --sync-row-gap: 24px;
   min-height: 0;
-  padding: 0 20px 16px;
+  padding: 0 16px 16px;
   overflow-y: auto;
 }
 
 .sync-settings-card__row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 0;
+  display: grid;
+  grid-template-columns: var(--sync-label-width) minmax(0, 1fr);
+  gap: var(--sync-row-gap);
+  justify-content: start;
+  align-items: start;
+  padding: 16px 0;
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -1501,9 +1508,8 @@ onUnmounted(() => {
 }
 
 .sync-settings-card__shop-picker {
-  width: min(520px, 100%);
+  width: 100%;
   min-width: 0;
-  flex: none;
 }
 
 .sync-shop-list {
@@ -1513,9 +1519,9 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 2px;
   padding: 6px 8px;
-  border: 1px solid var(--input-border);
-  border-radius: var(--radius);
-  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: var(--page-soft);
 }
 
 .sync-shop-option {
@@ -1530,7 +1536,7 @@ onUnmounted(() => {
 }
 
 .sync-shop-option:hover {
-  background: #F5F8FD;
+  background: var(--primary-faint);
 }
 
 .sync-shop-option .checkbox:disabled {
@@ -1558,7 +1564,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
-  padding: 16px 20px;
+  padding: 16px;
   overflow-y: auto;
 }
 
@@ -1587,6 +1593,18 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-left: calc(var(--sync-label-width) + var(--sync-row-gap));
   padding-top: 14px;
+}
+
+.checkbox:focus-visible,
+.sync-shop-option:has(.checkbox:focus-visible),
+.btn:focus-visible,
+.btn-icon:focus-visible,
+.page-btn:focus-visible,
+.page-jump input:focus-visible,
+.page-size select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 </style>
