@@ -54,6 +54,11 @@ test('Given 全新数据库尚未初始化 When 浏览器设置管理员密码 T
 
     await page.reload()
     await expect(page.getByRole('heading', { name: '初始化 OpenERP' })).toBeVisible()
+    // Given 密码校验失败 When 鼠标悬停密码框 Then 保留错误边框。
+    await page.getByRole('button', { name: '设置管理员密码' }).click()
+    await page.getByLabel('新密码', { exact: true }).hover()
+    await expect(page.getByLabel('新密码', { exact: true })).toHaveAttribute('aria-invalid', 'true')
+    await expect(page.getByLabel('新密码', { exact: true })).toHaveCSS('border-color', 'rgb(229, 46, 46)')
     await page.getByLabel('新密码', { exact: true }).fill(adminPassword)
     await page.getByLabel('确认新密码').fill(adminPassword)
     await page.getByRole('button', { name: '设置管理员密码' }).click()
