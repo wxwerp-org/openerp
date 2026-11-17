@@ -7,20 +7,12 @@
     <IsPackable>false</IsPackable>
     <OutputType>Exe</OutputType>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.2" />
-    <PackageReference Include="Aspire.Hosting.Testing" Version="13.6.5" />
-    <ProjectReference Include="../OpenERP.Api/OpenERP.Api.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="Fixtures/**/*" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="../OpenERP.AppHost/OpenERP.AppHost.csproj" />
+    <ProjectReference Include="../../OpenERP.Api/OpenERP.Api.csproj" />
   </ItemGroup>
 
 </Project>

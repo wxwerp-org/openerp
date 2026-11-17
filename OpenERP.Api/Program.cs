@@ -15,7 +15,13 @@ builder.AddRedisClient("redis");
 builder.AddFileStorage();
 builder.Services.AddSingleton<FileStore>();
 builder.Services.AddAccountAuthentication();
-builder.Services.AddHttpClient<WxwErpClient>(client => client.Timeout = TimeSpan.FromSeconds(15))
+builder.Services.AddHttpClient<WxwErpClient>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(15);
+        var baseUrl = builder.Configuration["Erp:BaseUrl"]?.Trim();
+        if (builder.Environment.IsDevelopment() && !string.IsNullOrEmpty(baseUrl))
+            client.BaseAddress = new Uri(baseUrl, UriKind.Absolute);
+    })
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
     {
         AllowAutoRedirect = false,

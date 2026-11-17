@@ -23,9 +23,18 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
     {
     }
 
-    internal AspireIntegrationFixture(bool initializeAdmin) => _initializeAdmin = initializeAdmin;
+    internal AspireIntegrationFixture(bool initializeAdmin, string? adminPassword = null,
+        string erpToken = "", string? erpBaseUrl = null)
+    {
+        _initializeAdmin = initializeAdmin;
+        _erpToken = erpToken;
+        _erpBaseUrl = erpBaseUrl;
+        if (adminPassword is not null) AdminPassword = adminPassword;
+    }
 
     private readonly bool _initializeAdmin;
+    private readonly string _erpToken;
+    private readonly string? _erpBaseUrl;
     private const string StorageName = "seaweedfs";
     private const string CiResultsDirectoryVariable = "OPENERP_CI_RESULTS_DIR";
     private static readonly Regex SensitiveValueRegex = new(
@@ -48,9 +57,11 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
     internal string AdminPassword { get; } = $" {Convert.ToHexString(RandomNumberGenerator.GetBytes(8))} ";
     internal Uri ApiEndpoint => _app!.GetEndpoint("api", "https");
 
-    public async ValueTask InitializeAsync()
+    public ValueTask InitializeAsync() => StartAsync(TestContext.Current.CancellationToken);
+
+    internal async ValueTask StartAsync(CancellationToken cancellationToken)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(3));
 
         try
@@ -68,6 +79,10 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
                 ],
                 timeout.Token);
             _appHost = appHost;
+            // E2E 的替身只覆盖出站 HTTP 目标，仍执行真实 WxwErpClient 与同步入库流程。
+            var apiResource = appHost.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "api");
+            appHost.CreateResourceBuilder(apiResource).WithEnvironment("Erp__AccessToken", _erpToken);
+            appHost.CreateResourceBuilder(apiResource).WithEnvironment("Erp__BaseUrl", _erpBaseUrl ?? "");
             SetStage("验证测试 User Secrets 隔离");
             if (appHost.UserSecretsManager.FilePath is { } secretsPath)
             {
@@ -481,7 +496,7 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
 
     private string RedactDiagnosticText(string value)
     {
-        foreach (var secret in new[] { AdminPassword, AdminPassword.Trim(), _postgresPassword, _seaweedFsSecretKey })
+        foreach (var secret in new[] { AdminPassword, AdminPassword.Trim(), _postgresPassword, _seaweedFsSecretKey, _erpToken })
         {
             if (secret.Length > 0)
             {
