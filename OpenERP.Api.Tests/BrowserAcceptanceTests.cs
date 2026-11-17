@@ -4,24 +4,25 @@ using Xunit;
 
 namespace OpenERP.Api.Tests;
 
-public sealed class BrowserAcceptanceTests(AspireIntegrationFixture fixture, ITestOutputHelper output)
-    : IClassFixture<AspireIntegrationFixture>
+public sealed class BrowserAcceptanceTests(ITestOutputHelper output)
 {
     public static bool Enabled => Environment.GetEnvironmentVariable("OPENERP_RUN_BROWSER_TESTS") == "1";
 
     [Fact(Skip = "设置 OPENERP_RUN_BROWSER_TESTS=1 以运行隔离宿主上的真实浏览器验收。", SkipUnless = nameof(Enabled))]
     public async Task BrowserAccountAndWorkspaceFlowsUseRealAuthentication()
     {
-        // Given 使用本次测试独立的数据库、管理员和 HTTPS 前端。
+        // Given 使用本次测试独立的未初始化数据库和 HTTPS 前端。
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(8));
+        await using var fixture = new AspireIntegrationFixture(initializeAdmin: false);
+        await fixture.InitializeAsync();
         var endpoint = await fixture.StartWebAsync(timeout.Token);
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (root is not null && !File.Exists(Path.Combine(root.FullName, "OpenERP.slnx")))
             root = root.Parent;
         Assert.NotNull(root);
 
-        // When 浏览器通过真实页面执行登录、账户编辑和现有工作台回归。
+        // When 浏览器通过真实页面初始化管理员、登录、编辑账户并回归工作台。
         var start = new ProcessStartInfo("pnpm")
         {
             WorkingDirectory = root.FullName,

@@ -3,7 +3,7 @@ import { defineConfig } from '@playwright/test'
 const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL
 
 export default defineConfig({
-  // 同一套用例共用唯一管理员，改密用例恢复原密码后再执行其他用例。
+  // 按文件和声明顺序串行执行。真实宿主先运行 authentication.spec.ts 的初始化场景，再共享账号。
   workers: 1,
   testDir: './tests/e2e',
   use: {

@@ -6,6 +6,5 @@ export const adminAccount: Account = {
   phone: null,
   email: null,
   lastLoginAt: '2026-11-16T12:00:00Z',
-  mustChangePassword: false,
   expiresAt: '2099-01-01T00:00:00Z',
 }

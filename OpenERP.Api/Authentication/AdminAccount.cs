@@ -6,8 +6,7 @@ internal sealed class AdminAccount
     internal const string Username = "admin";
 
     public int Id { get; init; } = SingletonId;
-    public string PasswordHash { get; set; } = "";
-    public bool MustChangePassword { get; set; }
+    public string? PasswordHash { get; set; }
     public string Name { get; set; } = "管理员";
     public string? Phone { get; set; }
     public string? Email { get; set; }

@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { login } from '../account/session'
+import { useRoute } from 'vue-router'
+import { initializationCompleted, login } from '../account/session'
 import AuthLayout from '../components/layout/AuthLayout.vue'
-import { returnDestination } from '../router/authRoutes'
 
-const router = useRouter()
 const route = useRoute()
 const username = ref('')
 const password = ref('')
@@ -18,7 +16,6 @@ async function submit(): Promise<void> {
   error.value = ''
   try {
     await login(username.value.trim(), password.value)
-    await router.replace(returnDestination(router, route.query.returnTo))
   } catch (cause) {
     error.value = cause instanceof Error && !(cause instanceof TypeError)
       ? cause.message
@@ -32,6 +29,8 @@ async function submit(): Promise<void> {
 <template>
   <AuthLayout>
     <h1>登录 OpenERP</h1>
+    <p v-if="initializationCompleted" role="status">管理员密码初始化成功，请登录。</p>
+    <p v-else-if="route.query.initialized === '1'" role="status">管理员账号已初始化，请登录。</p>
     <form class="login-form" @submit.prevent="submit">
       <div class="login-field">
         <label for="loginUsername">用户名</label>

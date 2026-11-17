@@ -1,15 +1,23 @@
-import type { RouteLocationRaw, Router } from 'vue-router'
+import type { RouteLocationNormalized, RouteLocationRaw, Router } from 'vue-router'
+import type { SessionState } from '../account/session'
 
-export function loginRoute(fullPath: string): RouteLocationRaw {
-  return { name: 'login', query: { returnTo: fullPath }, replace: true }
+function isAuthRoute(name: unknown): boolean {
+  return name === 'login' || name === 'initialize' || name === 'legacy-password-change'
 }
 
-export function passwordChangeRoute(fullPath: string): RouteLocationRaw {
-  return { name: 'required-password-change', query: { returnTo: fullPath }, replace: true }
-}
-
-export function isAuthRoute(name: unknown): boolean {
-  return name === 'login' || name === 'required-password-change'
+export function sessionRedirect(router: Router, to: RouteLocationNormalized, state: SessionState): RouteLocationRaw | undefined {
+  const authRoute = isAuthRoute(to.name)
+  const destination = authRoute ? returnDestination(router, to.query.returnTo) : to.fullPath
+  if (state === 'uninitialized' && to.name !== 'initialize') {
+    return { name: 'initialize', query: { returnTo: destination }, replace: true }
+  }
+  if (state === 'anonymous' && to.name !== 'login') {
+    const query = to.name === 'initialize'
+      ? { returnTo: destination, initialized: '1' }
+      : { returnTo: destination }
+    return { name: 'login', query, replace: true }
+  }
+  if (state === 'authenticated' && authRoute) return destination
 }
 
 export function returnDestination(router: Router, value: unknown): string {

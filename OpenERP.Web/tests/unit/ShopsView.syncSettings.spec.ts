@@ -73,6 +73,9 @@ function configureFetch(options: FetchOptions = {}) {
   const settings = options.settings ?? { enabled: false, shopSids: [], intervalMinutes: 30 }
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
+    if (url === '/api/auth/status') {
+      return jsonResponse({ initialized: true })
+    }
     if (url === '/api/auth/me') {
       return jsonResponse(adminAccount)
     }
@@ -229,12 +232,13 @@ describe('店铺定时同步设置', () => {
     expect(account.value).toBeNull()
   })
 
-  it('Given 管理员已登录 When 读取可选店铺返回强制改密 403 Then 会话进入强制改密状态', async () => {
-    configureFetch({ getShops: () => jsonResponse({ code: 'password_change_required' }, 403) })
+  it('Given 管理员已登录 When 读取可选店铺返回尚未初始化 409 Then 清除原会话并要求初始化', async () => {
+    configureFetch({ getShops: () => jsonResponse({ code: 'initialization_required' }, 409) })
     wrapper = await mountShops()
 
-    const { account } = await import('../../src/account/session')
-    expect(account.value?.mustChangePassword).toBe(true)
+    const { account, sessionState } = await import('../../src/account/session')
+    expect(account.value).toBeNull()
+    expect(sessionState.value).toBe('uninitialized')
   })
 
   it('Given 已保存店铺不在可选列表 When 取消兜底项并保存 Then 只提交仍选中的店铺', async () => {

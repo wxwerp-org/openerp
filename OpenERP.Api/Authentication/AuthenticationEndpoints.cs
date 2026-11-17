@@ -40,18 +40,12 @@ internal static partial class AuthenticationEndpoints
             };
             options.Events.OnRedirectToAccessDenied = context =>
             {
-                if (context.HttpContext.Features.Get<AdminSession>() is { Admin.MustChangePassword: true })
-                    return PasswordChangeRequired().ExecuteAsync(context.HttpContext);
-
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return Task.CompletedTask;
             };
         });
         services.AddAuthorizationBuilder().SetFallbackPolicy(
-            new AuthorizationPolicyBuilder().RequireAuthenticatedUser()
-                .RequireAssertion(context => context.Resource is HttpContext http &&
-                    http.Features.Get<AdminSession>() is { Admin.MustChangePassword: false })
-                .Build());
+            new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
         services.AddAntiforgery(options =>
         {
             options.HeaderName = "X-CSRF-TOKEN";
@@ -98,6 +92,31 @@ internal static partial class AuthenticationEndpoints
 
         app.UseRouting();
         app.UseAuthentication();
+        app.Use(async (context, next) =>
+        {
+            if (context.GetEndpoint() is { } endpoint && endpoint.Metadata.GetMetadata<IAllowAnonymous>() is null &&
+                context.Features.Get<AdminSession>() is null)
+            {
+                var store = context.RequestServices.GetRequiredService<AccountStore>();
+                bool initialized;
+                try
+                {
+                    initialized = await store.IsInitializedAsync(context.RequestAborted);
+                }
+                catch (Exception exception) when (IsDatabaseFailure(exception))
+                {
+                    throw new AccountStoreUnavailableException(exception);
+                }
+
+                if (!initialized)
+                {
+                    await InitializationRequired().ExecuteAsync(context);
+                    return;
+                }
+            }
+
+            await next(context);
+        });
         app.UseAuthorization();
 
         app.Use(async (context, next) =>
@@ -123,6 +142,14 @@ internal static partial class AuthenticationEndpoints
         auth.MapGet("/csrf", (HttpContext context, IAntiforgery antiforgery) =>
             TypedResults.Ok(new CsrfResponse(antiforgery.GetAndStoreTokens(context).RequestToken!)))
             .AllowAnonymous();
+        auth.MapGet("/status", GetStatusAsync).AllowAnonymous()
+            .WithSummary("查询管理员是否已初始化")
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+        auth.MapPost("/initialize", InitializeAsync).AllowAnonymous()
+            .WithSummary("首次设置管理员密码")
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
         auth.MapPost("/login", LoginAsync).AllowAnonymous();
         auth.MapGet("/me", (HttpContext context) => TypedResults.Ok(ToProfile(CurrentSession(context)))).RequireAuthorization();
         auth.MapPost("/logout", LogoutAsync).RequireAuthorization();
@@ -130,11 +157,30 @@ internal static partial class AuthenticationEndpoints
         app.MapPut("/api/account/profile", UpdateProfileAsync);
     }
 
+    private static async Task<Ok<AuthenticationStatusResponse>> GetStatusAsync(AccountStore store, CancellationToken ct) =>
+        TypedResults.Ok(new AuthenticationStatusResponse(await store.IsInitializedAsync(ct)));
+
+    private static async Task<Results<NoContent, ProblemHttpResult>> InitializeAsync(
+        InitializeRequest request, HttpContext context, AccountStore store,
+        TimeProvider clock, ILogger<Program> logger, CancellationToken ct)
+    {
+        if (!AccountStore.IsValidPassword(request.NewPassword))
+            return TypedResults.Problem("新密码长度必须为 6–20 个字符。", statusCode: 400);
+
+        if (!await store.InitializeAsync(request.NewPassword!, ct))
+            return TypedResults.Problem("管理员已初始化。", statusCode: 409,
+                extensions: new Dictionary<string, object?> { ["code"] = "already_initialized" });
+
+        logger.LogInformation("管理员初始化成功。InitializedAtUtc={InitializedAtUtc:O} RemoteIpAddress={RemoteIpAddress} UserAgent={UserAgent}",
+            clock.GetUtcNow(), context.Connection.RemoteIpAddress, context.Request.Headers.UserAgent.ToString());
+        return TypedResults.NoContent();
+    }
+
     private static async Task<Results<Ok<AccountProfile>, ProblemHttpResult>> LoginAsync(
         LoginRequest request, HttpContext context, AccountStore store, CancellationToken ct)
     {
-        if (context.Features.Get<AdminSession>() is { Admin.MustChangePassword: true })
-            return PasswordChangeRequired();
+        if (!await store.IsInitializedAsync(ct))
+            return InitializationRequired();
 
         var session = await store.LoginAsync(request.Username, request.Password, ct);
         if (session is null)
@@ -174,8 +220,6 @@ internal static partial class AuthenticationEndpoints
             return TypedResults.Problem("登录会话已失效。", statusCode: 401);
         if (result == PasswordChangeResult.InvalidPassword)
             return TypedResults.Problem("原密码错误。", statusCode: 400);
-        if (result == PasswordChangeResult.MustUseDifferentPassword)
-            return TypedResults.Problem("首次登录的新密码须与初始密码不同。", statusCode: 400);
 
         await context.SignOutAsync(Scheme);
         return TypedResults.NoContent();
@@ -250,24 +294,28 @@ internal static partial class AuthenticationEndpoints
 
     private static AccountProfile ToProfile(AdminSession session) =>
         new(AdminAccount.Username, session.Admin.Name, session.Admin.Phone, session.Admin.Email,
-            session.Admin.LastLoginAt, session.ExpiresAt, session.Admin.MustChangePassword);
+            session.Admin.LastLoginAt, session.ExpiresAt);
 
-    private static ProblemHttpResult PasswordChangeRequired() =>
-        TypedResults.Problem("首次登录须先修改密码。", statusCode: 403,
-            extensions: new Dictionary<string, object?> { ["code"] = "password_change_required" });
+    private static ProblemHttpResult InitializationRequired() =>
+        TypedResults.Problem("请先设置管理员密码。", statusCode: 409,
+            extensions: new Dictionary<string, object?> { ["code"] = "initialization_required" });
 
     [GeneratedRegex(@"^[^\s@]+@[^\s@]+$")]
     private static partial Regex EmailPattern();
 
     private static string? TrimOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private sealed class AccountStoreUnavailableException(Exception innerException) : Exception(null, innerException);
-
     private sealed record CsrfResponse(string RequestToken);
+
+    /// <summary>管理员密码初始化状态。</summary>
+    private sealed record AuthenticationStatusResponse(bool Initialized);
+
+    /// <summary>首次设置管理员密码的请求。</summary>
+    private sealed record InitializeRequest(string? NewPassword);
+
     private sealed record LoginRequest(string? Username, string? Password);
     private sealed record ChangePasswordRequest(string? OldPassword, string? NewPassword);
     private sealed record UpdateProfileRequest(string? Name, string? Phone, string? Email);
     private sealed record AccountProfile(
-        string Username, string Name, string? Phone, string? Email, DateTimeOffset? LastLoginAt, DateTimeOffset ExpiresAt,
-        bool MustChangePassword);
+        string Username, string Name, string? Phone, string? Email, DateTimeOffset? LastLoginAt, DateTimeOffset ExpiresAt);
 }
