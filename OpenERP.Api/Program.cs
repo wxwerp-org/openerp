@@ -14,7 +14,7 @@ builder.AddNpgsqlDbContext<AppDbContext>("openerp");
 builder.AddRedisClient("redis");
 builder.AddFileStorage();
 builder.Services.AddSingleton<FileStore>();
-builder.Services.AddAccountAuthentication();
+builder.AddAccountAuthentication();
 builder.Services.AddHttpClient<WxwErpClient>(client => client.Timeout = TimeSpan.FromSeconds(15))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
     {

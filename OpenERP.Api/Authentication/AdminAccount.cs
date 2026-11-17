@@ -13,10 +13,11 @@ internal sealed class AdminAccount
     public DateTimeOffset? LastLoginAt { get; set; }
 }
 
-internal sealed class AdminSession
+internal sealed class AdminRefreshToken
 {
     public Guid Id { get; init; }
     public int AdminId { get; init; } = AdminAccount.SingletonId;
     public AdminAccount Admin { get; init; } = null!;
+    public byte[] TokenHash { get; init; } = null!;
     public DateTimeOffset ExpiresAt { get; init; }
 }

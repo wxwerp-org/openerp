@@ -9,7 +9,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 {
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
     internal DbSet<AdminAccount> AdminAccounts => Set<AdminAccount>();
-    internal DbSet<AdminSession> AdminSessions => Set<AdminSession>();
+    internal DbSet<AdminRefreshToken> RefreshTokens => Set<AdminRefreshToken>();
     internal DbSet<OrderRecord> Orders => Set<OrderRecord>();
 
     internal DbSet<OrderSyncSettings> OrderSyncSettings => Set<OrderSyncSettings>();
@@ -24,10 +24,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             admin.Property(x => x.Phone).HasMaxLength(20);
         });
 
-        modelBuilder.Entity<AdminSession>(session =>
+        modelBuilder.Entity<AdminRefreshToken>(token =>
         {
-            session.ToTable("AdminSessions");
-            session.HasOne(x => x.Admin).WithMany().HasForeignKey(x => x.AdminId);
+            token.ToTable("RefreshTokens");
+            token.HasOne(x => x.Admin).WithMany().HasForeignKey(x => x.AdminId);
+            token.HasIndex(x => x.TokenHash).IsUnique();
         });
 
         modelBuilder.Entity<OrderRecord>(order =>

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Npgsql;
@@ -22,7 +23,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         await AssertStatusAsync(client, false, ct);
         await AssertCodeAsync(await client.GetAsync("/api/ping", ct), "initialization_required", ct);
         await AuthenticationIntegrationTests.RefreshCsrfAsync(client, ct);
-        await AssertCodeAsync(await client.PostAsJsonAsync("/api/auth/login",
+        await AssertCodeAsync(await AuthenticationIntegrationTests.PostJsonAnonymouslyAsync(client, "/api/auth/login",
             new { username = "admin", password = fixture.AdminPassword }, ct), "initialization_required", ct);
 
         // Given 数据库账号缺失或查询故障；Then 初始化入口和匿名业务拒绝继续。
@@ -112,8 +113,8 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
 
             await AssertStatusAsync(first, true, ct);
             await AssertCodeAsync(await InitializeAsync(first, losingPassword, ct), "already_initialized", ct);
-            await using var sessions = new NpgsqlCommand("""SELECT COUNT(*) FROM "AdminSessions" """, observer);
-            Assert.Equal(0L, await sessions.ExecuteScalarAsync(ct));
+            await using var refreshTokens = new NpgsqlCommand("""SELECT COUNT(*) FROM "RefreshTokens" """, observer);
+            Assert.Equal(0L, await refreshTokens.ExecuteScalarAsync(ct));
             using var anonymous = await first.GetAsync("/api/ping", ct);
             Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
 
@@ -136,7 +137,8 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
             await AssertStatusAsync(first, true, ct);
             foreach (var wrongPassword in new[] { losingPassword, winningPassword.Trim() })
             {
-                using var invalidLogin = await first.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = wrongPassword }, ct);
+                using var invalidLogin = await AuthenticationIntegrationTests.PostJsonAnonymouslyAsync(first,
+                    "/api/auth/login", new { username = "admin", password = wrongPassword }, ct);
                 Assert.Equal(HttpStatusCode.Unauthorized, invalidLogin.StatusCode);
             }
 
@@ -166,9 +168,10 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
         // 模拟残留会话，验证 CLI 对占位账号设置密码时同样撤销全部会话。
         await using var insert = new NpgsqlCommand("""
-            INSERT INTO "AdminSessions" ("Id", "AdminId", "ExpiresAt")
-            VALUES (gen_random_uuid(), 1, now() + interval '1 hour')
+            INSERT INTO "RefreshTokens" ("Id", "AdminId", "TokenHash", "ExpiresAt")
+            VALUES (gen_random_uuid(), 1, @tokenHash, now() + interval '1 hour')
             """, observer, transaction);
+        insert.Parameters.AddWithValue("tokenHash", RandomNumberGenerator.GetBytes(32));
         Assert.Equal(1, await insert.ExecuteNonQueryAsync(ct));
 
         // When CLI 先排入同一行的锁队列，浏览器请求随后等待。
@@ -192,21 +195,23 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         Assert.Equal(0, result.ExitCode);
         Assert.DoesNotContain(resetPassword, result.Output);
         await AssertCodeAsync(await initialize!, "already_initialized", ct);
-        await using var sessions = new NpgsqlCommand("""SELECT COUNT(*) FROM "AdminSessions" """, observer);
-        Assert.Equal(0L, await sessions.ExecuteScalarAsync(ct));
+        await using var refreshTokens = new NpgsqlCommand("""SELECT COUNT(*) FROM "RefreshTokens" """, observer);
+        Assert.Equal(0L, await refreshTokens.ExecuteScalarAsync(ct));
         await AssertStatusAsync(browser, true, ct);
         await AuthenticationIntegrationTests.LoginAsync(browser, ct, resetPassword);
     }
 
     private static Task<HttpResponseMessage> InitializeAsync(HttpClient client, string? password, CancellationToken ct) =>
-        client.PostAsJsonAsync("/api/auth/initialize", new { newPassword = password }, ct);
+        AuthenticationIntegrationTests.PostJsonAnonymouslyAsync(
+            client, "/api/auth/initialize", new { newPassword = password }, ct);
 
     private static async Task AssertUnavailableAsync(HttpClient client, CancellationToken ct)
     {
         using var status = await client.GetAsync("/api/auth/status", ct);
         using var business = await client.GetAsync("/api/ping", ct);
         using var initialize = await InitializeAsync(client, "test-password", ct);
-        using var login = await client.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = "test-password" }, ct);
+        using var login = await AuthenticationIntegrationTests.PostJsonAnonymouslyAsync(
+            client, "/api/auth/login", new { username = "admin", password = "test-password" }, ct);
         Assert.All(new[] { status, business, initialize, login }, response =>
         {
             Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);

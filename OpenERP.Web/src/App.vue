@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { START_LOCATION, useRoute, useRouter } from 'vue-router'
-import { account, checkSession, expireSession, sessionState } from './account/session'
+import { account, checkSession, sessionState } from './account/session'
 import AppShell from './components/layout/AppShell.vue'
 import AuthLayout from './components/layout/AuthLayout.vue'
 import { sessionRedirect } from './router/authRoutes'
@@ -11,21 +11,12 @@ const route = useRoute()
 const routeReady = computed(() => router.currentRoute.value !== START_LOCATION)
 
 function recheckSession(): void {
-  if (!expireSession()) void checkSession()
+  void checkSession()
 }
 
-watch(() => account.value?.expiresAt, (expiresAt, _, cleanup) => {
-  if (!expiresAt) return
-  const deadline = Date.parse(expiresAt)
-  let timer: number | undefined
-  function schedule(): void {
-    if (expireSession()) return
-    const remaining = deadline - Date.now()
-    timer = window.setTimeout(schedule, Math.min(remaining, 2_147_483_647))
-  }
-  schedule()
-  cleanup(() => window.clearTimeout(timer))
-})
+function recheckVisibleSession(): void {
+  if (document.visibilityState === 'visible') recheckSession()
+}
 
 watch(sessionState, (state) => {
   if (!routeReady.value) return
@@ -33,8 +24,16 @@ watch(sessionState, (state) => {
   if (redirect) void router.replace(redirect)
 })
 
-onMounted(() => window.addEventListener('focus', recheckSession))
-onUnmounted(() => window.removeEventListener('focus', recheckSession))
+onMounted(() => {
+  window.addEventListener('focus', recheckSession)
+  window.addEventListener('online', recheckSession)
+  document.addEventListener('visibilitychange', recheckVisibleSession)
+})
+onUnmounted(() => {
+  window.removeEventListener('focus', recheckSession)
+  window.removeEventListener('online', recheckSession)
+  document.removeEventListener('visibilitychange', recheckVisibleSession)
+})
 </script>
 
 <template>
