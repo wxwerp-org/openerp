@@ -152,28 +152,28 @@ onMounted(checkPing)
 }
 
 .service-panel {
-  width: 100%;
   flex: none;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: none;
   border-radius: var(--radius-card);
   background: var(--surface);
 }
 
 .service-panel__head {
   display: flex;
-  min-height: 56px;
+  min-height: 54px;
   align-items: center;
   gap: 12px;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--line-soft);
+  padding: 0 16px;
+  border-bottom: 0;
 }
 
 .service-label {
   flex: none;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 18px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
 }
 
 .service-endpoint {
@@ -191,12 +191,18 @@ onMounted(checkPing)
   margin-left: auto;
 }
 
+.service-retry:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .service-panel__body {
   display: flex;
   min-height: 56px;
   align-items: flex-start;
   gap: 12px;
-  padding: 18px 20px;
+  padding: 4px 16px 20px;
+  background: var(--surface);
 }
 
 .service-message {

@@ -124,16 +124,23 @@ test('Given 产品和订单原型 When 打开表单与公告 Then 弹窗可见�
   expect(hasPageOverflow).toBe(false)
 })
 
-test('Given 服务页面 When 应用共享设计体系 Then 使用 6px 卡片圆角、--line 边框与 18px 标签', async ({ page }) => {
+test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标题清晰且卡片字阶统一', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await mockShops(page)
   await page.goto('/shops')
 
+  const shopsHeader = page.locator('.shops-head')
+  await expect(shopsHeader).toHaveCSS('display', 'block')
+  await expect(shopsHeader).toHaveCSS('height', '62px')
+  await expect(shopsHeader).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(shopsHeader).toHaveCSS('box-shadow', 'none')
+
   const shopsCard = page.locator('.page-shops .list-toolbar')
   await expect(shopsCard).toBeVisible()
-  await expect(shopsCard).toHaveCSS('border-top-color', 'rgb(230, 232, 235)')
+  await expect(shopsCard).toHaveCSS('border-top-width', '0px')
   await expect(shopsCard).toHaveCSS('border-top-left-radius', '6px')
   await expect(page.locator('.page-shops .table-box')).toHaveCSS('border-bottom-left-radius', '6px')
+  await expect(page.locator('.page-shops .grid-table th').first()).toHaveCSS('background-color', 'rgb(242, 245, 250)')
 
   const shopsTitle = page.locator('.page-shops h1')
   await expect(shopsTitle).toHaveCSS('font-size', '20px')
@@ -145,10 +152,21 @@ test('Given 服务页面 When 应用共享设计体系 Then 使用 6px 卡片圆
   await page.route('**/api/ping', (route) => route.fulfill({ json: { message: '连接正常' } }))
   await page.goto('/service-connection')
 
+  const serviceHeader = page.locator('.service-head')
+  await expect(serviceHeader).toHaveCSS('display', 'block')
+  await expect(serviceHeader).toHaveCSS('height', '62px')
+  await expect(serviceHeader).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(serviceHeader).toHaveCSS('box-shadow', 'none')
+
   const panel = page.locator('.page-service .service-panel')
   await expect(panel).toBeVisible()
-  await expect(panel).toHaveCSS('border-top-color', 'rgb(230, 232, 235)')
+  await expect(panel).toHaveCSS('border-top-width', '0px')
   await expect(panel).toHaveCSS('border-top-left-radius', '6px')
+  await expect(page.locator('.page-service .service-label')).toHaveCSS('font-size', '14px')
+  await expect(page.locator('.page-service .service-label')).toHaveCSS('font-weight', '700')
+  await expect(page.locator('.page-service .service-panel__head')).toHaveCSS('border-bottom-width', '0px')
+  await expect(page.locator('.page-service .service-panel__head')).toHaveCSS('min-height', '54px')
+  await expect(page.locator('.page-service .service-panel__body')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
   await expect(page.locator('.page-service h1')).toHaveCSS('font-size', '20px')
   await expect(page.locator('.page-service .btn.primary')).toHaveCSS('height', '30px')
   await expect(page.locator('.page-service .tag')).toHaveCSS('height', '18px')
@@ -231,7 +249,23 @@ test('Given 开启定时同步 When 视口高度不足 Then 页面可滚动访�
   await page.route('**/api/erp/shops/1/order-sync', (route) => route.fulfill({ status: 204 }))
   await page.goto('/shops')
 
-  await expect(page.locator('.sync-settings-card')).toBeVisible()
+  const syncSwitch = page.getByRole('checkbox', { name: '启用定时同步' })
+  await syncSwitch.focus()
+  await expect(syncSwitch).toBeFocused()
+  await expect(syncSwitch).toHaveCSS('outline-color', 'rgb(0, 91, 245)')
+  await expect(syncSwitch).toHaveCSS('outline-style', 'solid')
+  await expect(syncSwitch).toHaveCSS('outline-width', '2px')
+
+  const syncCard = page.locator('.sync-settings-card')
+  await expect(syncCard).toBeVisible()
+  await expect(syncCard).toHaveCSS('border-top-width', '0px')
+  await expect(syncCard).toHaveCSS('border-top-left-radius', '6px')
+  const syncRows = syncCard.locator('.sync-settings-card__row')
+  await expect(syncRows.first()).toHaveCSS('display', 'grid')
+  await expect(syncRows.first()).toHaveCSS('grid-template-columns', '240px 912px')
+  await expect(syncRows.last()).toHaveCSS('grid-template-columns', '240px 912px')
+  await expect(syncCard.locator('.sync-settings-card__footer')).toHaveCSS('margin-left', '264px')
+
   await page.locator('.page-shops').evaluate((element) => element.scrollTo(0, element.scrollHeight))
   await expect(page.locator('.page-shops tbody tr').last()).toBeInViewport()
   await expect(page.locator('.table-pagination')).toBeInViewport()
