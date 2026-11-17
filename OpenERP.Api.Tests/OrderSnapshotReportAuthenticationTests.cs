@@ -6,8 +6,13 @@ using Xunit;
 namespace OpenERP.Api.Tests;
 
 [Collection(nameof(AspireIntegrationCollection))]
-public sealed class OrderSnapshotReportAuthenticationTests(AspireIntegrationFixture fixture)
+public sealed class OrderSnapshotReportAuthenticationTests(AspireIntegrationFixture fixture) : IAsyncLifetime
 {
+    public async ValueTask InitializeAsync() =>
+        await fixture.EnsureApiStartedAsync(TestContext.Current.CancellationToken);
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     [Fact]
     public async Task Report_requires_login_and_is_registered_in_the_real_application()
     {

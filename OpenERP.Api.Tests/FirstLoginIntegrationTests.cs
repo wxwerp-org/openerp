@@ -17,6 +17,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         var ct = TestContext.Current.CancellationToken;
         await using var fixture = new AspireIntegrationFixture(initializeAdmin: false);
         await fixture.InitializeAsync();
+        await fixture.EnsureApiStartedAsync(ct);
         using var client = fixture.CreateApiClient();
 
         // When 查询管理员状态、访问业务或尝试登录。
@@ -44,6 +45,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         var ct = TestContext.Current.CancellationToken;
         await using var fixture = new AspireIntegrationFixture();
         await fixture.InitializeAsync();
+        await fixture.EnsureApiStartedAsync(ct);
         using var client = fixture.CreateApiClient();
         await AuthenticationIntegrationTests.LoginAsync(client, ct, fixture.AdminPassword);
         using var initial = await AuthenticationIntegrationTests.PostAnonymouslyAsync(client, "/api/auth/refresh", null, ct);
@@ -69,6 +71,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         var ct = TestContext.Current.CancellationToken;
         await using var fixture = new AspireIntegrationFixture(initializeAdmin: false);
         await fixture.InitializeAsync();
+        await fixture.EnsureApiStartedAsync(ct);
         using var first = fixture.CreateApiClient();
         using var second = fixture.CreateApiClient();
         const string firstPassword = " abcd ";
@@ -116,15 +119,25 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
             await using var lockAdmin = new NpgsqlCommand(
                 """SELECT "Id" FROM "AdminAccounts" WHERE "Id" = 1 FOR UPDATE""", observer, transaction);
             Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
-            var firstAttempt = InitializeAsync(first, firstPassword, ct);
-            var secondAttempt = InitializeAsync(second, secondPassword, ct);
+            using var operations = new CancellationTokenSource();
+            var firstAttempt = InitializeAsync(first, firstPassword, operations.Token);
+            var secondAttempt = InitializeAsync(second, secondPassword, operations.Token);
+            Exception? coordinationFailure = null;
             try
             {
-                await AuthenticationIntegrationTests.WaitForAdminLocksAsync(observer, 2, ct, includeUpdates: true);
+                await AuthenticationConcurrency.WaitForAdminLocksAsync(observer, 2, ct, "两个初始化请求进入锁队列",
+                    [new("第一个初始化请求", firstAttempt, () => $"HTTP {(int)firstAttempt.Result.StatusCode}"),
+                     new("第二个初始化请求", secondAttempt, () => $"HTTP {(int)secondAttempt.Result.StatusCode}")],
+                    includeUpdates: true);
+            }
+            catch (Exception exception)
+            {
+                coordinationFailure = exception;
             }
             finally
             {
-                await transaction.RollbackAsync(CancellationToken.None);
+                await AuthenticationConcurrency.ReleaseAsync(transaction.RollbackAsync, operations,
+                    coordinationFailure, ct, firstAttempt, secondAttempt);
             }
 
             using var firstResult = await firstAttempt;
@@ -181,6 +194,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         var ct = TestContext.Current.CancellationToken;
         await using var fixture = new AspireIntegrationFixture(initializeAdmin: false);
         await fixture.InitializeAsync();
+        await fixture.EnsureApiStartedAsync(ct);
         using var browser = fixture.CreateApiClient();
         await AssertStatusAsync(browser, false, ct);
         await AuthenticationIntegrationTests.RefreshCsrfAsync(browser, ct);
@@ -201,24 +215,34 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
 
         // When CLI 先排入同一行的锁队列，浏览器请求随后等待。
         const string resetPassword = " reset-password ";
+        using var operations = new CancellationTokenSource();
         var reset = AuthenticationStartupTests.RunApiOnDatabaseAsync(
-            connectionString, resetPassword, ["reset-admin-password", "--stdin"], ct);
+            connectionString, resetPassword, ["reset-admin-password", "--stdin"], operations.Token);
         Task<HttpResponseMessage>? initialize = null;
+        Exception? coordinationFailure = null;
         try
         {
-            await AuthenticationIntegrationTests.WaitForAdminLocksAsync(observer, 1, ct);
-            initialize = InitializeAsync(browser, "browser-password", ct);
-            await AuthenticationIntegrationTests.WaitForAdminLocksAsync(observer, 2, ct, includeUpdates: true);
+            await AuthenticationConcurrency.WaitForAdminLocksAsync(observer, 1, ct, "CLI 初始化进入锁队列",
+                [new("CLI 重置", reset, () => $"退出码 {reset.Result.ExitCode}")]);
+            initialize = InitializeAsync(browser, "browser-password", operations.Token);
+            await AuthenticationConcurrency.WaitForAdminLocksAsync(observer, 2, ct, "浏览器初始化进入锁队列",
+                [new("CLI 重置", reset, () => $"退出码 {reset.Result.ExitCode}"),
+                 new("浏览器初始化", initialize, () => $"HTTP {(int)initialize.Result.StatusCode}")], includeUpdates: true);
+        }
+        catch (Exception exception)
+        {
+            coordinationFailure = exception;
         }
         finally
         {
-            await transaction.CommitAsync(CancellationToken.None);
+            await AuthenticationConcurrency.ReleaseAsync(transaction.CommitAsync, operations,
+                coordinationFailure, ct, reset, initialize);
         }
 
         // Then CLI 成功设置最终密码并撤销残留会话，浏览器不能覆盖。
         var result = await reset;
         Assert.Equal(0, result.ExitCode);
-        Assert.DoesNotContain(resetPassword, result.Output);
+        Assert.False(result.Output.Contains(resetPassword, StringComparison.Ordinal), "CLI 输出泄露了重置密码。");
         await AssertCodeAsync(await initialize!, "already_initialized", ct);
         await using var refreshTokens = new NpgsqlCommand("""SELECT COUNT(*) FROM "RefreshTokens" """, observer);
         Assert.Equal(0L, await refreshTokens.ExecuteScalarAsync(ct));

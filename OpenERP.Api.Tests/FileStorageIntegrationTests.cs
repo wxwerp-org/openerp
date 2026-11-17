@@ -6,9 +6,14 @@ using Xunit;
 namespace OpenERP.Api.Tests;
 
 [Collection(nameof(AspireIntegrationCollection))]
-public sealed class FileStorageIntegrationTests(AspireIntegrationFixture fixture)
+public sealed class FileStorageIntegrationTests(AspireIntegrationFixture fixture) : IAsyncLifetime
 {
     private const long MaxFileSize = 20 * 1024 * 1024;
+
+    public async ValueTask InitializeAsync() =>
+        await fixture.EnsureApiStartedAsync(TestContext.Current.CancellationToken);
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     [Fact]
     public async Task Files_survive_SeaweedFS_restart_and_support_the_full_lifecycle()
