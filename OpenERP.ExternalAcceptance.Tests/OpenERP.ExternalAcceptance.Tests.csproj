@@ -7,12 +7,11 @@
     <IsPackable>false</IsPackable>
     <OutputType>Exe</OutputType>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.2" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.14" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Configuration" Version="10.0.14" />
     <ProjectReference Include="../OpenERP.Api/OpenERP.Api.csproj" />
   </ItemGroup>
 

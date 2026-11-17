@@ -47,10 +47,10 @@ jobs:
           cache: true
           cache_dependency_path: OpenERP.Web/pnpm-lock.yaml
 
-      - name: Restore locked .NET dependencies
+      - name: Restore .NET dependencies
         run: |
           dotnet restore OpenERP.slnx --locked-mode
-          dotnet restore OpenERP.ExternalAcceptance.Tests/OpenERP.ExternalAcceptance.Tests.csproj --locked-mode
+          dotnet restore OpenERP.ExternalAcceptance.Tests/OpenERP.ExternalAcceptance.Tests.csproj
 
       - name: Build backend
         run: |

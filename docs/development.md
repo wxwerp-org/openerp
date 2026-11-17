@@ -84,7 +84,7 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 确认目标环境、数据前提并在进程环境配置凭证后，显式运行：
 
 ```bash
-dotnet restore OpenERP.ExternalAcceptance.Tests/OpenERP.ExternalAcceptance.Tests.csproj --locked-mode
+dotnet restore OpenERP.ExternalAcceptance.Tests/OpenERP.ExternalAcceptance.Tests.csproj
 dotnet test --project OpenERP.ExternalAcceptance.Tests/OpenERP.ExternalAcceptance.Tests.csproj --no-restore --zero-tests-policy strict --fail-skips on
 ```
 
