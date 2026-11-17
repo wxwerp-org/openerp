@@ -1,7 +1,9 @@
 import { randomBytes } from 'node:crypto'
-import { expect, test, type Page } from './fixtures'
+import { expect, test, type Page } from '@playwright/test'
 import { adminPassword, csrfHeaders, signInForWorkspace, signInWithApi } from './authentication'
 
+// eslint-disable-next-line playwright/no-skipped-test -- 真实会话用例使用隔离宿主和测试设置的密码。
+test.skip(!adminPassword, '设置 OPENERP_TEST_ADMIN_PASSWORD 以使用真实管理员会话。')
 
 async function restorePassword(page: Page, newPassword: string): Promise<number> {
   const login = await signInWithApi(page.request, newPassword)
@@ -188,6 +190,8 @@ test('Given 两个浏览器已登录 When 原密码校验失败后修改密码�
 })
 
 test('Given 隔离宿主中的管理员已登录 When 保存关闭状态的定时同步设置 Then 通过防伪校验并保存店铺选择', async ({ page, request }) => {
+  // eslint-disable-next-line playwright/no-skipped-test -- 此用例只写入浏览器验收宿主的隔离数据库。
+  test.skip(process.env.OPENERP_RUN_BROWSER_TESTS !== '1', '通过隔离宿主运行定时同步保存验收。')
   await signInForWorkspace(request)
 
   // 只模拟 ERP 的读取结果，登录、防伪校验及设置读写均走真实服务。

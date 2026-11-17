@@ -81,7 +81,7 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
         }
 
         // 测试已构建 API，由 Aspire 直接启动 DLL，避免 dotnet run 父进程在 Linux 停止超时。
-#pragma warning disable ASPIREPROJECTS001 // 只覆盖测试宿主的启动参数，仍由 Aspire 管理端点、重启与清理。
+#pragma warning disable ASPIREPROJECTS001 // 仍由 Aspire 管理端点、重启与清理。
         appHost.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "api")
             .Annotations.Add(new ProjectLaunchArgsOverrideAnnotation([typeof(OpenERP.Api.FileStore).Assembly.Location]));
 #pragma warning restore ASPIREPROJECTS001

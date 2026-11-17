@@ -10,9 +10,7 @@
 | [OpenERP.Api](../OpenERP.Api/) | API、ERP 对接、订单同步与数据存储 |
 | [OpenERP.AppHost](../OpenERP.AppHost/) | 本地服务编排 |
 | [OpenERP.ServiceDefaults](../OpenERP.ServiceDefaults/) | 健康检查、遥测与服务发现 |
-| [tests/OpenERP.Api.Tests](../tests/OpenERP.Api.Tests/) | 后端单元、集成与基础设施测试 |
-| [tests/OpenERP.Api.LiveIntegrationTests](../tests/OpenERP.Api.LiveIntegrationTests/) | 显式运行的真实 wxw ERP 分页验收 |
-| [e2e](../e2e/) | 仓库根目录的 Playwright 端到端测试 |
+| [OpenERP.Api.Tests](../OpenERP.Api.Tests/) | 后端单元测试和集成测试 |
 
 [router/index.ts](../OpenERP.Web/src/router/index.ts) 定义工作台、授权店铺、产品、订单、业务配置、用户与新品开发路由，[views](../OpenERP.Web/src/views/) 存放页面，[components](../OpenERP.Web/src/components/) 提供可复用工作台卡片、导航和控件。[styles](../OpenERP.Web/src/styles/) 按区域组织共享样式，列表、控件与页面类按用途拆分。
 
@@ -33,9 +31,9 @@ pnpm --dir OpenERP.Web test
 
 ### 前端静态检查
 
-[ESLint 配置](../OpenERP.Web/eslint.config.js) 使用 flat config，以 `@eslint/js`、`typescript-eslint` 和 `eslint-plugin-vue` 的官方配置为基础。Vue 采用官方 error-prevention（`flat/essential`）规则集，并补充官方 `flat/recommended` 中 10 条非排版正确性/安全规则（如 `vue/no-v-html`、`vue/require-explicit-emits`），覆盖模板和 `<script setup lang="ts">`；前端单元测试使用 `@vitest/eslint-plugin` 的推荐规则；根目录 E2E 的独立 [ESLint 配置](../eslint.config.js) 使用 `eslint-plugin-playwright`。这套组合与仓库现有 Node.js 26、TypeScript 6、Vue 3.5 的版本范围兼容，且不引入旧式 `.eslintrc`。
+[ESLint 配置](../OpenERP.Web/eslint.config.js) 使用 flat config，以 `@eslint/js`、`typescript-eslint` 和 `eslint-plugin-vue` 的官方配置为基础。Vue 采用官方 error-prevention（`flat/essential`）规则集，并补充官方 `flat/recommended` 中 10 条非排版正确性/安全规则（如 `vue/no-v-html`、`vue/require-explicit-emits`），覆盖模板和 `<script setup lang="ts">`；单元测试与浏览器测试分别使用 `@vitest/eslint-plugin` 和 `eslint-plugin-playwright` 的推荐规则。这套组合与仓库现有 Node.js 26、TypeScript 6、Vue 3.5 的版本范围兼容，且不引入旧式 `.eslintrc`。
 
-检查范围为 `src/**/*.{ts,vue}`、`tests/**/*.ts`、前端根目录的构建配置和 ESLint 配置本身；`node_modules`、`dist`、`coverage`、`playwright-report` 与 `test-results` 不参与检查。`src` 使用浏览器全局变量，构建配置使用 Node.js 全局变量，单元测试同时启用浏览器、Node.js 与 Vitest 环境，根目录 `e2e/` 和 `playwright.config.ts` 由 `pnpm lint` 与 `pnpm typecheck` 检查；浏览器测试同时启用浏览器与 Node.js 全局变量。
+检查范围为 `src/**/*.{ts,vue}`、`tests/**/*.ts`、前端根目录的构建配置和 ESLint 配置本身；`node_modules`、`dist`、`coverage`、`playwright-report` 与 `test-results` 不参与检查。`src` 使用浏览器全局变量，构建配置使用 Node.js 全局变量，单元测试同时启用浏览器、Node.js 与 Vitest 环境，端到端测试使用 Playwright 规则并同时启用浏览器与 Node.js 全局变量（浏览器全局变量用于 `page.evaluate` 等页面内回调）。
 
 ```bash
 pnpm --dir OpenERP.Web lint
@@ -48,13 +46,47 @@ ESLint 在这里只负责代码质量和潜在错误，不启用缩进、引号�
 
 ### 测试环境
 
-后端使用 xUnit v3、原生 .NET 10 Microsoft.Testing.Platform。测试目录、各项目职责、命令与环境前提见[测试说明](../tests/README.md)。`OpenERP.slnx` 默认包含 `tests/OpenERP.Api.Tests`，不按 Unit、Integration 或 Infrastructure 过滤；真实 wxw 分页验收和 Playwright 均使用各自独立入口。
+后端使用 xUnit v3、原生 .NET 10 Microsoft.Testing.Platform 和 Aspire.Hosting.Testing，配置见 [global.json](../global.json) 与[测试项目](../OpenERP.Api.Tests/OpenERP.Api.Tests.csproj)。订单 PostgreSQL 与文件存储测试共用隔离 Aspire 测试宿主，需要容器环境和受信任的开发证书。宿主自行启动和清理资源，订单用例另建并清理独立数据库，无需 `OPENERP_TEST_POSTGRES`。回归用例见 [OpenERP.Api.Tests](../OpenERP.Api.Tests/)。
 
-订单 PostgreSQL、文件存储和需要 Aspire 的集成用例使用 `Aspire.Hosting.Testing` 的 `DistributedApplicationTestingBuilder` 启动隔离 AppHost，等待资源健康并读取动态端点；需要 Docker 兼容容器运行时和受信任的 HTTPS 开发证书。其用法遵循 [Aspire 官方测试说明](https://aspire.dev/testing/overview/)。
+前端单元测试位于 [tests/unit](../OpenERP.Web/tests/unit/)，使用 Vitest、Vue Test Utils 和 jsdom。依赖和执行脚本以 [package.json](../OpenERP.Web/package.json) 为准。
 
-前端单元测试位于 [OpenERP.Web/tests](../OpenERP.Web/tests/)，使用 Vitest、Vue Test Utils 和 jsdom。依赖和执行脚本以 [前端 package.json](../OpenERP.Web/package.json) 为准。
+[WebInstallerTests](../OpenERP.Api.Tests/WebInstallerTests.cs) 使用实际 AppHost 安装参数，在临时目录执行 pnpm 验证无 TTY 的依赖重建与冻结锁文件行为。需要 PATH 中有 Node.js 和 pnpm；fixture 只使用本地依赖，不连接 ERP，也不修改开发目录的 `node_modules`。
 
-[WebInstallerTests](../tests/OpenERP.Api.Tests/Integration/WebInstallerTests.cs) 使用实际 AppHost 安装参数，在临时目录执行 pnpm 验证无 TTY 的依赖重建与冻结锁文件行为。需要 PATH 中有 Node.js 和 pnpm；fixture 只使用本地依赖，不连接 ERP，也不修改开发目录的 `node_modules`。
+浏览器测试入口由 [Playwright 配置](../OpenERP.Web/playwright.config.ts) 指定。默认由配置中的 `webServer` 自动执行生产构建并在 `127.0.0.1:4173` 启动预览服务，无需手工启动应用；安装浏览器后直接运行：
+
+```bash
+pnpm --dir OpenERP.Web exec playwright install chromium
+pnpm --dir OpenERP.Web test:e2e
+```
+
+未设置 `OPENERP_TEST_ADMIN_PASSWORD` 时，工作台用例通过页面级 mock 会话执行，账户与会话用例（[authentication.spec.ts](../OpenERP.Web/tests/e2e/authentication.spec.ts)）跳过；手动派发[前端工作流](../.github/workflows/ci-web.yml)时运行这类无需后端的浏览器用例，PR 不自动运行浏览器测试。设置 `PLAYWRIGHT_BASE_URL` 指向真实宿主时复用外部服务，不再启动 `webServer`。
+
+账户端到端用例需要真实后端与 `OPENERP_TEST_ADMIN_PASSWORD`，会修改测试账户资料和密码。请使用隔离测试宿主，避免对日常开发账户运行这些用例：
+
+```bash
+OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class '*BrowserAcceptanceTests'
+```
+
+该入口创建测试专用数据库，从未初始化状态启动 HTTPS 前端，将实际端点及本次测试要设置的密码通过环境传给 Playwright，并串行运行浏览器用例；测试密码不会注入 API 作为预置密码。初始化用例保存设置页和设置成功后的登录页截图，完成后由 Aspire 测试夹具清理测试资源。它先通过 .NET 严格校验前端证书，再将该证书的公钥临时提供给 Node 客户端，不跳过证书校验；临时文件在结束后删除。独立运行 Playwright 时，Node 如不识别本机开发证书，需用 `NODE_EXTRA_CA_CERTS` 指定对应的公开 PEM 证书。不设置开关时，此浏览器入口明确跳过，不计作浏览器验收通过。
+
+### 真实 ERP 验证
+
+常规后端测试自行准备隔离 PostgreSQL，不需要连接开发数据库。可选的 [OrderLiveAcceptanceTests](../OpenERP.Api.Tests/OrderLiveAcceptanceTests.cs) 使用进程环境变量：
+
+| 变量 | 用途与前提 |
+| --- | --- |
+| `OPENERP_TEST_ERP_TOKEN` | 有权读取目标店铺的 Token；启用 SID `644928` 的只读分页验证，该店需有超过 100 单 |
+| `OPENERP_TEST_POSTGRES` | 与上述 Token 一起启用 SID `30` 的源端与入库结果比对；指向已完成该店手动同步的数据库 |
+
+数据库比对用例的前置步骤是在浏览器完成 SID `30` 的两次手动同步；测试本身只读源端和数据库，不执行同步或建表。未设置相应变量时用例跳过。凭证仅通过进程环境提供，不写入文档或版本库；测试命令见本页[构建与测试](#构建与测试)。
+
+### GitHub Actions
+
+[后端 PR 检查](../.github/workflows/ci-backend.yml)按照 [Aspire 官方 CI 指导](https://aspire.dev/testing/testing-in-ci/)在 Ubuntu 上还原、构建并无过滤执行整个 solution。容器由既有 Aspire 测试夹具启动和清理，YAML 不自行编排容器；Node.js/pnpm 用于既有 `WebInstallerTests`，HTTPS 信任用于既有集成测试。构建、容器启动、测试断言或清理失败会使 job 失败。
+
+测试使用运行器原生 `--zero-tests-policy strict` 拒绝零用例，原生 xUnit CTRF 报告保存为 `backend-results` artifact。CI 不注入真实 ERP 凭证，也不设置浏览器启用开关；两个 `OrderLiveAcceptanceTests` 和 `BrowserAcceptanceTests` 保留上述条件跳过，报告中的跳过不计作验证通过。完整后端套件包含真实容器集成测试，执行耗时不能按纯单元测试估算。
+
+[前端 PR 检查](../.github/workflows/ci-web.yml)继续自动执行 lint、类型检查、单元测试与构建；其浏览器 job 只在 `workflow_dispatch` 时执行，手动运行失败仍会传递到结果汇总。
 
 ## 管理员账户与会话
 
@@ -107,7 +139,7 @@ Cookie 使用 `Secure`、`HttpOnly`、`SameSite=Lax`，必须通过 HTTPS 访问
 
 ## ERP 接入与接口
 
-默认上游地址为 `https://v3-api.wxwerp.com`；Development 可通过服务端 `Erp:BaseUrl` 指向 HTTP 测试替身，其他环境始终使用默认地址。不提供浏览器修改上游地址的入口。AppHost 将 User Secrets 中的 `Parameters:wxw-erp-access-token` 注入 API 的 `Erp__AccessToken`；直接配置 API 时使用后者。Token 已配置只表示配置值存在，不代表凭证有效、接口权限充分或店铺平台授权有效。前端只读取配置状态，不获取 Token。
+上游地址固定为 `https://v3-api.wxwerp.com`。AppHost 将 User Secrets 中的 `Parameters:wxw-erp-access-token` 注入 API 的 `Erp__AccessToken`；直接配置 API 时使用后者。Token 已配置只表示配置值存在，不代表凭证有效、接口权限充分或店铺平台授权有效。前端只读取配置状态，不获取 Token。
 
 | 接口 | 行为 |
 | --- | --- |
@@ -204,9 +236,3 @@ PostgreSQL `18-alpine` 和 Redis `8-alpine` 使用浮动大版本标签，小版
 仓库代理规则由 [AGENTS.md](../AGENTS.md) 提供，专项流程位于 `.agents/skills/`。
 
 仓库的 [.mcp.json](../.mcp.json) 与 [.vscode/mcp.json](../.vscode/mcp.json) 使用 `aspire agent init` 生成的 `aspire agent mcp` 配置。客户端与终端均直接使用 PATH 中的 `aspire` CLI，不额外套用 `dotnet tool run`。代理启动及其他生命周期操作遵循项目内 [Aspire Skill](../.agents/skills/aspire/SKILL.md) 及其路由的子 Skill。
-
-## 持续集成
-
-[后端工作流](../.github/workflows/ci-backend.yml) 对 PR 执行完整 `OpenERP.slnx` C# 测试，不按测试类别过滤；它另行还原和构建真实 wxw 分页验收项目，但不会在 PR 中调用真实 wxw。容器运行时、开发证书、资源启动和清理均属于后端集成测试的必要条件。
-
-[前端工作流](../.github/workflows/ci-web.yml) 执行 ESLint、类型检查、Vitest 单元测试和生产构建。[Playwright 工作流](../.github/workflows/playwright.yml) 仅手动派发运行浏览器 E2E，默认使用 wxw 替身，也可选择受控真实 wxw；不随 PR 自动运行。项目、命令、测试范围和报告说明见[测试说明](../tests/README.md)。

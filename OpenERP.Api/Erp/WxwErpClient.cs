@@ -7,20 +7,8 @@ namespace OpenERP.Api.Erp;
 public sealed partial class WxwErpClient(HttpClient http, IConfiguration configuration) : IErpClient
 {
     // 本期接入已确认的站点，不接受浏览器提交任意目标地址或凭证。
-    private const string DefaultBaseUrl = "https://v3-api.wxwerp.com";
-    private readonly Uri _baseAddress = http.BaseAddress ?? new Uri(DefaultBaseUrl);
+    private const string BaseUrl = "https://v3-api.wxwerp.com";
     private string Token => configuration["Erp:AccessToken"]?.Trim() ?? "";
-    private string BaseUrl
-    {
-        get
-        {
-            var baseAddress = _baseAddress;
-            if (!string.IsNullOrEmpty(baseAddress.UserInfo))
-                baseAddress = new UriBuilder(baseAddress) { UserName = "", Password = "" }.Uri;
-            return baseAddress.ToString().TrimEnd('/');
-        }
-    }
-
     public ErpConfiguration Configuration => new(!string.IsNullOrEmpty(Token), BaseUrl);
 
     public async Task<(OpResult<ShopPage> Result, int Status)> GetShopsAsync(int page, int pageSize, CancellationToken ct)
@@ -113,11 +101,6 @@ public sealed partial class WxwErpClient(HttpClient http, IConfiguration configu
 
     private async Task<(OpResult<JsonElement> Result, int Status)> PostAsync(string path, object body, CancellationToken ct)
     {
-        if (_baseAddress.Scheme is not ("http" or "https"))
-            return (OpResults.Err("ERP BaseUrl 只支持 http 或 https。"), 503);
-        if (!string.IsNullOrEmpty(_baseAddress.UserInfo))
-            return (OpResults.Err("ERP BaseUrl 不能包含用户名或密码。"), 503);
-
         using var request = new HttpRequestMessage(HttpMethod.Post, BaseUrl + path);
         if (!request.Headers.TryAddWithoutValidation("AccessToken", Token) || Token.Contains('\r') || Token.Contains('\n'))
             return (OpResults.Err("ERP AccessToken 配置格式不正确。"), 503);
