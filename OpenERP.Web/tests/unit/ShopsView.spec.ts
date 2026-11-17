@@ -245,6 +245,49 @@ describe('授权店铺页', () => {
     expect(wrapper.get('button[aria-label="上一页"]').attributes('disabled')).toBeUndefined()
   })
 
+  it('Given 停在第 3 页 When 刷新后仅剩 1 页 Then 自动请求第 1 页并标记当前页', async () => {
+    const requested: string[] = []
+    let shrunk = false
+    stubFetch((url) => {
+      if (url === '/api/erp/config') return jsonResponse(configBody())
+      const params = new URL(url, 'https://local.test').searchParams
+      const page = Number(params.get('page'))
+      const pageSize = Number(params.get('pageSize'))
+      requested.push(`page=${page}&pageSize=${pageSize}`)
+      if (shrunk) {
+        return jsonResponse(
+          shopsBody([baseShop], { page, pageSize, totalCount: 1, pageCount: 1 }),
+        )
+      }
+      return jsonResponse(
+        shopsBody(
+          Array.from({ length: pageSize }, (_, index): Shop => ({
+            ...baseShop,
+            sid: String((page - 1) * pageSize + index + 1),
+            name: `测试店铺 ${(page - 1) * pageSize + index + 1}`,
+          })),
+          { page, pageSize, totalCount: 45, pageCount: 3 },
+        ),
+      )
+    })
+    wrapper = await mountShops()
+    await wrapper.get('button[aria-label="下一页"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('button[aria-label="下一页"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.page-num').text()).toBe('3')
+
+    shrunk = true
+    await wrapper.get('button[aria-label="刷新"]').trigger('click')
+    await flushPromises()
+
+    expect(requested.at(-1)).toBe('page=1&pageSize=20')
+    expect(wrapper.get('.page-num').text()).toBe('1')
+    expect(wrapper.get('.page-num').attributes('aria-current')).toBe('page')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('暂无授权店铺')
+  })
+
   it('Given 多页店铺 When 修改每页条数 Then 回到第 1 页并按新条数请求', async () => {
     const { requested } = stubbedShopPage(3)
     wrapper = await mountShops()

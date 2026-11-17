@@ -768,7 +768,12 @@ function orderSyncButtonDisabled(sid: string): boolean {
   )
 }
 
-async function loadPage(page: number, size: number, checkConfiguration = false): Promise<void> {
+async function loadPage(
+  page: number,
+  size: number,
+  checkConfiguration = false,
+  clampPage = true,
+): Promise<void> {
   const requestId = ++requestVersion
   activeController?.abort()
   const controller = new AbortController()
@@ -820,6 +825,12 @@ async function loadPage(page: number, size: number, checkConfiguration = false):
 
     const response = parseShopsResponse(await shopsResponse.json())
     if (!isCurrentRequest()) return
+
+    const lastPage = Math.max(response.pageCount, 1)
+    if (clampPage && response.page > lastPage) {
+      await loadPage(lastPage, response.pageSize, false, false)
+      return
+    }
 
     shops.value = response.items
     currentPage.value = response.page
@@ -1376,7 +1387,7 @@ onUnmounted(() => {
   min-width: 0;
   flex-direction: column;
   gap: 5px;
-  color: var(--muted);
+  color: var(--body);
   font-size: 12px;
 }
 
@@ -1400,7 +1411,7 @@ onUnmounted(() => {
 }
 
 .shop-order-sync__error {
-  color: var(--danger);
+  color: var(--body);
 }
 
 .sync-settings-card {
@@ -1542,9 +1553,13 @@ onUnmounted(() => {
 
 .sync-settings-card__error-block {
   display: flex;
-  align-items: center;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 10px;
   padding: 16px 20px;
+  overflow-y: auto;
 }
 
 .sync-settings-card__shop-error {
@@ -1556,14 +1571,14 @@ onUnmounted(() => {
 
 .sync-settings-card__error {
   margin: 0;
-  color: var(--danger);
+  color: var(--body);
   font-size: 12px;
   line-height: 18px;
   overflow-wrap: anywhere;
 }
 
 .sync-settings-card__success {
-  color: var(--success);
+  color: var(--body);
   font-size: 12px;
   line-height: 18px;
 }
