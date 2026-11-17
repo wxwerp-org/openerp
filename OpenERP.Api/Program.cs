@@ -3,6 +3,8 @@ using OpenERP.Api;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Reports;
+using OpenERP.Core.Reports;
 
 if (args is ["reset-admin-password", ..])
     return await ResetAdminPassword.RunAsync(args);
@@ -15,6 +17,7 @@ builder.AddRedisClient("redis");
 builder.AddFileStorage();
 builder.Services.AddSingleton<FileStore>();
 builder.AddAccountAuthentication();
+builder.Services.AddScoped<IOrderSnapshotReportQuery, OrderSnapshotReportQuery>();
 builder.Services.AddHttpClient<WxwErpClient>(client => client.Timeout = TimeSpan.FromSeconds(15))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
     {
@@ -59,6 +62,7 @@ if (app.Environment.IsDevelopment())
     app.MapFiles();
 }
 app.MapErp();
+app.MapOrderReports();
 app.MapGet("/api/ping", (ILogger<Program> logger) =>
 {
     logger.LogInformation("OpenERP connectivity check received");

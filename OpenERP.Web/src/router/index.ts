@@ -9,6 +9,7 @@ import DashboardView from '../views/DashboardView.vue'
 import HomeView from '../views/HomeView.vue'
 import NewDevView from '../views/NewDevView.vue'
 import OrdersView from '../views/OrdersView.vue'
+import OrderSnapshotReportView from '../views/OrderSnapshotReportView.vue'
 import ProductListView from '../views/ProductListView.vue'
 import ShopsView from '../views/ShopsView.vue'
 import UsersView from '../views/UsersView.vue'
@@ -19,6 +20,7 @@ const views: Record<WorkspacePageId, Component> = {
   newdev: NewDevView,
   product: ProductListView,
   orders: OrdersView,
+  'order-report': OrderSnapshotReportView,
   business: BusinessConfigView,
   users: UsersView,
 }

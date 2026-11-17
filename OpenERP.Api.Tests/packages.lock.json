@@ -1493,6 +1493,7 @@
           "Microsoft.EntityFrameworkCore": "[10.0.15, )",
           "Microsoft.EntityFrameworkCore.Relational": "[10.0.15, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
+          "OpenERP.Core": "[1.0.0, )",
           "OpenERP.ServiceDefaults": "[1.0.0, )",
           "RokyZevon.OpResult": "[0.3.0, )"
         }
@@ -1507,6 +1508,12 @@
           "Aspire.Hosting.PostgreSQL": "[13.6.5, )",
           "Aspire.Hosting.Redis": "[13.6.5, )",
           "CommunityToolkit.Aspire.Hosting.SeaweedFS": "[13.6.1, )"
+        }
+      },
+      "openerp.core": {
+        "type": "Project",
+        "dependencies": {
+          "RokyZevon.OpResult": "[0.3.0, )"
         }
       },
       "openerp.servicedefaults": {

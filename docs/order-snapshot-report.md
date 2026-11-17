@@ -1,0 +1,42 @@
+# 本地订单商品量报表
+
+报表位于 `/reports/orders`，展示已同步到本地的来源订单条数、商品件数、分店汇总和可展开商品的订单明细。可按平台、多个店铺筛选；无需实时连接 ERP 就能查询已有数据。
+
+## 数量口径
+
+- 一条来源订单计一次。现有来源是私有 ERP，因此这里的一行对应 ERP 主单，关联的平台订单号仅供核对，不表示商品已归属到其中某个平台订单。
+- 件数为所有当前商品行 `Quantity` 的原值之和，包含禁用和人工追加行。零数量订单仍在明细中；未知标志保留未知，不转换成否。
+- 不根据付款、取消或退款状态再次调整数量，也不把这项指标称为付款销量或净销量。源端已经改变的数量会随同步更新，不做第二次扣减。
+- 数据反映本地当前快照。同步未返回或跳过的历史订单按既有同步规则保留，因此不能据此证明源端订单完整性或最新同步时间。
+- 来源日期暂为无偏移的原始字符串，不参与报表筛选或周期统计。接口的 `generatedAtUtc` 是查询时间，使用 UTC `Z`，前端按本地时区显示；它不是订单创建或同步时间。
+
+## 查询接口
+
+`GET /api/reports/order-snapshot` 沿用管理员登录认证，并返回 `Cache-Control: no-store`。
+
+| 参数 | 含义 |
+| --- | --- |
+| `platform` | 可选的平台标识，省略表示全部 |
+| `shops` | 可重复提交的店铺键，取自响应 `shops[].key`；省略表示全部。最多100家，未知键不会退回查询全部 |
+| `page` | 从1开始，默认1；超出结果页数时返回最后一页 |
+| `pageSize` | 每页1至100条，默认20 |
+
+响应包含 `summary`、当前筛选下的 `groups`、分页 `orders`、全库本地选项 `platforms` / `shops`、分页信息及 `generatedAtUtc`。店铺名称未保存在现有订单库中，标签使用来源店铺编号，不虚构店铺名。空结果仍返回第1页，`pageCount` 为1。
+
+`summary.orderCount` 为来源订单数，`summary.itemQuantity` 为商品件数。汇总、分组和当前页来自同一 PostgreSQL 一致读取事务；订单和商品分开聚合，不联接平台子单乘算。明细按平台、店铺编号、来源订单内部标识稳定排序；翻页不会改变汇总范围。
+
+无效查询返回400；数据库读取失败返回503及 ProblemDetails，不以空报表掩盖失败。所有异步读取接收请求取消信号。
+
+## 代码边界与扩展
+
+`OpenERP.Core` 保存 `Orders` 下的公共订单事实以及 `Reports` 下的 `IOrderSnapshotReportQuery` 契约，不引用 EF Core、ASP.NET 或 ERP 客户端。订单身份需结合来源、平台、店铺和来源订单标识解释，店铺键对各身份片段编码，避免同号碰撞。
+
+API 工程的 `OrderSnapshotReportQuery` 使用现有本地存储；其中 `StoredOrderMapping` 将 ERP 专用记录转换为公共事实。HTTP 层只处理请求和结果，通过 DI 消费接口。其它本地数据来源可实现同一查询契约并在组合根注册，必须保持上述数量含义及身份隔离，前端无需判断具体来源。
+
+没有新增报表副本表、同步作业、平台连接器或插件加载机制；现有订单同步与部署方式保持原有边界。需要付款销量、取消拆分或时间趋势时，应先取得相应的来源事实，避免将当前快照包装成未被数据证明的业务指标。
+
+## 验证
+
+`OrderSnapshotContractTests` 验证公共数量及身份规则；`OrderSnapshotReportEndpointTests` 验证 HTTP 契约；`OrderSnapshotReportPostgresTests` 使用隔离数据库验证筛选、聚合、分页及重复同步；`OrderSnapshotReportAuthenticationTests` 验证实际应用注册和认证。
+
+设置既有 `OPENERP_TEST_ERP_TOKEN` 后，`Real_source_orders_match_report_totals_and_every_paged_detail` 只读获取 SID 30 的真实订单，写入测试专用数据库并重复同步、逐单核对报表。它不写上游或开发数据库；无凭证时明确跳过，不能计作真实数据验收通过。前端交互和浏览器用例分别位于 `OpenERP.Web/tests/unit` 与 `OpenERP.Web/tests/e2e`。

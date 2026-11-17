@@ -26,7 +26,7 @@ const groups: NavGroup[] = [
   { id: 'ad', label: '广告', icon: 'i-nav-ad', items: [{ label: '广告活动' }, { label: '广告报表' }] },
   { id: 'service', label: '客服', icon: 'i-nav-service', items: [{ label: '客服邮件' }, { label: '售后工单' }] },
   { id: 'finance', label: '财务', icon: 'i-nav-finance', items: [{ label: '财务结算' }, { label: '利润报表' }] },
-  { id: 'stats', label: '统计', icon: 'i-nav-stats', items: [{ label: '销量统计' }, { label: '产品表现' }] },
+  { id: 'stats', label: '统计', icon: 'i-nav-stats', items: [{ label: '销量统计' }, { label: '产品表现' }, { label: '商品量报表', page: 'order-report' }] },
   { id: 'tools', label: '工具', icon: 'i-nav-tools', items: [{ label: '工具箱' }] },
   { id: 'settings', label: '设置', icon: 'i-nav-settings', items: [{ label: '业务配置', page: 'business' }, { label: '用户管理', page: 'users' }, { label: '服务连接', page: 'service-connection' }, { label: '授权店铺', page: 'shops' }] },
 ]

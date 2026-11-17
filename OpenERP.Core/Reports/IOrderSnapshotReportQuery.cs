@@ -1,0 +1,31 @@
+using OpResult;
+using OpenERP.Core.Orders;
+
+namespace OpenERP.Core.Reports;
+
+/// <summary>本地订单快照查询；空平台、空店铺集合表示全部，店铺键来自报表选项。</summary>
+public sealed record OrderSnapshotReportRequest(string? Platform, IReadOnlyList<string> Shops, int Page = 1, int PageSize = 20)
+{
+    public string? ValidationError => Page < 1 || PageSize is < 1 or > 100 || (long)(Page - 1) * PageSize > int.MaxValue
+        ? "页码必须大于0，每页1至100条，分页范围不能超出限制。"
+        : Shops.Count > 100 || Shops.Any(key => string.IsNullOrWhiteSpace(key) || key.Length > 1000)
+            ? "请选择有效店铺，最多同时选择100家。"
+            : Platform is { Length: > 100 } ? "平台标识过长。" : null;
+}
+
+/// <summary>来源订单条数和当前商品行数量原值之和，不等同于付款后净销量。</summary>
+public sealed record OrderSnapshotTotals(long OrderCount, long ItemQuantity);
+
+/// <summary>按完整店铺身份汇总的快照数量。</summary>
+public sealed record OrderShopTotals(OrderShop Shop, long OrderCount, long ItemQuantity);
+
+/// <summary>单次一致读取的报表；GeneratedAtUtc 为查询时间，不是最后同步时间。</summary>
+public sealed record OrderSnapshotReport(DateTime GeneratedAtUtc, OrderSnapshotTotals Summary,
+    IReadOnlyList<string> Platforms, IReadOnlyList<OrderShop> Shops, IReadOnlyList<OrderShopTotals> Groups,
+    IReadOnlyList<SourceOrderSnapshot> Orders, int Page, int PageSize, int PageCount);
+
+/// <summary>报表读取边界；实现负责读取本地事实，不调用电商平台，也不改写来源数量。</summary>
+public interface IOrderSnapshotReportQuery
+{
+    Task<OpResult<OrderSnapshotReport>> QueryAsync(OrderSnapshotReportRequest request, CancellationToken cancellationToken);
+}
