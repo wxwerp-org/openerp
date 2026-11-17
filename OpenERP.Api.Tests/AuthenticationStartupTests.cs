@@ -70,11 +70,12 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
         Assert.False(await db.AdminAccounts.AnyAsync(ct));
 
         // Then Production 无须初始密码，重复启动保留同一条未初始化占位；
-        // 文件和订单同步已经注册，并继续要求先初始化管理员。
+        // 文件和订单同步仍要求初始化；来自 HTTPS 反代的请求可以获取防伪令牌。
         var storage = await fixture.GetStorageConnectionStringAsync(ct);
         for (var attempt = 0; attempt < 2; attempt++)
         {
             var started = await RunApiOnDatabaseAsync(_connectionString, null, [], ct,
+                configureStart: start => start.Environment["ASPNETCORE_FORWARDEDHEADERS_ENABLED"] = "true",
                 storageConnectionString: storage, verifyListening: VerifyProductionRoutesAsync);
             Assert.True(started.Started, started.Output);
             var admin = await db.AdminAccounts.AsNoTracking().SingleAsync(ct);
@@ -456,6 +457,14 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
         using var files = await client.GetAsync("/api/files/", ct);
         using var orderSettings = await client.GetAsync("/api/erp/order-sync-settings", ct);
         Assert.Equal((HttpStatusCode.Conflict, HttpStatusCode.Conflict), (files.StatusCode, orderSettings.StatusCode));
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/auth/csrf");
+        request.Headers.Add("X-Forwarded-Proto", "https");
+        using var csrf = await client.SendAsync(request, ct);
+        Assert.Equal(HttpStatusCode.OK, csrf.StatusCode);
+        Assert.Contains(csrf.Headers.GetValues("Set-Cookie"), cookie =>
+            cookie.StartsWith("__Host-OpenERP.Csrf=", StringComparison.Ordinal)
+            && cookie.Contains("; secure", StringComparison.OrdinalIgnoreCase));
     }
 
     private sealed class TestClock : TimeProvider
