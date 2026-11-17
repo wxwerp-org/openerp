@@ -2,23 +2,26 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenERP.AppHost;
 
 var builder = DistributedApplication.CreateBuilder(args);
+var e2e = builder.Configuration["E2E:Mode"] is "stub" or "live";
 
 var postgres = builder.AddPostgres("postgres")
-    .WithImageTag("18-alpine")
-    .WithDataVolume()
-    .WithLifetime(ContainerLifetime.Persistent);
+    .WithImageTag("18-alpine");
 var database = postgres.AddDatabase("openerp");
 
 var redis = builder.AddRedis("redis")
-    .WithImageTag("8-alpine")
-    .WithDataVolume()
-    .WithLifetime(ContainerLifetime.Persistent);
+    .WithImageTag("8-alpine");
 
 var storage = builder.AddSeaweedFS("seaweedfs")
     .WithImageTag("4.53")
-    .WithS3()
-    .WithDataVolume()
-    .WithLifetime(ContainerLifetime.Persistent);
+    .WithS3();
+
+// E2E 使用默认 session 生命周期和临时容器文件系统，不访问开发数据卷。
+if (!e2e)
+{
+    postgres.WithDataVolume().WithLifetime(ContainerLifetime.Persistent);
+    redis.WithDataVolume().WithLifetime(ContainerLifetime.Persistent);
+    storage.WithDataVolume().WithLifetime(ContainerLifetime.Persistent);
+}
 
 // Master/Volume 就绪后，还需确认 API 启动所依赖的 S3 列桶操作可用。
 builder.Services.AddHealthChecks()
@@ -36,7 +39,12 @@ var api = builder.AddProject<Projects.OpenERP_Api>("api")
     .WaitFor(storage);
 
 // Token 仅注入后端；未配置时仍可启动并在店铺页提示。
-if (!string.IsNullOrWhiteSpace(builder.Configuration["Parameters:wxw-erp-access-token"]))
+if (e2e)
+{
+    api.WithEnvironment("Erp__AccessToken", builder.AddParameter("wxw-erp-access-token", secret: true))
+        .WithEnvironment("Erp__BaseUrl", builder.Configuration["E2E:WxwUrl"] ?? "");
+}
+else if (!string.IsNullOrWhiteSpace(builder.Configuration["Parameters:wxw-erp-access-token"]))
 {
     var erpToken = builder.AddParameter("wxw-erp-access-token", secret: true);
     api.WithEnvironment("Erp__AccessToken", erpToken);

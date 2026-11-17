@@ -12,7 +12,6 @@
 | [OpenERP.ServiceDefaults](../OpenERP.ServiceDefaults/) | 健康检查、遥测与服务发现 |
 | [tests/OpenERP.Api.Tests](../tests/OpenERP.Api.Tests/) | 后端单元、集成与基础设施测试 |
 | [tests/OpenERP.Api.LiveIntegrationTests](../tests/OpenERP.Api.LiveIntegrationTests/) | 显式运行的真实 wxw ERP 分页验收 |
-| [tests/OpenERP.E2EHost](../tests/OpenERP.E2EHost/) | Playwright 使用的 Aspire 隔离宿主 |
 | [e2e](../e2e/) | 仓库根目录的 Playwright 端到端测试 |
 
 [router/index.ts](../OpenERP.Web/src/router/index.ts) 定义工作台、授权店铺、产品、订单、业务配置、用户与新品开发路由，[views](../OpenERP.Web/src/views/) 存放页面，[components](../OpenERP.Web/src/components/) 提供可复用工作台卡片、导航和控件。[styles](../OpenERP.Web/src/styles/) 按区域组织共享样式，列表、控件与页面类按用途拆分。
@@ -49,7 +48,7 @@ ESLint 在这里只负责代码质量和潜在错误，不启用缩进、引号�
 
 ### 测试环境
 
-后端使用 xUnit v3、原生 .NET 10 Microsoft.Testing.Platform。测试目录、各项目职责、命令与环境前提见[测试说明](../tests/README.md)。`OpenERP.slnx` 默认包含 `tests/OpenERP.Api.Tests`，不按 Unit、Integration 或 Infrastructure 过滤；真实 wxw 分页验收和 Playwright 的 `OpenERP.E2EHost` 均需显式使用各自入口。
+后端使用 xUnit v3、原生 .NET 10 Microsoft.Testing.Platform。测试目录、各项目职责、命令与环境前提见[测试说明](../tests/README.md)。`OpenERP.slnx` 默认包含 `tests/OpenERP.Api.Tests`，不按 Unit、Integration 或 Infrastructure 过滤；真实 wxw 分页验收和 Playwright 均使用各自独立入口。
 
 订单 PostgreSQL、文件存储和需要 Aspire 的集成用例使用 `Aspire.Hosting.Testing` 的 `DistributedApplicationTestingBuilder` 启动隔离 AppHost，等待资源健康并读取动态端点；需要 Docker 兼容容器运行时和受信任的 HTTPS 开发证书。其用法遵循 [Aspire 官方测试说明](https://aspire.dev/testing/overview/)。
 

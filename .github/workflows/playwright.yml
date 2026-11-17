@@ -55,11 +55,13 @@ jobs:
           cache_dependency_path: |
             pnpm-lock.yaml
             OpenERP.Web/pnpm-lock.yaml
-      - name: Restore and build test host
+      - name: Install Aspire CLI
+        run: dotnet tool install --global Aspire.Cli --version 13.6.5
+      - name: Build app and database assertions
         run: |
           dotnet restore OpenERP.slnx --locked-mode
-          dotnet restore tests/OpenERP.E2EHost/OpenERP.E2EHost.csproj
-          dotnet build tests/OpenERP.E2EHost/OpenERP.E2EHost.csproj --no-restore
+          dotnet build OpenERP.slnx --no-restore
+          dotnet build e2e/verify-orders.cs
       - name: Run controlled live wxw pagination integration test
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.wxw == 'live' }}
         env:
@@ -76,9 +78,8 @@ jobs:
         run: |
           pnpm lint
           pnpm typecheck
-      - name: Check Docker and trust HTTPS
+      - name: Trust HTTPS development certificate
         run: |
-          docker info
           sudo apt-get update
           sudo apt-get install --yes libnss3-tools
           mkdir -p "$HOME/.pki/nssdb"
@@ -91,7 +92,7 @@ jobs:
         env:
           OPENERP_TEST_ERP_TOKEN: ${{ github.event_name == 'workflow_dispatch' && inputs.wxw == 'live' && secrets.WXW_ERP_TOKEN || '' }}
         run: pnpm test:e2e
-      - name: Upload Playwright reports and Aspire diagnostics
+      - name: Upload Playwright reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:

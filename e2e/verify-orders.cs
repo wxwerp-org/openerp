@@ -1,7 +1,24 @@
+#:project ../OpenERP.Api/OpenERP.Api.csproj
+#:property PublishAot=false
+#:property RestorePackagesWithLockFile=false
+using Microsoft.Extensions.Configuration;
 using System.Globalization;
 using System.Text.Json;
 using Npgsql;
 using OpenERP.Api.Erp;
+
+
+// 只执行订单数据断言所需的查询；连接串由 Aspire 提供，不启动服务或容器。
+using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+var connection = Environment.GetEnvironmentVariable("OPENERP_E2E_POSTGRES")
+    ?? throw new InvalidOperationException("Aspire did not provide the isolated test database.");
+var sid = int.Parse(args[1], CultureInfo.InvariantCulture);
+object result = args[0] == "live"
+    ? await OrderDatabase.VerifyLiveAsync(connection,
+        Environment.GetEnvironmentVariable("OPENERP_TEST_ERP_TOKEN")
+            ?? throw new InvalidOperationException("Live verification requires a wxw token."), sid, timeout.Token)
+    : await OrderDatabase.ReadAsync(connection, sid, timeout.Token);
+Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
 
 internal sealed record DatabaseRows(List<Dictionary<string, object?>> Orders,
     List<Dictionary<string, object?>> PlatformOrders, List<Dictionary<string, object?>> OrderLines);

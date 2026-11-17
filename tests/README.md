@@ -1,6 +1,6 @@
 # 测试说明
 
-本目录集中放置 .NET 测试项目和 Playwright 使用的测试宿主。仓库根目录的 TypeScript Playwright 测试位于 [`e2e/`](../e2e/)；其入口配置和命令位于根目录的 [`playwright.config.ts`](../playwright.config.ts) 与 [`package.json`](../package.json)。本地开发、构建和 CI 说明另见[开发说明](../docs/development.md#构建与测试)。
+本目录集中放置 .NET 测试项目。仓库根目录的 TypeScript Playwright 测试位于 [`e2e/`](../e2e/)；其入口配置和命令位于根目录的 [`playwright.config.ts`](../playwright.config.ts) 与 [`package.json`](../package.json)。本地开发、构建和 CI 说明另见[开发说明](../docs/development.md#构建与测试)。
 
 ## 目录与运行范围
 
@@ -8,7 +8,6 @@
 | --- | --- | --- |
 | [`OpenERP.Api.Tests`](OpenERP.Api.Tests/) | 后端单元、集成和基础设施测试；以 `Unit/`、`Integration/`、`Infrastructure/` 分组 | 包含，运行全部用例，不按目录过滤 |
 | [`OpenERP.Api.LiveIntegrationTests`](OpenERP.Api.LiveIntegrationTests/) | 访问真实 wxw 的受控分页一致性验收 | 不包含，必须显式指定项目 |
-| [`OpenERP.E2EHost`](OpenERP.E2EHost/) | 为根目录 Playwright 提供隔离 Aspire 宿主和受控数据库读取接口 | 不包含，是宿主程序，不是测试项目 |
 | [`../e2e`](../e2e/) | Playwright 浏览器测试；包括展示用例和订单同步端到端验收 | 由根目录 Playwright 命令运行 |
 
 ## 后端常规测试
@@ -38,15 +37,15 @@ dotnet test --project tests/OpenERP.Api.LiveIntegrationTests/OpenERP.Api.LiveInt
 
 ## Playwright 端到端测试
 
-Playwright 的配置、依赖和命令都在仓库根目录。`globalSetup` 先启动 `OpenERP.E2EHost`：宿主复用 Aspire 测试夹具创建全新的测试应用和 PostgreSQL，等待健康状态并读取动态 HTTPS 端点，再启动 Playwright。默认 `stub` 模式启动本地 wxw HTTP 替身，只替换上游地址；`OpenERP.Api` 中的真实 `WxwErpClient`、订单同步、事务和 PostgreSQL 写入仍会执行。`Erp:BaseUrl` 覆盖只在 Development 生效，默认与其他环境仍使用固定 wxw 地址。
+Playwright 的配置、依赖和命令都在仓库根目录。`globalSetup` 调用官方 `aspire start --isolated`、`aspire wait web`、`aspire describe --format Json` 和 `aspire stop`。现有 AppHost 在显式 `E2E:Mode` 配置下使用 session 容器和临时文件系统，不挂开发数据卷；连接串、动态 HTTPS 端点与 Node CA 配置直接来自 Aspire。默认 `stub` 模式启动本地 wxw HTTP 替身，只替换上游地址；`OpenERP.Api` 中的真实 `WxwErpClient`、订单同步、事务和 PostgreSQL 写入仍会执行。`Erp:BaseUrl` 覆盖只在 Development 生效，默认与其他环境仍使用固定 wxw 地址。
 
 浏览器用例均通过真实认证访问隔离 API。缺少认证配置、wxw Token 或端点时会明确失败；不以跳过或预览模式代替测试。部分工作台展示用例继续用 `page.route` 提供页面数据。订单同步用例位于 [`e2e/order-sync.spec.ts`](../e2e/order-sync.spec.ts)，不拦截或模拟 OpenERP API，而是通过 UI 对接真实 API 和同步流程：stub 提供跨页的 21 条订单，浏览器执行两次手动同步，并将订单、平台子单和商品行与预期数据逐字段、按重复行数量进行精确对账。
 
-在仓库根目录准备 E2E 宿主、前端依赖、Chromium 和 HTTPS 信任后运行：
+安装与项目版本一致的 Aspire CLI，在仓库根目录准备应用、前端依赖、Chromium 和 HTTPS 信任后运行：
 
 ```bash
-dotnet restore tests/OpenERP.E2EHost/OpenERP.E2EHost.csproj
-dotnet build tests/OpenERP.E2EHost/OpenERP.E2EHost.csproj --no-restore
+dotnet build OpenERP.slnx
+dotnet build e2e/verify-orders.cs
 pnpm install --frozen-lockfile
 pnpm --dir OpenERP.Web install --frozen-lockfile
 pnpm exec playwright install chromium
@@ -54,7 +53,7 @@ aspire certs trust
 pnpm test:e2e
 ```
 
-Playwright 配置直接启动根目录中的测试宿主 DLL；因此改动宿主、API 或 AppHost 后，运行前需重新构建 `OpenERP.E2EHost`。需要容器运行时、Node.js/pnpm、Chromium 和受信任的开发证书。运行器使用单 worker，禁止 `test.only`，将 flaky 用例视为失败，生成 HTML 与 JSON 报告，并保留 Aspire 诊断。原生 Playwright 退出码代表执行结果；附加 reporter 会另外拒绝零用例和任何跳过。
+同一 checkout 若已有 AppHost 在运行，入口会拒绝执行；先结束该会话，或在另一个 worktree 运行测试。改动 C# 代码后重新执行上述构建。数据库断言由 [`e2e/verify-orders.cs`](../e2e/verify-orders.cs) 直接查询本次 Aspire 数据库，不启动辅助 HTTP 服务。测试需要容器运行时、Node.js/pnpm、Chromium 和受信任的开发证书。Playwright 使用单 worker、`forbidOnly` 和原生 HTML/JSON 报告；原生退出码决定 Actions 结果，不再维护自定义 reporter。核对报告中的通过、失败和跳过明细，不将跳过报告为通过。
 
 ### 真实 wxw E2E
 
@@ -64,6 +63,6 @@ Playwright 配置直接启动根目录中的测试宿主 DLL；因此改动宿�
 
 ## CI
 
-- [`ci-backend.yml`](../.github/workflows/ci-backend.yml)：锁定还原并构建默认 solution，完整运行 C# 常规测试；另外还原、构建 Live 项目但不访问真实 wxw。通过运行器的 strict zero-tests/fail-skips 策略拒绝零用例和跳过，并保存 xUnit 摘要、测试报告与 Aspire 诊断。
+- [`ci-backend.yml`](../.github/workflows/ci-backend.yml)：锁定还原并构建默认 solution，完整运行 C# 常规测试；另外还原、构建 Live 项目但不访问真实 wxw。通过运行器的 strict zero-tests/fail-skips 策略拒绝零用例和跳过，并保存原生 xUnit CTRF 报告。
 - [`ci-web.yml`](../.github/workflows/ci-web.yml)：执行前端 lint、typecheck、Vitest 单元测试和生产构建。
-- [`playwright.yml`](../.github/workflows/playwright.yml)：单独运行 Playwright；PR 使用 stub 模式，手动派发可选真实 wxw。HTML/JSON 测试报告与 Aspire 诊断作为 Actions artifact 保存，工作流保留测试运行器的失败结果。
+- [`playwright.yml`](../.github/workflows/playwright.yml)：单独运行 Playwright；PR 使用 stub 模式，手动派发可选真实 wxw。原生 HTML/JSON 测试报告作为 Actions artifact 保存，工作流保留测试运行器的失败结果。

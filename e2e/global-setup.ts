@@ -1,77 +1,57 @@
-import { spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { randomBytes } from 'node:crypto'
-import { createInterface } from 'node:readline'
-import { resolve } from 'node:path'
-import { mkdir } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
 import { startWxwStub } from './wxw-stub'
+
+const exec = promisify(execFile)
+const appHost = 'OpenERP.AppHost/OpenERP.AppHost.csproj'
+
+type Resource = {
+  displayName: string
+  urls: { url: string }[]
+  environment: Record<string, string>
+}
 
 export default async function setup() {
   const mode = process.env.OPENERP_E2E_MODE ?? 'stub'
-  if (!['stub', 'live'].includes(mode)) throw new Error('OPENERP_E2E_MODE must be stub or live.')
+  if (mode !== 'stub' && mode !== 'live') throw new Error('OPENERP_E2E_MODE must be stub or live.')
   const token = mode === 'live' ? process.env.OPENERP_TEST_ERP_TOKEN : 'e2e-wxw-token'
-  if (!token?.trim()) throw new Error('Live wxw E2E requires OPENERP_TEST_ERP_TOKEN; it cannot be skipped.')
-  process.env.OPENERP_E2E_MODE = mode
-  process.env.OPENERP_TEST_ADMIN_PASSWORD = randomBytes(8).toString('hex')
+  if (!token?.trim()) throw new Error('Live wxw E2E requires OPENERP_TEST_ERP_TOKEN.')
+  const running = await exec('aspire', ['ps', '--format', 'Json', '--non-interactive'])
+  const hosts: { appHostPath: string }[] = JSON.parse(running.stdout)
+  if (hosts.some(host => realpathSync(host.appHostPath) === realpathSync(appHost)))
+    throw new Error('Stop the AppHost in this checkout before running E2E; tests must not replace a development session.')
   const stub = mode === 'stub' ? await startWxwStub(token) : undefined
-  const diagnostics = resolve('test-results/aspire')
-  await mkdir(diagnostics, { recursive: true })
-  const host = spawn('dotnet', ['tests/OpenERP.E2EHost/bin/Debug/net10.0/OpenERP.E2EHost.dll'], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, OPENERP_TEST_ERP_TOKEN: token,
-      OPENERP_E2E_ERP_URL: stub?.url ?? '', OPENERP_CI_RESULTS_DIR: diagnostics },
-  })
-  const exited = new Promise<number | null>((resolve, reject) => {
-    host.once('error', reject)
-    host.once('exit', resolve)
-  })
-  // 保留退出结果供 teardown 检查，也避免启动阶段退出造成未处理 rejection。
-  void exited.catch(() => {})
-  host.stderr.on('data', data => process.stderr.write(data))
-  const lines = createInterface({ input: host.stdout })
+  const aspire = (...args: string[]) => exec('aspire', [
+    ...args, '--apphost', appHost, '--non-interactive',
+  ], { timeout: 300_000, maxBuffer: 4 * 1024 * 1024, env: {
+    ...process.env, E2E__Mode: mode, 'Parameters__wxw-erp-access-token': token, E2E__WxwUrl: stub?.url ?? '',
+  } })
   const stop = async () => {
-    host.stdin.end('\n')
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      const code = await Promise.race([exited, new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Aspire E2E host cleanup timed out.')), 90_000)
-      })])
-      if (code !== 0) throw new Error(`Aspire E2E host exited with ${code}; resource startup or cleanup failed.`)
-    } catch (error) {
-      if (host.exitCode === null && host.signalCode === null) {
-        // 先请求 Aspire 正常清理；超时后只终止本次创建的测试进程，避免管道让运行器永远挂起。
-        // 这不代表容器已成功清理，原始清理失败必须传回 Playwright。
-        host.kill('SIGTERM')
-        const terminate = setTimeout(() => host.kill('SIGKILL'), 5_000)
-        try { await exited } catch { /* spawn 失败已包含在原始错误中。 */ }
-        finally { clearTimeout(terminate) }
-      }
-      throw error
-    } finally {
-      clearTimeout(timer)
-      lines.close()
-      await stub?.close()
-    }
+    try { await aspire('stop') }
+    finally { await stub?.close() }
   }
-  let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    const ready = await Promise.race([
-      new Promise<{ baseUrl: string; controlUrl: string; certificateFile: string }>((resolve, reject) => {
-        lines.on('line', line => {
-          if (line.startsWith('OPENERP_E2E_READY=')) {
-            try { resolve(JSON.parse(line.slice('OPENERP_E2E_READY='.length))) }
-            catch (error) { reject(error) }
-          } else process.stdout.write(line + '\n')
-        })
-        timer = setTimeout(() => reject(new Error('Aspire E2E host did not become ready within 5 minutes.')), 300_000)
-      }),
-      exited.then(code => { throw new Error(`Aspire E2E host exited before readiness (${code}).`) }),
-    ])
-    process.env.PLAYWRIGHT_BASE_URL = ready.baseUrl
-    process.env.OPENERP_E2E_CONTROL_URL = ready.controlUrl
-    process.env.NODE_EXTRA_CA_CERTS = ready.certificateFile
+    await aspire('start', '--no-build', '--isolated')
+    await aspire('wait', 'web')
+    const { stdout } = await aspire('describe', '--format', 'Json')
+    const { resources }: { resources: Resource[] } = JSON.parse(stdout)
+    const web = resources.find(resource => resource.displayName === 'web')
+    const api = resources.find(resource => resource.displayName === 'api')
+    const url = web?.urls.find(endpoint => endpoint.url.startsWith('https:'))?.url
+    if (!url || !api?.environment.ConnectionStrings__openerp || !web?.environment.NODE_EXTRA_CA_CERTS)
+      throw new Error('Aspire did not provide the web HTTPS endpoint, database connection or Node CA configuration.')
+    process.env.PLAYWRIGHT_BASE_URL = url
+    process.env.OPENERP_TEST_ADMIN_PASSWORD = randomBytes(8).toString('hex')
+    process.env.OPENERP_E2E_MODE = mode
+    // 复用 Aspire 已生成的连接串和 Node CA 配置；不导出证书、不记录环境变量。
+    process.env.OPENERP_E2E_POSTGRES = api.environment.ConnectionStrings__openerp
+    process.env.NODE_EXTRA_CA_CERTS = web.environment.NODE_EXTRA_CA_CERTS
     return stop
   } catch (error) {
-    try { await stop() } catch (cleanup) { throw new AggregateError([error, cleanup], 'E2E startup and cleanup failed.', { cause: cleanup }) }
+    try { await stop() }
+    catch (cleanup) { throw new AggregateError([error, cleanup], 'Aspire setup and cleanup failed.', { cause: cleanup }) }
     throw error
-  } finally { clearTimeout(timer) }
+  }
 }
