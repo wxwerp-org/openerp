@@ -2,5 +2,5 @@
   <Project Path="OpenERP.AppHost/OpenERP.AppHost.csproj" />
   <Project Path="OpenERP.ServiceDefaults/OpenERP.ServiceDefaults.csproj" />
   <Project Path="OpenERP.Api/OpenERP.Api.csproj" />
-  <Project Path="OpenERP.Api.Tests/OpenERP.Api.Tests.csproj" />
+  <Project Path="tests/OpenERP.Api.Tests/OpenERP.Api.Tests.csproj" />
 </Solution>

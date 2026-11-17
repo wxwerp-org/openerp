@@ -21,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      OPENERP_RUN_BROWSER_TESTS: '1'
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       TESTINGPLATFORM_TELEMETRY_OPTOUT: '1'
     steps:
@@ -50,17 +49,12 @@ jobs:
       - name: Restore .NET dependencies
         run: |
           dotnet restore OpenERP.slnx --locked-mode
-          dotnet restore OpenERP.ExternalAcceptance.Tests/OpenERP.ExternalAcceptance.Tests.csproj
+          dotnet restore tests/OpenERP.Api.LiveIntegrationTests/OpenERP.Api.LiveIntegrationTests.csproj
 
       - name: Build backend
         run: |
           dotnet build OpenERP.slnx --no-restore
-          dotnet build OpenERP.ExternalAcceptance.Tests/OpenERP.ExternalAcceptance.Tests.csproj --no-restore
-
-      - name: Install browser dependencies
-        run: |
-          pnpm --dir OpenERP.Web install --frozen-lockfile
-          pnpm --dir OpenERP.Web exec playwright install --with-deps chromium
+          dotnet build tests/OpenERP.Api.LiveIntegrationTests/OpenERP.Api.LiveIntegrationTests.csproj --no-restore
 
       - name: Check container runtime
         run: docker info
@@ -83,7 +77,7 @@ jobs:
           echo "OPENERP_CI_RESULTS_DIR=$results_directory" >> "$GITHUB_ENV"
           echo "directory=$results_directory" >> "$GITHUB_OUTPUT"
 
-      - name: Run all backend and real browser tests
+      - name: Run all backend tests
         id: tests
         run: |
           dotnet test --solution OpenERP.slnx --no-build --timeout 20m \
