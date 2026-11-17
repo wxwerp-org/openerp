@@ -80,6 +80,9 @@ if (publishing)
             services["api"].DependsOn["redis"].Condition = "service_healthy";
             services["api"].DependsOn["seaweedfs"].Condition = "service_healthy";
 
+            foreach (var name in new[] { "postgres", "redis", "seaweedfs", "api", "web" })
+                services[name].Restart = "unless-stopped";
+
             // Compose 在启动迁移或应用前拒绝缺少必填运行配置的部署。
             services["postgres"].Environment["POSTGRES_PASSWORD"] = "${POSTGRES_PASSWORD:?请配置 POSTGRES_PASSWORD}";
             services["redis"].Environment["REDIS_PASSWORD"] = "${REDIS_PASSWORD:?请配置 REDIS_PASSWORD}";
@@ -89,6 +92,8 @@ if (publishing)
                 "${JWT_SIGNING_PRIVATE_KEY_PEM:?请配置 JWT_SIGNING_PRIVATE_KEY_PEM}";
 
             // 外部 HTTPS 反代连接宿主机回环地址。目标端口沿用生成的 YARP 监听端口。
+            // Aspire 已为 API 启用转发头；YARP 也需读取外层反代写入的原始协议。
+            services["web"].Environment["ASPNETCORE_FORWARDEDHEADERS_ENABLED"] = "true";
             var ports = services["web"].Ports;
             ports[0] = $"127.0.0.1:${{WEB_PORT:-8080}}:{ports.Single()}";
         });

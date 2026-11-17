@@ -1,6 +1,6 @@
 # 部署说明
 
-OpenERP 的部署目标为单台 Linux amd64 服务器。服务器需要 Docker Engine、支持 `up --wait` 的 Docker Compose v2，以及负责 HTTPS 的反向代理。开发启动见 [README](../README.md#快速开始)。
+OpenERP 的部署目标为单台 Linux amd64 服务器。服务器需要 Docker Engine 28 或更高版本、支持 `up --wait` 的 Docker Compose v2 或更高版本，以及负责 HTTPS 的反向代理。Web 端口依赖 Docker [回环绑定的隔离保证](https://docs.docker.com/engine/network/port-publishing/#publishing-ports)。开发启动见 [README](../README.md#快速开始)。
 
 ## 获取产物
 
@@ -35,9 +35,9 @@ docker compose -p openerp ps -a
 
 PostgreSQL 就绪后，`migrations` 执行同版本 EF Core bundle。它成功退出后，Compose 才启动 API。确认 `migrations` 显示 `Exited (0)`，其余服务正在运行。若迁移失败，从 `docker compose -p openerp logs migrations` 查原因，修复后重新执行 `up`。若 API 启动失败，检查 `docker compose -p openerp logs api` 中的签名私钥、数据库及对象存储错误。
 
-将外层 HTTPS 反代的整个站点转发到 `http://127.0.0.1:8080`，保留原请求路径和 Host，并设置转发的协议为 HTTPS。若反代容器已接入 `openerp_aspire` 网络，可用 `http://web:5000` 作为上游。由 YARP 提供 SPA 和同源 `/api` 转发。外层反代应允许上传功能所需的请求体大小（至少 21 MiB，含 multipart 开销）。
+将外层 HTTPS 反代的整个站点转发到 `http://127.0.0.1:8080`，保留原请求路径和 Host，并覆盖客户端可能发送的 `X-Forwarded-Proto` 和 `X-Forwarded-For`，分别写入 `https` 和外层反代所见的客户端地址。若反代容器已接入 `openerp_aspire` 网络，可用 `http://web:5000` 作为上游。YARP 和 API 接受转发头，Web 的宿主机端口须保持仅绑定回环地址，API 端口须留在 Compose 网络内，该网络仅接入受信任的部署容器。外层反代应允许上传功能所需的请求体大小（至少 21 MiB，含 multipart 开销）。
 
-开放入口前，通过 HTTPS 检查首页、SPA 深链接和 `/api/auth/status`。在「设置管理员密码」页设置并确认密码，再用 `admin` 登录。密码长度为 6–20 个字符，保留首尾空白。登录后验证文件上传和下载；有 ERP 凭证时，在店铺页验证配置和订单同步。
+开放入口前，通过 HTTPS 检查首页、SPA 深链接和 `/api/auth/status`，确认 `/api/auth/csrf` 返回 200 且设置带 `Secure` 的 Cookie。在「设置管理员密码」页设置并确认密码，再用 `admin` 登录。密码长度为 6–20 个字符，保留首尾空白。登录后验证文件上传和下载；有 ERP 凭证时，在店铺页验证配置和订单同步。
 
 初始化入口匿名开放。公网可达时，第一个成功设置密码的人将成为管理员，因此应用启动后应立即初始化。全新实例被抢先初始化且尚无业务数据时可重新部署。已有数据时可通过[重置管理员密码](#重置管理员密码)恢复，保留数据库和数据卷。
 
@@ -49,6 +49,8 @@ PostgreSQL 就绪后，`migrations` 执行同版本 EF Core bundle。它成功�
 4. 迁移失败时保持维护窗口，检查迁移日志和实际数据库状态，修复后重试。确认旧版 API 与当前数据库架构兼容后才可切回旧镜像。若架构不兼容，按备份恢复数据后再启动旧版本。
 
 替换或停止容器会保留命名卷。升级和容器替换时避免用 `down -v`，它会删除 PostgreSQL、Redis 和 SeaweedFS 的数据卷。Redis 使用默认快照持久化，非正常退出时最后一次快照之后的写入可能丢失。
+
+常驻容器使用 `unless-stopped`，在异常退出或 Docker 重启后自动恢复，手动停止的容器保持停止。一次性迁移容器由 Compose 的启动流程管理，Docker 重启时不会自动重跑迁移。
 
 从 Cookie 认证版本升级到 JWT 时，迁移创建 `RefreshTokens` 表并删除 `AdminSessions` 表，保留管理员密码、资料和最近登录时间。旧版登录会话全部失效，各设备须重新加载页面并使用原密码登录。
 
