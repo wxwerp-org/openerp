@@ -1,17 +1,27 @@
 using Microsoft.EntityFrameworkCore;
 using OpenERP.Api;
 using OpenERP.Api.Authentication;
+using OpenERP.Api.Deployment;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+
+if (args.Length > 0 && args[0].StartsWith("container-", StringComparison.Ordinal))
+    return await ContainerCommands.RunAsync(args);
 
 if (args is ["reset-admin-password", ..])
     return await ResetAdminPassword.RunAsync(args);
 
 var builder = WebApplication.CreateBuilder(args);
+ContainerCommands.AddRuntimeConfiguration(builder.Configuration);
+builder.ConfigureProductionHosting();
 
 builder.AddServiceDefaults();
 builder.AddNpgsqlDbContext<AppDbContext>("openerp");
-builder.AddRedisClient("redis");
+builder.AddRedisClient("redis", configureOptions: options =>
+{
+    if (builder.Configuration["Deployment:RedisPassword"] is { } password)
+        options.Password = password;
+});
 builder.AddFileStorage();
 builder.Services.AddSingleton<FileStore>();
 builder.Services.AddAccountAuthentication();
@@ -23,7 +33,7 @@ builder.Services.AddHttpClient<WxwErpClient>(client => client.Timeout = TimeSpan
     })
     .RedactLoggedHeaders(["AccessToken"]);
 builder.Services.AddTransient<IErpClient>(services => services.GetRequiredService<WxwErpClient>());
-if (builder.Environment.IsDevelopment())
+if (builder.Environment.IsDevelopmentOrProduction())
 {
     builder.Services.AddScoped<OrderStore>();
     builder.Services.AddSingleton<OrderSyncJobs>();
@@ -56,10 +66,11 @@ await using (var scope = app.Services.CreateAsyncScope())
     }
 }
 
+app.UseProductionHosting();
 app.UseAccountAuthentication();
 app.MapDefaultEndpoints();
 app.MapAccounts();
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopmentOrProduction())
 {
     await app.Services.GetRequiredService<FileStore>().EnsureBucketAsync(app.Lifetime.ApplicationStopping);
     app.MapFiles();

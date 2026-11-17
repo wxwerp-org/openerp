@@ -17,7 +17,7 @@ public sealed class ErpConfigurationTests
     [Theory]
     [InlineData("Development", true)]
     [InlineData("Staging", false)]
-    [InlineData("Production", false)]
+    [InlineData("Production", true)]
     public async Task ConfigurationReportsOrderSyncCapability(string environment, bool expected)
     {
         // Given API 已配置 ERP Token，并以指定环境运行。
@@ -45,7 +45,7 @@ public sealed class ErpConfigurationTests
             throw new Xunit.Sdk.XunitException(await configResponse.Content.ReadAsStringAsync(ct));
         var config = await configResponse.Content.ReadFromJsonAsync<JsonElement>(ct);
 
-        // Then 只有开发环境声明支持同步，ERP 配置状态仍可读取，凭证不出现在响应中。
+        // Then 开发与生产环境支持同步，Staging 保持禁用；凭证不出现在响应中。
         Assert.True(config.GetProperty("configured").GetBoolean());
         Assert.Equal("https://v3-api.wxwerp.com", config.GetProperty("baseUrl").GetString());
         Assert.DoesNotContain("test-secret", config.GetRawText());

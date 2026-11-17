@@ -3,6 +3,13 @@ using OpenERP.AppHost;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
+if (builder.ExecutionContext.IsPublishMode)
+{
+    builder.AddSingleContainerDeployment();
+    builder.Build().Run();
+    return;
+}
+
 var postgres = builder.AddPostgres("postgres")
     .WithImageTag("18-alpine")
     .WithDataVolume()

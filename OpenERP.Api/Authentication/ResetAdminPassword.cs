@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using OpenERP.Api.Deployment;
 
 namespace OpenERP.Api.Authentication;
 
@@ -26,6 +27,7 @@ internal static class ResetAdminPassword
             return Fail("新密码长度必须为 6–20 个字符。");
 
         var configuration = WebApplication.CreateBuilder([]).Configuration;
+        ContainerCommands.AddRuntimeConfiguration(configuration);
         var connectionString = configuration.GetConnectionString("openerp");
         if (string.IsNullOrWhiteSpace(connectionString))
             return Fail("未配置 ConnectionStrings:openerp。");

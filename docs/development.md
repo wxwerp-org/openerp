@@ -1,6 +1,6 @@
 # 开发说明
 
-本页提供代码导航、构建测试、接口行为和本地排障说明。环境准备、依赖安装及启动见 [README](../README.md#快速开始)；贡献要求与协作规则见[贡献指南](../CONTRIBUTING.md)。
+本页提供代码导航、构建测试、接口行为和本地排障说明。环境准备、依赖安装及 Development 启动见 [README](../README.md#快速开始)；Production Compose 发布、迁移和恢复见[部署指南](deployment.md)；贡献要求与协作规则见[贡献指南](../CONTRIBUTING.md)。
 
 ## 代码导航
 
@@ -92,9 +92,9 @@ AppHost 在未配置 `Parameters:admin-initial-password` 时自动生成 16 位�
 
 直接运行 API 时仍需通过进程配置提供 `Authentication__InitialPassword`（6–20 个字符，不自动去除首尾空白）。首次创建缺少或不合法时报告配置错误并非零退出，不抛出未处理异常。管理员已存在时跳过初始化，不覆盖密码或资料，也不再要求该配置。
 
-Development 环境先应用 EF Core 迁移，再初始化账户；其他环境须由运维预先应用迁移。本功能不改变生产迁移和部署流程。
+Development 环境启动时先应用 EF Core 迁移，再初始化账户。Production 单容器部署由容器启动门控检查数据库版本：空库自动初始化，已知待应用迁移默认拒绝启动，须在备份后显式授权；不兼容迁移历史会拒绝启动。详见[部署指南](deployment.md#应用迁移与版本更新)。直接运行 API 的其他非 Development 环境仍须由运维预先应用迁移。
 
-忘记密码时，在已配置目标数据库连接的 API 运行环境执行 `reset-admin-password` 命令。该命令只连接数据库更新已有管理员，不启动 HTTP 服务、订单任务或存储服务，不迁移数据库，不创建缺失账户。交互模式隐藏输入并要求确认；自动化通过显式 `--stdin` 从标准输入提供密码，不接受明文密码命令行参数。命令失败返回非零退出码；不要通过修改 seed Secret、清空数据库或删除数据卷来重置密码。
+忘记密码时，在已配置目标数据库连接的 API 运行环境执行 `reset-admin-password` 命令。该命令只连接数据库更新已有管理员，不启动 HTTP 服务、订单任务或存储服务，不迁移数据库，不创建缺失账户。交互模式隐藏输入并要求确认；自动化通过显式 `--stdin` 从标准输入提供密码，不接受明文密码命令行参数。命令失败返回非零退出码；不要通过修改 seed Secret、清空数据库或删除数据卷来重置密码。Production 容器内的执行方式见[部署指南](deployment.md#管理员密码重置)。
 
 例如，构建后从仓库根目录执行以下命令；发布环境将 DLL 路径替换为实际发布路径。进程配置须包含目标数据库的 `ConnectionStrings__openerp`，它不会自动继承另一个 Aspire 进程中的环境变量。
 
@@ -119,7 +119,7 @@ Cookie 使用 `Secure`、`HttpOnly`、`SameSite=Lax`，必须通过 HTTPS 访问
 | `POST /api/auth/change-password` | 首次设置提交 `{ newPassword }`；普通改密提交 `{ oldPassword, newPassword }`。服务端根据账户状态及有效会话判断 |
 | `PUT /api/account/profile` | 提交 `{ name, phone, email }` 保存资料 |
 
-业务 API（包括 `/api/ping`、ERP 和文件）默认需要登录，健康检查保持匿名。所有写请求（包括登录、退出和文件上传）均须携带 `X-CSRF-TOKEN` 请求头及对应 Cookie。客户端先请求 CSRF 令牌，登录成功后再获取绑定当前身份的新令牌；身份变化后不能沿用旧令牌，不自动重试写请求。
+业务 API（包括 `/api/ping`、ERP 和文件）默认需要登录；文件存储 API 在 Development 与 Production 均提供，健康检查保持匿名。所有写请求（包括登录、退出和文件上传）均须携带 `X-CSRF-TOKEN` 请求头及对应 Cookie。客户端先请求 CSRF 令牌，登录成功后再获取绑定当前身份的新令牌；身份变化后不能沿用旧令牌，不自动重试写请求。
 
 登录、当前账户和资料保存返回 `username`、`name`、`phone`、`email`、`lastLoginAt`、`expiresAt`、`mustChangePassword`；时间使用 ISO 8601。首次改密完成前，只允许当前账户、防伪令牌、改密、退出及匿名健康接口，业务接口和资料保存返回 `403`，ProblemDetails 顶层 `code` 为 `password_change_required`。前端据此进入强制改密页，其他 `403` 不作此处理。
 
@@ -127,23 +127,23 @@ Cookie 使用 `Secure`、`HttpOnly`、`SameSite=Lax`，必须通过 HTTPS 访问
 
 ## ERP 接入与接口
 
-上游地址固定为 `https://v3-api.wxwerp.com`。AppHost 将 User Secrets 中的 `Parameters:wxw-erp-access-token` 注入 API 的 `Erp__AccessToken`；直接配置 API 时使用后者。Token 已配置只表示配置值存在，不代表凭证有效、接口权限充分或店铺平台授权有效。前端只读取配置状态，不获取 Token。
+上游地址固定为 `https://v3-api.wxwerp.com`。AppHost 将 User Secrets 中的 `Parameters:wxw-erp-access-token` 注入 API 的 `Erp__AccessToken`；直接配置 API 时使用后者；Production 容器从密钥目录的 `erp-access-token` 文件读取 Token。Token 已配置只表示配置值存在，不代表凭证有效、接口权限充分或店铺平台授权有效。前端只读取配置状态，不获取 Token。
 
 | 接口 | 行为 |
 | --- | --- |
-| `GET /api/erp/config` | 返回配置状态、上游地址和 `orderSyncEnabled`；仅 Development 开启同步能力 |
+| `GET /api/erp/config` | 返回配置状态、上游地址和 `orderSyncEnabled`；Development 与 Production 开启同步能力 |
 | `GET /api/erp/shops?page=1&pageSize=20` | 查询当前 Token 可见的 TemuPop 店铺；每页 1–100 条，数量与页数来自 ERP |
-| `POST /api/erp/shops/{sid}/order-sync` | 仅 Development 提供；受理返回 `202`，已有同步返回 `409`，未配置 Token 返回 `503` |
-| `GET /api/erp/shops/{sid}/order-sync` | 仅 Development 提供；查询该店最近任务，无任务返回 `204` |
-| `GET /api/erp/order-sync-settings` | 仅 Development 提供；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes` |
-| `PUT /api/erp/order-sync-settings` | 仅 Development 提供；保存启用状态和店铺选择；启用时至少选择一家店铺，保存后动态通知调度器 |
-| `GET /api/erp/order-sync-settings/shops` | 仅 Development 提供；分页拉取 Token 可见的全部店铺基础信息，不查询平台授权状态 |
+| `POST /api/erp/shops/{sid}/order-sync` | Development 与 Production 提供；受理返回 `202`，已有同步返回 `409`，未配置 Token 返回 `503` |
+| `GET /api/erp/shops/{sid}/order-sync` | Development 与 Production 提供；查询该店最近任务，无任务返回 `204` |
+| `GET /api/erp/order-sync-settings` | Development 与 Production 提供；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes` |
+| `PUT /api/erp/order-sync-settings` | Development 与 Production 提供；保存启用状态和店铺选择；启用时至少选择一家店铺，保存后动态通知调度器 |
+| `GET /api/erp/order-sync-settings/shops` | Development 与 Production 提供；分页拉取 Token 可见的全部店铺基础信息，不查询平台授权状态 |
 
 店铺列表请求失败时返回错误；单店平台授权状态查询失败时保留店铺，将授权状态标为未知。同步任务受理后还会检查店铺是否对当前 Token 可见，`202` 不代表订单已成功导入。实现见 [ErpEndpoints](../OpenERP.Api/Erp/ErpEndpoints.cs) 和 [OrderSyncEndpoints](../OpenERP.Api/Orders/OrderSyncEndpoints.cs)。
 
 ## 订单同步边界
 
-- API 在 Development 启动时应用 EF Core 迁移。主单以 ERP 内部 ID 标识，平台 PO 和商品行关联主单；订单时间保留 ERP 显示原值及来源。
+- Development API 启动时应用 EF Core 迁移，Production 单容器按[部署迁移门控](deployment.md#应用迁移与版本更新)处理数据库升级。主单以 ERP 内部 ID 标识，平台 PO 和商品行关联主单；订单时间保留 ERP 显示原值及来源。
 - 完整读取并校验列表和详情后才写库；读取失败时不保存本批结果，数据库保存失败时整批回滚。
 - 归属异常的订单整单跳过，任务显示部分成功和跳过原因。只刷新本批通过校验的订单，未返回或被跳过的已有订单会保留；已接受订单的子项按本次结果更新。
 - 同步任务状态保存在 API 内存中，每店保留最近一次任务，整个 API 同时只运行一个任务。刷新网页可恢复状态，API 重启后状态丢失；手动同步需重新触发，定时同步会在下一周期重跑，已保存的订单仍在数据库中。
@@ -153,7 +153,7 @@ Cookie 使用 `Secure`、`HttpOnly`、`SameSite=Lax`，必须通过 HTTPS 访问
 
 ## 定时同步边界
 
-- 定时同步与手动同步同样只在 Development 提供。店铺页的「定时同步」卡片只配置是否启用和选择店铺，不提供周期配置。
+- 定时同步与手动同步在 Development 和 Production 提供。店铺页的「定时同步」卡片只配置是否启用和选择店铺，不提供周期配置。
 - 周期来自 API 配置 `OrderSync:SchedulerIntervalMinutes`（默认 `30`，允许 `1`–`1440` 分钟），启动时校验；修改后需重启 API，保存设置本身不需要重启。每轮受理后等待一个周期再尝试下一轮；若上一轮仍在运行，本轮跳过并等下一周期。启用后首次执行同样等待一个周期。
 - 设置保存在 PostgreSQL 的 `OrderSyncSettings` 单行表（`Id` 固定为 `1`，数据库检查约束拒绝第二行），迁移为 `AddOrderSyncSettings`。保存后 API 唤醒调度器重新读取设置；启用后首次执行仍等待一个完整周期。
 - 启用时必须至少选择一家店铺，空选返回 `400`，前端也会禁用保存。历史空选数据不会触发同步。启用还要求已配置私有 ERP AccessToken；未配置时保存启用状态返回 `503`，前端禁用开关和保存。

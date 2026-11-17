@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+exec 2>&1
+
+export PGDATA=/var/lib/postgresql/18/docker
+export POSTGRES_DB=openerp
+export POSTGRES_USER=openerp
+export POSTGRES_PASSWORD_FILE=/run/openerp/postgres-password
+export POSTGRES_INITDB_ARGS='--auth-host=scram-sha-256 --auth-local=scram-sha-256'
+export POSTGRES_HOST_AUTH_METHOD=scram-sha-256
+
+exec s6-setuidgid postgres /usr/local/bin/docker-entrypoint.sh postgres \
+    -c listen_addresses=127.0.0.1 -p 5432

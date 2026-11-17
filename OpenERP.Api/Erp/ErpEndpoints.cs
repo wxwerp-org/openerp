@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using OpenERP.Api;
 using OpenERP.Api.Orders;
 
 namespace OpenERP.Api.Erp;
@@ -7,7 +8,7 @@ public static class ErpEndpoints
 {
     public static void MapErp(this WebApplication app)
     {
-        var orderSyncEnabled = app.Environment.IsDevelopment();
+        var orderSyncEnabled = app.Environment.IsDevelopmentOrProduction();
         app.MapGet("/api/erp/config", (IErpClient erp) => TypedResults.Ok(
             new ErpConfigurationResponse(erp.Configuration.Configured, erp.Configuration.BaseUrl, orderSyncEnabled)))
             .WithSummary("查询私有 ERP 接入配置状态，不返回 Token");

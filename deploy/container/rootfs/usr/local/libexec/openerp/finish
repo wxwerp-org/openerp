@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+
+# s6 在发送停止信号之前先修改期望状态。
+if [ "$(s6-svstat -w .)" = false ]; then
+    exit 0
+fi
+
+service=$1
+exitcode=$2
+if [ "$exitcode" -eq 256 ]; then
+    exitcode=$((128 + $3))
+fi
+printf '[%s] Unexpected exit (%s); stopping the container.\n' "$service" "$exitcode" >&2
+
+# 多个服务并发退出时只请求一次关机。halt 将请求提交给 PID 1 并异步返回。
+if mkdir /run/openerp/service-failed 2>/dev/null; then
+    printf '1\n' > /run/s6-linux-init-container-results/exitcode
+    if ! /run/s6/basedir/bin/halt; then
+        printf '[%s] Could not request halt; signaling PID 1.\n' "$service" >&2
+        kill -TERM 1 || :
+    fi
+fi
+
+# 在 s6-rc 启动或关闭的过渡期间也禁止自动重启。
+exit 125

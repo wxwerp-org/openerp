@@ -1,0 +1,42 @@
+#!/bin/sh
+set -eu
+
+cd /run/openerp
+export OPENERP_RUNTIME_CONFIG=/run/openerp/appsettings.json
+pg_password=$(cat postgres-password)
+redis_password=$(cat redis-password)
+
+while [ ! -d service-failed ]; do
+    pending=
+    # 官方 entrypoint 的临时 PostgreSQL 实例仅监听 Unix socket。
+    if ! pg_value=$(PGPASSWORD="$pg_password" PGREQUIREAUTH=scram-sha-256 timeout 5 psql \
+        --host=127.0.0.1 --port=5432 --username=openerp --dbname=openerp \
+        --no-password --no-psqlrc --quiet --tuples-only --no-align --command='SELECT 1' 2>/dev/null) ||
+        [ "$pg_value" != 1 ]; then
+        pending="$pending postgres"
+    fi
+    if ! redis_value=$(REDISCLI_AUTH="$redis_password" timeout 5 redis-cli \
+        -h 127.0.0.1 -p 6379 --raw PING 2>/dev/null) ||
+        [ "$redis_value" != PONG ]; then
+        pending="$pending redis"
+    fi
+    # 为 CLR 与 S3 SDK 冷启动留出预算；整个 ready 阶段仍受 120 秒上限约束。
+    if ! timeout 45 s6-setuidgid app dotnet /app/OpenERP.Api.dll container-storage-ready >/dev/null 2>&1; then
+        pending="$pending seaweedfs"
+    fi
+    if [ -d service-failed ]; then
+        break
+    fi
+    if [ -z "$pending" ]; then
+        printf '[ready] PostgreSQL, Redis and SeaweedFS are ready.\n'
+        exit 0
+    fi
+    if [ "$pending" != "${previous_pending:-}" ]; then
+        printf '[ready] Waiting for:%s\n' "$pending"
+        previous_pending=$pending
+    fi
+    sleep 1
+done
+
+printf '[ready] A required service exited before startup completed.\n' >&2
+exit 1

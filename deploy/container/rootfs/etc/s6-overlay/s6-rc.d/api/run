@@ -1,0 +1,12 @@
+#!/command/with-contenv /bin/sh
+set -eu
+exec 2>&1
+
+# 依赖在 s6-rc 启动切换期间退出时，阻止 API 拉起。
+cd /run/openerp
+test ! -d service-failed
+export ASPNETCORE_URLS=http://0.0.0.0:8081
+export ASPNETCORE_CONTENTROOT=/app
+export OPENERP_RUNTIME_CONFIG=/run/openerp/appsettings.json
+
+exec s6-setuidgid app dotnet /app/OpenERP.Api.dll

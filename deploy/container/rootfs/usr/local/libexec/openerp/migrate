@@ -1,0 +1,40 @@
+#!/bin/sh
+set -eu
+
+cd /run/openerp
+test ! -d service-failed
+export OPENERP_RUNTIME_CONFIG=/run/openerp/appsettings.json
+
+if s6-setuidgid app dotnet /app/OpenERP.Api.dll container-schema; then
+    exit 0
+else
+    status=$?
+fi
+
+case "$status" in
+    10)
+        printf '[migrate] Initializing an empty database.\n'
+        ;;
+    11)
+        if [ "${OPENERP_APPLY_MIGRATIONS:-}" != 1 ]; then
+            printf '[migrate] Migrations pending. Set OPENERP_APPLY_MIGRATIONS=1 after taking a backup.\n' >&2
+            exit 1
+        fi
+        printf '[migrate] Applying pending migrations.\n'
+        ;;
+    12)
+        printf '[migrate] Database migration history is incompatible with this build.\n' >&2
+        exit 1
+        ;;
+    *)
+        printf '[migrate] Could not determine the database schema version.\n' >&2
+        exit 1
+        ;;
+esac
+
+test ! -d service-failed
+s6-setuidgid app /app/efbundle
+if ! s6-setuidgid app dotnet /app/OpenERP.Api.dll container-schema; then
+    printf '[migrate] Database schema still does not match this build.\n' >&2
+    exit 1
+fi

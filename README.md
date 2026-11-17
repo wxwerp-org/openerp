@@ -4,19 +4,21 @@ OpenERP 是一个基于 Vue 和 ASP.NET Core 的 ERP 项目，目前支持从私
 
 前端使用 Vue 和 TypeScript，后端使用 ASP.NET Core Minimal API 和 EF Core；Aspire 统一启动前后端、PostgreSQL、Redis 和 SeaweedFS，并提供日志与追踪面板。
 
-目前用于本地开发，业务页面与 API 需要管理员登录。历史订单同步和文件存储 API 仅在 Development 环境开放。
+项目提供 Aspire 本地 Development 环境和 Docker Compose Production 单容器部署。业务页面与 API 需要管理员登录；历史订单同步和文件存储 API 在 Development 与 Production 均可用。Production 发布流程、密钥、代理、数据卷和迁移说明见[部署指南](docs/deployment.md)。
 
 ## 功能
 
 - **管理员账户**：单管理员登录、个人资料编辑、修改密码和退出；支持多设备登录，固定 24 小时会话。
 - **店铺查询**：分页查看当前 ERP Token 可见的 TemuPop 店铺及平台授权状态，支持失败重试。
 - **历史订单同步**：在店铺页手动同步私有 ERP 中已有的订单，查看进度以及新增、更新、未变化和跳过计数。订单保存在 PostgreSQL，重复同步会更新已有记录。
-- **定时同步**：在店铺页按固定周期（默认 30 分钟）尝试自动同步选中的店铺；单店失败不影响其他店铺，下一周期会重新扫描。仅 Development 开放。
-- **开发文件存储**：通过 SeaweedFS 提供 S3 兼容存储及文件上传、下载 API。
+- **定时同步**：在店铺页按固定周期（默认 30 分钟）尝试自动同步选中的店铺；单店失败不影响其他店铺，下一周期会重新扫描。
+- **文件存储**：通过 SeaweedFS 提供 S3 兼容存储及文件上传、下载 API。
 
 店铺和订单功能需要 [私有 ERP](https://v3-api.wxwerp.com) 的 Open API Token。未配置 Token 时仍可启动项目，店铺页会提示配置。
 
 ## 快速开始
+
+以下步骤面向本地 Development 环境；Production 单容器部署请按[部署指南](docs/deployment.md)操作。
 
 ### 环境准备
 
@@ -39,7 +41,7 @@ pnpm --dir OpenERP.Web install --frozen-lockfile
 
 ### 初始化管理员
 
-首次启动无需手工配置密码。Aspire 自动生成随机临时密码并保存在 User Secrets：在 Dashboard 打开 `api` 的资源详情，在环境变量中查看并复制 `Authentication__InitialPassword`（秘密值默认隐藏）。
+本地 Development 首次启动无需手工配置密码。Aspire 自动生成随机临时密码并保存在 User Secrets：在 Dashboard 打开 `api` 的资源详情，在环境变量中查看并复制 `Authentication__InitialPassword`（秘密值默认隐藏）。Production 容器首次初始化使用密钥目录中的 `admin-initial-password` 文件，详见[部署指南](docs/deployment.md#准备密钥与反向代理)。
 
 使用 `admin` 与临时密码登录后，Web 会要求设置自己的新密码（6–20 个字符，不能与临时密码相同）。完成后重新登录即可访问业务；改密前业务页面和 API 均不可用。
 
@@ -47,13 +49,13 @@ pnpm --dir OpenERP.Web install --frozen-lockfile
 
 ### 配置 ERP Token
 
-需要使用店铺和订单功能时执行：
+本地 Development 需要使用店铺和订单功能时执行：
 
 ```bash
 dotnet user-secrets set "Parameters:wxw-erp-access-token" "你的Token" --project OpenERP.AppHost
 ```
 
-Token 保存在 .NET User Secrets 中，仅供后端使用，不会发送到浏览器或写入 Git。修改后需重新启动应用。
+Token 保存在 .NET User Secrets 中，仅供后端使用，不会发送到浏览器或写入 Git。修改后需重新启动应用。Production 请把 Token 放入密钥目录中的 `erp-access-token` 文件。
 
 ### 启动并访问
 
@@ -83,7 +85,7 @@ PostgreSQL、Redis 和 SeaweedFS 使用持久容器与 Docker 数据卷，正常
 
 ## 参与开发与帮助
 
-贡献要求和提交约定见[贡献指南](CONTRIBUTING.md)。代码导航、构建测试、接口行为和同步限制见[开发说明](docs/development.md)，启动或请求异常时参考其中的[本地诊断](docs/development.md#本地诊断)。问题反馈请使用 [GitHub Issues](https://github.com/wxwerp-org/openerp/issues)。
+贡献要求和提交约定见[贡献指南](CONTRIBUTING.md)。代码导航、构建测试、接口行为和同步限制见[开发说明](docs/development.md)，启动或请求异常时参考其中的[本地诊断](docs/development.md#本地诊断)。Production 发布与恢复见[部署指南](docs/deployment.md)。问题反馈请使用 [GitHub Issues](https://github.com/wxwerp-org/openerp/issues)。
 
 ## 许可证
 

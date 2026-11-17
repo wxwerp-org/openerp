@@ -1,0 +1,251 @@
+name: 单容器 amd64 原生验收
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  container-acceptance:
+    name: ubuntu-24.04 x64 容器验收
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      DOTNET_VERSION: 10.0.404
+      DOTNET_INSTALL_DIR: ${{ runner.temp }}/openerp-dotnet
+      ASPIRE_VERSION: 13.6.5
+      PNPM_VERSION: 11.16.0
+      IMAGE_NAME: openerp:ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 准备验收产物目录
+        run: |
+          echo "ARTIFACTS_DIR=$RUNNER_TEMP/openerp-container-ci" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/openerp-container-ci"
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - name: 固定 pnpm 版本
+        run: |
+          npm install --global "pnpm@${PNPM_VERSION}"
+          test "$(pnpm --version)" = "$PNPM_VERSION"
+
+      - name: 安装 Aspire CLI
+        run: |
+          dotnet tool install --global Aspire.Cli --version "$ASPIRE_VERSION"
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: 检查 x64 工具链版本
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ARCH" = X64
+          test "$(dotnet --version)" = "$DOTNET_VERSION"
+          test "$(node --version)" = "v$(cat .node-version)"
+          test "$(pnpm --version)" = "$PNPM_VERSION"
+          cli_version="$(aspire --version)"
+          printf '%s\n' "$cli_version" | tee "$ARTIFACTS_DIR/aspire-version.log"
+          case "$cli_version" in
+            "$ASPIRE_VERSION"|"$ASPIRE_VERSION"+*) ;;
+            *) echo "Aspire CLI 版本不匹配：$cli_version" >&2; exit 1 ;;
+          esac
+          docker buildx version
+          docker compose version
+
+      - name: Aspire 发布 Compose
+        run: |
+          set -euo pipefail
+          aspire publish \
+            --apphost "$GITHUB_WORKSPACE/OpenERP.AppHost/OpenERP.AppHost.csproj" \
+            --output-path "$ARTIFACTS_DIR/aspire-output" \
+            --non-interactive 2>&1 | tee "$ARTIFACTS_DIR/aspire-publish.log"
+          test -s "$ARTIFACTS_DIR/aspire-output/docker-compose.yaml"
+
+      - name: 构建并本地装载 linux/amd64 镜像
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --progress plain \
+            --tag "$IMAGE_NAME" \
+            --file "$GITHUB_WORKSPACE/deploy/container/Dockerfile" \
+            "$GITHUB_WORKSPACE" 2>&1 | tee "$ARTIFACTS_DIR/docker-build.log"
+
+      - name: 运行容器生命周期单元测试
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover \
+            -s tests/container \
+            -p 'test_lifecycle.py' \
+            -v 2>&1 | tee "$ARTIFACTS_DIR/lifecycle-tests.log"
+
+      - name: 运行 Compose 容器验收
+        timeout-minutes: 35
+        run: |
+          set -euo pipefail
+          python3 tests/container/acceptance.py \
+            --compose "$ARTIFACTS_DIR/aspire-output/docker-compose.yaml" \
+            --image "$IMAGE_NAME" \
+            --report "$ARTIFACTS_DIR/container-acceptance.json" \
+            2>&1 | tee "$ARTIFACTS_DIR/container-acceptance.log"
+
+      - name: 运行故障注入容器验收
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          python3 tests/container/failure_acceptance.py \
+            --compose "$ARTIFACTS_DIR/aspire-output/docker-compose.yaml" \
+            --image "$IMAGE_NAME" \
+            --report "$ARTIFACTS_DIR/failure-acceptance.json" \
+            2>&1 | tee "$ARTIFACTS_DIR/failure-acceptance.log"
+
+      - name: 生成验收摘要 HTML
+        if: ${{ always() }}
+        run: |
+          ARTIFACTS_DIR="${ARTIFACTS_DIR:-$RUNNER_TEMP/openerp-container-ci}"
+          mkdir -p "$ARTIFACTS_DIR"
+          export ARTIFACTS_DIR
+          python3 - <<'PY'
+          import json
+          import os
+          from html import escape
+          from pathlib import Path
+
+          output = Path(os.environ["ARTIFACTS_DIR"])
+          def load(name):
+              try:
+                  value = json.loads((output / name).read_text(encoding="utf-8"))
+                  return value if isinstance(value, dict) else None
+              except (OSError, UnicodeError, json.JSONDecodeError):
+                  return None
+
+          def state(report):
+              return "Passed" if isinstance(report, dict) and report.get("passed") is True else (
+                  "Failed" if isinstance(report, dict) and report.get("passed") is False else "Not run"
+              )
+
+          def badge(status):
+              css = {"Passed": "ok", "Failed": "bad"}.get(status, "na")
+              return f'<span class="{css}">{escape(status)}</span>'
+
+          def short(value):
+              text = " ".join(str(value).split())
+              return text[:240] + ("..." if len(text) > 240 else "")
+
+          def size(value):
+              if not isinstance(value, (int, float)):
+                  return "Not run"
+              amount = float(value)
+              for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+                  if amount < 1024 or unit == "TiB":
+                      return f"{amount:.1f} {unit}"
+                  amount /= 1024
+
+          primary = load("container-acceptance.json")
+          faults = load("failure-acceptance.json")
+          metrics = primary.get("metrics", {}) if isinstance(primary, dict) else {}
+          metrics = metrics if isinstance(metrics, dict) else {}
+          steps = primary.get("steps", []) if isinstance(primary, dict) else []
+          steps = steps if isinstance(steps, list) else []
+          counts = {"Passed": 0, "Failed": 0, "Not run": 0}
+          step_rows = []
+          for index, step in enumerate(steps, 1):
+              status = {"passed": "Passed", "failed": "Failed"}.get(
+                  step.get("status") if isinstance(step, dict) else None, "Not run"
+              )
+              counts[status] += 1
+              duration = step.get("durationSeconds") if isinstance(step, dict) else None
+              duration = f"{duration:.2f}s" if isinstance(duration, (int, float)) else "Not run"
+              step_rows.append(f"<tr><td>Step {index:02d}</td><td>{badge(status)}</td><td>{escape(duration)}</td></tr>")
+          if not step_rows:
+              step_rows.append('<tr><td colspan="3">Not run: acceptance report unavailable</td></tr>')
+          fault_cases = faults.get("cases", []) if isinstance(faults, dict) else []
+          fault_cases = fault_cases if isinstance(fault_cases, list) else []
+          by_name = {case.get("case"): case for case in fault_cases if isinstance(case, dict)}
+          fault_rows = []
+          for key, title in (("migration", "Migration DDL rollback"),
+                             ("initialization", "Interrupted PostgreSQL initialization"),
+                             ("enospc", "4 KiB tmpfs ENOSPC")):
+              case = by_name.get(key)
+              status = state(case)
+              detail = "No report entry" if case is None else (
+                  "-" if status == "Passed" else short(case.get("error", "No error recorded"))
+              )
+              fault_rows.append(f"<tr><td>{title}</td><td>{badge(status)}</td><td>{escape(detail)}</td></tr>")
+
+          def metric(label, value):
+              return f"<tr><th>{label}</th><td>{escape(str(value) if value is not None else 'Not run')}</td></tr>"
+
+          metric_rows = "".join(metric(label, value) for label, value in (
+              ("Host platform", metrics.get("runnerPlatform")),
+              ("Docker daemon", metrics.get("daemonPlatform")),
+              ("Image platform", metrics.get("imagePlatform")),
+              ("Image size", size(metrics.get("imageSizeBytes"))),
+              ("Memory samples", metrics.get("memorySamples")),
+              ("Peak sampled memory", size(metrics.get("peakSampledMemoryBytes"))),
+              ("Writable layer", size(metrics.get("containerWritableLayerBytes"))),
+              ("Root filesystem", size(metrics.get("containerRootFilesystemBytes"))),
+          ))
+          primary_status, fault_status = state(primary), state(faults)
+          html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+          <title>Single-container acceptance summary</title><style>
+          body{{font:16px Arial,sans-serif;color:#172033;background:#f3f5f8;margin:28px}}
+          main{{max-width:1400px;margin:auto;background:white;padding:28px;border:1px solid #dce2ea}}
+          h1{{margin-top:0}}h2{{margin:22px 0 8px}}table{{width:100%;border-collapse:collapse}}
+          th,td{{padding:8px;border-bottom:1px solid #dce2ea;text-align:left;vertical-align:top}}
+          .ok{{color:#17683c}}.bad{{color:#a62924}}.na{{color:#596579}}code{{overflow-wrap:anywhere}}
+          </style></head><body><main><h1>Single-container acceptance summary</h1>
+          <p>Run SHA: <code>{escape(os.environ.get('GITHUB_SHA', 'Not run'))}</code></p>
+          <p>Primary: {badge(primary_status)} &nbsp; Steps: {len(steps)} &nbsp; Passed: {counts['Passed']} / Failed: {counts['Failed']} / Not run: {counts['Not run']}</p>
+          <p>Fault suite: {badge(fault_status)}</p><h2>Platform and metrics</h2><table>{metric_rows}</table>
+          <h2>Primary steps</h2><table><tr><th>Step</th><th>Status</th><th>Duration</th></tr>{''.join(step_rows)}</table>
+          <h2>Fault cases</h2><table><tr><th>Case</th><th>Status</th><th>Error summary</th></tr>{''.join(fault_rows)}</table>
+          </main></body></html>"""
+          (output / "container-acceptance-summary.html").write_text(html, encoding="utf-8")
+          PY
+
+      - name: Chrome headless 截取验收摘要
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          ARTIFACTS_DIR="${ARTIFACTS_DIR:-$RUNNER_TEMP/openerp-container-ci}"
+          cd "$ARTIFACTS_DIR"
+          google-chrome --headless --disable-gpu --window-size=1600,2000 \
+            --screenshot "file://$ARTIFACTS_DIR/container-acceptance-summary.html"
+          test -s screenshot.png
+          mv screenshot.png container-acceptance-summary.png
+          test -s container-acceptance-summary.png
+
+      - name: 上传 Compose、脱敏报告与构建日志
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: container-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/openerp-container-ci/aspire-output/docker-compose.yaml
+            ${{ runner.temp }}/openerp-container-ci/aspire-publish.log
+            ${{ runner.temp }}/openerp-container-ci/aspire-version.log
+            ${{ runner.temp }}/openerp-container-ci/docker-build.log
+            ${{ runner.temp }}/openerp-container-ci/lifecycle-tests.log
+            ${{ runner.temp }}/openerp-container-ci/container-acceptance.json
+            ${{ runner.temp }}/openerp-container-ci/container-acceptance.log
+            ${{ runner.temp }}/openerp-container-ci/failure-acceptance.json
+            ${{ runner.temp }}/openerp-container-ci/failure-acceptance.log
+            ${{ runner.temp }}/openerp-container-ci/container-acceptance-summary.html
+            ${{ runner.temp }}/openerp-container-ci/container-acceptance-summary.png
+          if-no-files-found: warn

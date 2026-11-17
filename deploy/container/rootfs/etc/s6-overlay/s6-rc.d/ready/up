@@ -1,0 +1,1 @@
+/usr/bin/timeout -k 2 120 /usr/local/libexec/openerp/ready

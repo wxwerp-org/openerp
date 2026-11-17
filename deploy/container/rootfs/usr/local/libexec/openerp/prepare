@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+umask 077
+
+install -d -o root -g root -m 0711 /run/openerp
+if [ -d /run/openerp/service-failed ]; then
+    rmdir /run/openerp/service-failed
+fi
+
+printf '[prepare] Validating secrets and generating runtime configuration.\n'
+export OPENERP_RUNTIME_DIRECTORY=/run/openerp
+export OPENERP_SECRETS_DIRECTORY=/run/secrets
+dotnet /app/OpenERP.Api.dll container-config
+
+chown app:app /run/openerp/appsettings.json
+chown redis:redis /run/openerp/redis.conf
+chown seaweed:seaweed /run/openerp/s3.json
+chown postgres:postgres /run/openerp/postgres-password
+chmod 0600 /run/openerp/appsettings.json /run/openerp/redis.conf \
+    /run/openerp/s3.json /run/openerp/postgres-password /run/openerp/redis-password
+
+install -d -o postgres -g postgres -m 0700 /var/lib/postgresql
+install -d -o postgres -g postgres -m 3775 /var/run/postgresql
+install -d -o redis -g redis -m 0700 /var/lib/redis
+install -d -o seaweed -g seaweed -m 0700 /data
+# EF bundle 解包缓存只属于 app，不能沿用 PID 1 的 /root，也不占密钥 tmpfs。
+install -d -o app -g app -m 0700 /tmp/openerp-bundle
