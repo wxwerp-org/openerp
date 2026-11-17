@@ -3,7 +3,7 @@ using Amazon.S3.Model;
 
 namespace OpenERP.Api;
 
-/// <summary>A file stored in the development example's S3 bucket.</summary>
+/// <summary>存放在应用 S3 存储桶中的文件。</summary>
 public sealed record StoredFile(string Key, string FileName, string ContentType, long Size);
 
 public sealed class FileStore(IAmazonS3 s3)

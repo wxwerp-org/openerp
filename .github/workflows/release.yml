@@ -1,0 +1,56 @@
+name: 发布 OpenERP 部署产物
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ReleaseTag: ${{ github.event.release.tag_name }}
+      Parameters__registry_endpoint: ghcr.io
+      Parameters__registry_repository: ${{ github.repository }}
+    steps:
+      - name: 检出 Release 对应的提交
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - name: 安装 .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: 安装固定版本的 Aspire CLI 并还原 EF 工具
+        run: |
+          dotnet tool install aspire.cli --tool-path "$RUNNER_TEMP/aspire-bin" --version "$(jq -r '.tools["aspire.cli"].version' .config/dotnet-tools.json)"
+          echo "$RUNNER_TEMP/aspire-bin" >> "$GITHUB_PATH"
+          dotnet tool restore
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 构建并推送 Release 镜像
+        run: aspire do push --non-interactive
+
+      - name: 生成 Compose 和配置模板
+        run: |
+          aspire publish --non-interactive
+          docker compose -f OpenERP.AppHost/aspire-output/docker-compose.yaml config --no-interpolate --quiet
+
+      - name: 上传同一 Release 的部署附件
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tar -czf "$RUNNER_TEMP/openerp-compose.tar.gz" -C OpenERP.AppHost/aspire-output docker-compose.yaml .env
+          gh release upload --repo "$GITHUB_REPOSITORY" -- "$ReleaseTag" "$RUNNER_TEMP/openerp-compose.tar.gz"
