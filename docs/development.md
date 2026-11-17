@@ -11,6 +11,7 @@
 | [OpenERP.AppHost](../OpenERP.AppHost/) | 本地服务编排 |
 | [OpenERP.ServiceDefaults](../OpenERP.ServiceDefaults/) | 健康检查、遥测与服务发现 |
 | [OpenERP.Api.Tests](../OpenERP.Api.Tests/) | 后端单元测试和集成测试 |
+| [OpenERP.ExternalAcceptance.Tests](../OpenERP.ExternalAcceptance.Tests/) | 显式运行的真实 ERP 外部验收 |
 
 [router/index.ts](../OpenERP.Web/src/router/index.ts) 定义工作台、授权店铺、产品、订单、业务配置、用户与新品开发路由，[views](../OpenERP.Web/src/views/) 存放页面，[components](../OpenERP.Web/src/components/) 提供可复用工作台卡片、导航和控件。[styles](../OpenERP.Web/src/styles/) 按区域组织共享样式，列表、控件与页面类按用途拆分。
 
@@ -71,14 +72,23 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 ### 真实 ERP 验证
 
-常规后端测试自行准备隔离 PostgreSQL，不需要连接开发数据库。可选的 [OrderLiveAcceptanceTests](../OpenERP.Api.Tests/OrderLiveAcceptanceTests.cs) 使用进程环境变量：
+常规后端测试自行准备隔离 PostgreSQL，不需要连接开发数据库。受控的 [OrderLiveAcceptanceTests](../OpenERP.ExternalAcceptance.Tests/OrderLiveAcceptanceTests.cs) 位于独立外部验收项目，不属于 `OpenERP.slnx` 的 PR 回归套件，必须显式选择项目运行。它们使用进程环境变量：
 
 | 变量 | 用途与前提 |
 | --- | --- |
 | `OPENERP_TEST_ERP_TOKEN` | 有权读取目标店铺的 Token；启用 SID `644928` 的只读分页验证，该店需有超过 100 单 |
 | `OPENERP_TEST_POSTGRES` | 与上述 Token 一起启用 SID `30` 的源端与入库结果比对；指向已完成该店手动同步的数据库 |
 
-数据库比对用例的前置步骤是在浏览器完成 SID `30` 的两次手动同步；测试本身只读源端和数据库，不执行同步或建表。未设置相应变量时用例跳过。凭证仅通过进程环境提供，不写入文档或版本库；测试命令见本页[构建与测试](#构建与测试)。
+数据库比对用例的前置步骤是在浏览器完成 SID `30` 的两次手动同步；测试本身只读源端和数据库，不执行同步或建表。因此第一项是外部 ERP 分页集成验收，第二项是订单同步 E2E 的结果验收，不能当成自行准备数据的常规回归。
+
+确认目标环境、数据前提并在进程环境配置凭证后，显式运行：
+
+```bash
+dotnet restore OpenERP.ExternalAcceptance.Tests/OpenERP.ExternalAcceptance.Tests.csproj --locked-mode
+dotnet test --project OpenERP.ExternalAcceptance.Tests/OpenERP.ExternalAcceptance.Tests.csproj --no-restore --zero-tests-policy strict --fail-skips on
+```
+
+缺少相应变量时验收失败并指出缺失前提，不静默跳过。凭证只通过进程环境提供，不写入文档或版本库。普通 PR CI 还原并编译该项目，但不执行外部验收或访问该外部环境；常规回归通过不代表外部验收已执行。
 
 ## 管理员账户与会话
 
@@ -228,3 +238,21 @@ PostgreSQL `18-alpine` 和 Redis `8-alpine` 使用浮动大版本标签，小版
 仓库代理规则由 [AGENTS.md](../AGENTS.md) 提供，专项流程位于 `.agents/skills/`。
 
 仓库的 [.mcp.json](../.mcp.json) 与 [.vscode/mcp.json](../.vscode/mcp.json) 使用 `aspire agent init` 生成的 `aspire agent mcp` 配置。客户端与终端均直接使用 PATH 中的 `aspire` CLI，不额外套用 `dotnet tool run`。代理启动及其他生命周期操作遵循项目内 [Aspire Skill](../.agents/skills/aspire/SKILL.md) 及其路由的子 Skill。
+
+## 后端 PR 检查
+
+[后端工作流](../.github/workflows/ci-backend.yml) 在 PR 新建、更新和重新打开时执行，沿用前端检查的只读权限、并发取消和独立结果汇总。Ubuntu runner 按仓库版本配置准备 .NET、Node.js、pnpm 与 Chromium；锁定还原并构建后运行整个 `OpenERP.slnx`，不按测试类别过滤。
+
+CI 设置 `OPENERP_RUN_BROWSER_TESTS=1`，因此容器集成测试及隔离 HTTPS 宿主上的真实认证浏览器测试均需执行。测试夹具让 Aspire 直接启动已构建的 API DLL，端点、健康检查、重启和清理仍由 Aspire 管理，避免 `dotnet run` 父子进程影响 Linux 停止行为。Docker、开发证书信任、镜像拉取、资源启动或清理失败都属于失败。真实 ERP 验收使用上述独立入口，不在 PR CI 中按方法名豁免跳过。
+
+每次运行创建全新报告目录，使用运行器原生 `--zero-tests-policy strict --fail-skips on` 拒绝零执行和跳过，保留测试与程序集清理错误的非零退出码。Playwright 启用 `--forbid-only --fail-on-flaky-tests`；.NET 浏览器入口还检查结果中确有成功用例且跳过数为零，避免内部跳过被外层成功掩盖。不维护发现与执行清单的逐项对账。
+
+Actions 摘要直接使用 xUnit 生成的 Markdown；`backend-results-*` 产物保存原始报告及夹具销毁前的资源诊断，保留 7 天。测试失败后仍生成摘要并上传产物，报告步骤不会清除原始失败。还原、编译、Docker 与证书准备故障直接定位到相应步骤。
+
+准备好容器、前端依赖、Chromium 和 HTTPS 信任后，本地运行同一套完整回归：
+
+```bash
+OPENERP_RUN_BROWSER_TESTS=1 dotnet test --solution OpenERP.slnx --no-build --timeout 20m --zero-tests-policy strict --fail-skips on
+```
+
+需要复现 CI 报告时，为单次测试提供全新的绝对目录 `OPENERP_CI_RESULTS_DIR`；该变量只开启测试报告与诊断，不改变业务配置。普通本地测试入口及真实 ERP 验收方式仍见上文。
