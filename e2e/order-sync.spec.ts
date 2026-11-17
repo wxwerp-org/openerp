@@ -26,18 +26,6 @@ type SyncTask = {
 
 type DatabaseRow = Record<string, unknown>
 
-const orderFields = [
-  'erpId', 'orderNumber', 'sid', 'platform', 'status',
-  'createdRaw', 'createdSource', 'paidRaw', 'paidSource',
-  'dispatchedRaw', 'dispatchedSource', 'refundedRaw', 'refundedSource',
-] as const
-
-const platformOrderFields = ['erpId', 'poNumber', 'sid', 'statusCode', 'statusText'] as const
-
-const orderLineFields = [
-  'erpId', 'productId', 'oguid', 'skuId', 'skuCode', 'quantity', 'disabled', 'appended',
-] as const
-
 function isRecord(value: unknown): value is DatabaseRow {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -48,47 +36,12 @@ function rowsAt(value: unknown, key: string): DatabaseRow[] {
   return value[key] as DatabaseRow[]
 }
 
-function hasSameMultiset<T extends object>(
-  actual: DatabaseRow[],
-  expected: readonly T[],
-  fields: readonly string[],
-): boolean {
-  if (actual.length !== expected.length) return false
-
-  const rowKey = (row: object) => {
-    const values = row as Record<string, unknown>
-    return JSON.stringify(fields.map(field => Object.hasOwn(values, field) ? values[field] : `missing:${field}`))
-  }
-  const expectedCounts = new Map<string, number>()
-  for (const row of expected) {
-    const key = rowKey(row)
-    expectedCounts.set(key, (expectedCounts.get(key) ?? 0) + 1)
-  }
-
-  for (const row of actual) {
-    const key = rowKey(row)
-    const count = expectedCounts.get(key) ?? 0
-    if (count === 0) return false
-    if (count === 1) expectedCounts.delete(key)
-    else expectedCounts.set(key, count - 1)
-  }
-
-  return expectedCounts.size === 0
+// 排序只消除数据库返回顺序的差异；原生深比较仍检查所有字段和重复行数量。
+function sortedRows(rows: DatabaseRow[]): string[] {
+  return rows.map(row => JSON.stringify(row, Object.keys(row).sort())).sort()
 }
-
 
 type E2eMode = 'stub' | 'live'
-type TerminalStatus = 'succeeded' | 'partial'
-
-const terminalStatusesByMode: Record<E2eMode, readonly TerminalStatus[]> = {
-  stub: ['succeeded'],
-  live: ['succeeded', 'partial'],
-}
-
-const terminalLabels: Record<TerminalStatus, string> = {
-  succeeded: '同步完成',
-  partial: '部分成功',
-}
 
 function currentMode(): E2eMode {
   const mode = process.env.OPENERP_E2E_MODE ?? 'stub'
@@ -104,14 +57,17 @@ function selectedSid(mode: E2eMode): number {
   return value
 }
 
-async function findShopRow(page: Page, sid: number): Promise<Locator> {
+async function findShopRow(page: Page, sid: number, mode: E2eMode): Promise<Locator> {
   await expect(page.locator('.shops-table tbody tr').first(), '店铺首页应完成加载').toBeVisible({ timeout: 60_000 })
   const nextButton = page.getByRole('button', { name: '下一页', exact: true })
   while (true) {
     const row = page.getByRole('row').filter({
       has: page.getByRole('cell', { name: String(sid), exact: true }),
     })
-    if (await row.count() === 1) return row
+    if (await row.count() === 1) {
+      if (mode === 'stub') await expect(row).toContainText(testShopName)
+      return row
+    }
     if (await nextButton.isDisabled()) break
     const previousFirstRow = await page.locator('.shops-table tbody tr').first().innerText()
     const nextResponse = page.waitForResponse(response =>
@@ -122,11 +78,6 @@ async function findShopRow(page: Page, sid: number): Promise<Locator> {
     await expect(page.locator('.shops-table tbody tr').first(), '店铺分页应完成加载').not.toHaveText(previousFirstRow)
   }
   throw new Error(`授权店铺列表中未找到 SID ${sid}。`)
-}
-
-const assertShopNameByMode: Record<E2eMode, (row: Locator) => Promise<void>> = {
-  stub: row => expect(row).toContainText(testShopName),
-  live: async () => {},
 }
 
 async function readSyncTask(page: Page, sid: number): Promise<SyncTask | null> {
@@ -163,11 +114,12 @@ async function startAndWaitForSync(
   expect(acceptedId.length, '每次同步都必须有任务 ID').toBeGreaterThan(0)
   if (previousId) expect(acceptedId, '第二次同步必须创建新任务').not.toBe(previousId)
 
+  const terminalStatuses = mode === 'live' ? ['succeeded', 'partial'] : ['succeeded']
   await expect.poll(async () => {
     const task = await readSyncTask(page, sid)
     if (task?.id === acceptedId && task.status === 'failed')
       throw new Error(`SID ${sid} 同步失败：${task.error ?? '未提供错误详情'}`)
-    if (!task || task.id !== acceptedId || !terminalStatusesByMode[mode].includes(task.status as TerminalStatus))
+    if (!task || task.id !== acceptedId || !terminalStatuses.includes(task.status))
       return '任务尚未完成'
     return '已完成'
   }, { timeout: mode === 'live' ? 9 * 60_000 : 60_000 }).toBe('已完成')
@@ -176,10 +128,9 @@ async function startAndWaitForSync(
   expect(completed, '完成任务仍应可查询').not.toBeNull()
   expect(completed?.id).toBe(acceptedId)
   expect(completed?.sid).toBe(sid)
-  expect(terminalStatusesByMode[mode]).toContain(completed?.status)
+  expect(terminalStatuses).toContain(completed?.status)
   expect(completed?.stage).toBe('done')
-  const status = completed?.status as TerminalStatus
-  await expect(row.getByText(terminalLabels[status], { exact: true })).toBeVisible()
+  await expect(row.getByText(completed?.status === 'partial' ? '部分成功' : '同步完成', { exact: true })).toBeVisible()
   return completed!
 }
 
@@ -190,27 +141,20 @@ async function readDatabase(mode: E2eMode, sid: number): Promise<unknown> {
   return JSON.parse(stdout)
 }
 
-async function verifyStubDatabase(sid: number): Promise<void> {
-  const database = await readDatabase('stub', sid)
-  const actualOrders = rowsAt(database, 'orders')
-  const actualPlatformOrders = rowsAt(database, 'platformOrders')
-  const actualOrderLines = rowsAt(database, 'orderLines')
-  expect(hasSameMultiset(actualOrders, expectedDatabase.orders, [...orderFields]), 'Orders 所有验收列必须与 wxw 来源多重集完全一致').toBe(true)
-  expect(hasSameMultiset(actualPlatformOrders, expectedDatabase.platformOrders, [...platformOrderFields]), 'PlatformOrders 所有验收列必须与 wxw 来源多重集完全一致').toBe(true)
-  expect(hasSameMultiset(actualOrderLines, expectedDatabase.orderLines, [...orderLineFields]), 'OrderLines 所有验收列必须与 wxw 来源多重集完全一致且保留重复商品行').toBe(true)
-}
-
-async function verifyLiveDatabase(sid: number): Promise<void> {
-  const verification = await readDatabase('live', sid)
-  if (!isRecord(verification)) throw new Error('真实 wxw 对账响应格式无效。')
-  expect(Array.isArray(verification.errors) && verification.errors.length === 0, '真实 wxw 与数据库完整列对账必须无差异').toBe(true)
-  for (const field of ['total', 'orders'])
-    expect(typeof verification[field] === 'number' && verification[field] > 0, `真实 wxw 对账应返回非零 ${field} 计数`).toBe(true)
-}
-
-const verifyDatabaseByMode: Record<E2eMode, (sid: number) => Promise<void>> = {
-  stub: verifyStubDatabase,
-  live: verifyLiveDatabase,
+async function verifyDatabase(mode: E2eMode, sid: number): Promise<void> {
+  const snapshot = await readDatabase(mode, sid)
+  if (!isRecord(snapshot)) throw new Error('订单数据快照格式无效。')
+  const actual = mode === 'live' ? snapshot.actual : snapshot
+  const expected = mode === 'live' ? snapshot.expected : expectedDatabase
+  if (mode === 'live') {
+    expect(snapshot.errors, '真实 wxw 读取必须成功').toEqual([])
+    expect(snapshot.total, '真实 wxw 应有订单').toBeGreaterThan(0)
+    expect(rowsAt(expected, 'orders').length, '真实 wxw 应有可入库订单').toBeGreaterThan(0)
+  }
+  for (const table of ['orders', 'platformOrders', 'orderLines']) {
+    expect(sortedRows(rowsAt(actual, table)), table + ' 全字段及重复行数量应与 wxw 一致')
+      .toStrictEqual(sortedRows(rowsAt(expected, table)))
+  }
 }
 
 function assertLiveSkipSummary(task: SyncTask): void {
@@ -221,32 +165,19 @@ function assertLiveSkipSummary(task: SyncTask): void {
   expect(task.status).toBe(task.skipped === 0 ? 'succeeded' : 'partial')
 }
 
-function assertStubCounts(first: SyncTask, second: SyncTask): void {
-  expect(first.total).toBe(21)
-  expect(first.added).toBe(21)
-  expect(first.updated).toBe(0)
-  expect(first.unchanged).toBe(0)
-  expect(first.skipped).toBe(0)
-  expect(first.skipReasons).toEqual({})
-  expect(second.total).toBe(21)
-  expect(second.added).toBe(0)
-  expect(second.updated).toBe(0)
-  expect(second.unchanged).toBe(21)
-  expect(second.skipped).toBe(0)
-  expect(second.skipReasons).toEqual({})
-}
-
-function assertLiveCounts(first: SyncTask, second: SyncTask): void {
-  expect(first.total).toBeGreaterThan(0)
-  expect(first.added).toBeGreaterThan(0)
-  expect(second.added).toBe(0)
-  assertLiveSkipSummary(first)
-  assertLiveSkipSummary(second)
-}
-
-const assertSyncCountsByMode: Record<E2eMode, (first: SyncTask, second: SyncTask) => void> = {
-  stub: assertStubCounts,
-  live: assertLiveCounts,
+function assertSyncCounts(mode: E2eMode, firstTask: SyncTask, secondTask: SyncTask): void {
+  if (mode === 'stub') {
+    expect(firstTask).toMatchObject({ total: 21, added: 21, updated: 0, unchanged: 0, skipped: 0 })
+    expect(secondTask).toMatchObject({ total: 21, added: 0, updated: 0, unchanged: 21, skipped: 0 })
+    expect(firstTask.skipReasons).toEqual({})
+    expect(secondTask.skipReasons).toEqual({})
+  } else {
+    expect(firstTask.total).toBeGreaterThan(0)
+    expect(firstTask.added).toBeGreaterThan(0)
+    expect(secondTask.added).toBe(0)
+    assertLiveSkipSummary(firstTask)
+    assertLiveSkipSummary(secondTask)
+  }
 }
 
 test('Given wxw 店铺可访问 When 从页面连续同步两次 Then 订单全字段精确入库且第二次没有重复行', async ({ page }) => {
@@ -256,14 +187,13 @@ test('Given wxw 店铺可访问 When 从页面连续同步两次 Then 订单全�
   await signInForWorkspace(page.request)
   await page.goto('/shops')
 
-  const shopRow = await findShopRow(page, sid)
+  const shopRow = await findShopRow(page, sid, mode)
   await expect(shopRow, `授权店铺列表中应有 SID ${sid}`).toHaveCount(1)
-  await assertShopNameByMode[mode](shopRow)
   const syncButton = shopRow.getByRole('button', { name: /^同步历史订单：/ })
 
   const firstTask = await startAndWaitForSync(page, sid, syncButton, shopRow, mode)
-  await verifyDatabaseByMode[mode](sid)
+  await verifyDatabase(mode, sid)
   const secondTask = await startAndWaitForSync(page, sid, syncButton, shopRow, mode, firstTask.id)
-  assertSyncCountsByMode[mode](firstTask, secondTask)
-  await verifyDatabaseByMode[mode](sid)
+  assertSyncCounts(mode, firstTask, secondTask)
+  await verifyDatabase(mode, sid)
 })

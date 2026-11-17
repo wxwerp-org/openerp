@@ -1,4 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { once } from 'node:events'
+import type { AddressInfo } from 'node:net'
 
 const sid = 30
 export const testShopName = 'E2E 订单同步验收店铺'
@@ -12,22 +14,6 @@ type StubLine = {
   qty: number
   enabled: boolean | null
   append: boolean | null
-}
-
-type StubPlatformOrder = {
-  oid: string
-  sid: number
-  statusCode: string
-  statusText: string
-}
-
-type StubOrder = {
-  erpId: string
-  orderNumber: string
-  statusCode: string
-  platformOrders: StubPlatformOrder[]
-  lines: StubLine[]
-  times: { name: string; time: string }[]
 }
 
 const line = (
@@ -72,7 +58,7 @@ function makeTimes(order: number): { name: string; time: string }[] {
   return times
 }
 
-const stubOrders: StubOrder[] = Array.from({ length: 21 }, (_, index) => {
+const stubOrders = Array.from({ length: 21 }, (_, index) => {
   const order = index + 1
   const id = order.toString(16).padStart(24, '0')
   const platformOrders = order === 1 || order % 6 === 0
@@ -97,51 +83,12 @@ const stubOrders: StubOrder[] = Array.from({ length: 21 }, (_, index) => {
   }
 })
 
-type ExpectedOrder = {
-  erpId: string
-  orderNumber: string
-  sid: number
-  platform: string
-  status: string
-  createdRaw: string | null
-  createdSource: string | null
-  paidRaw: string | null
-  paidSource: string | null
-  dispatchedRaw: string | null
-  dispatchedSource: string | null
-  refundedRaw: string | null
-  refundedSource: string | null
-}
-
-type ExpectedPlatformOrder = {
-  erpId: string
-  poNumber: string
-  sid: number
-  statusCode: string | null
-  statusText: string | null
-}
-
-type ExpectedOrderLine = {
-  erpId: string
-  productId: string | null
-  oguid: string | null
-  skuId: string | null
-  skuCode: string | null
-  quantity: number
-  disabled: boolean | null
-  appended: boolean | null
-}
-
-function expectedTime(order: StubOrder, name: string): string | null {
+function expectedTime(order: (typeof stubOrders)[number], name: string): string | null {
   return order.times.find(time => time.name === name)?.time ?? null
 }
 
 /** 供隔离宿主的数据库快照逐列、多重集对账；商品行故意不导出 Ordinal。 */
-export const expectedDatabase: {
-  orders: ExpectedOrder[]
-  platformOrders: ExpectedPlatformOrder[]
-  orderLines: ExpectedOrderLine[]
-} = {
+export const expectedDatabase = {
   orders: stubOrders.map(order => ({
     erpId: order.erpId,
     orderNumber: order.orderNumber,
@@ -334,29 +281,11 @@ export async function startWxwStub(token: string): Promise<{ url: string; close:
     })
   })
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      server.removeListener('error', reject)
-      resolve()
-    })
-  })
-
-  const address = server.address()
-  if (!address || typeof address === 'string') {
-    await new Promise<void>(resolve => server.close(() => resolve()))
-    throw new Error('Could not determine the wxw test stub port.')
-  }
-
-  let closed = false
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address() as AddressInfo
   return {
     url: `http://127.0.0.1:${address.port}`,
-    close: async () => {
-      if (closed) return
-      closed = true
-      await new Promise<void>((resolve, reject) => {
-        server.close(error => error ? reject(error) : resolve())
-      })
-    },
+    close: () => server[Symbol.asyncDispose](),
   }
 }
