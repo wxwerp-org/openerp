@@ -33,11 +33,15 @@ async function submit(): Promise<void> {
   <AuthLayout>
     <h1>登录 OpenERP</h1>
     <form class="login-form" @submit.prevent="submit">
-      <label for="loginUsername">用户名</label>
-      <input id="loginUsername" v-model="username" autocomplete="username" required :disabled="submitting">
+      <div class="login-field">
+        <label for="loginUsername">用户名</label>
+        <input id="loginUsername" v-model="username" autocomplete="username" required :disabled="submitting">
+      </div>
 
-      <label for="loginPassword">密码</label>
-      <input id="loginPassword" v-model="password" type="password" autocomplete="current-password" required :disabled="submitting">
+      <div class="login-field">
+        <label for="loginPassword">密码</label>
+        <input id="loginPassword" v-model="password" type="password" autocomplete="current-password" required :disabled="submitting">
+      </div>
 
       <p v-if="error" class="login-error" role="alert">{{ error }}</p>
       <button class="btn primary" type="submit" :disabled="submitting">{{ submitting ? '正在登录…' : '登录' }}</button>
@@ -46,17 +50,70 @@ async function submit(): Promise<void> {
 </template>
 
 <style scoped>
-.login-form { display: grid; gap: 8px; margin-top: 24px; }
-.login-form label { font-weight: 600; }
+.login-form {
+  display: grid;
+  gap: 20px;
+  margin-top: 28px;
+}
+.login-field {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+.login-form label {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
 .login-form input {
   width: 100%;
   min-height: 42px;
-  margin-bottom: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius);
+  outline: 0;
+  background: var(--surface);
+  color: var(--text);
   font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  transition: border-color .15s, box-shadow .15s;
 }
-.login-form button { margin-top: 8px; min-height: 42px; }
-.login-error { margin: 0; color: #b42318; }
+.login-form input:hover:not(:disabled) { border-color: #AEB9C9; }
+.login-form input:focus-visible {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.login-form input:disabled {
+  background: var(--page-soft);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.login-form button {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 24px;
+}
+.login-form button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.login-form button:disabled {
+  cursor: not-allowed;
+  opacity: .65;
+}
+.login-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #FFD4D4;
+  border-radius: var(--radius);
+  background: #FFF2F2;
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 20px;
+}
 </style>
