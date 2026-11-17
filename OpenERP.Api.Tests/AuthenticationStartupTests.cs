@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -11,7 +12,7 @@ using Xunit;
 namespace OpenERP.Api.Tests;
 
 [Collection(nameof(AspireIntegrationCollection))]
-public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture) : IAsyncLifetime
+public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture fixture) : IAsyncLifetime
 {
     private readonly string _database = $"openerp_auth_test_{Guid.NewGuid():N}";
     private string? _adminConnectionString;
@@ -38,10 +39,12 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
         if (_adminConnectionString is null)
             return;
 
+        using var cleanup = new CancellationTokenSource(AuthenticationConcurrency.CleanupBudget);
         await using var connection = new NpgsqlConnection(_adminConnectionString);
-        await connection.OpenAsync();
+        await connection.OpenAsync(cleanup.Token);
         await using var drop = new NpgsqlCommand($"""DROP DATABASE "{_database}" """, connection);
-        await drop.ExecuteNonQueryAsync();
+        await drop.ExecuteNonQueryAsync(cleanup.Token);
+        _adminConnectionString = null;
     }
 
     [Fact]
@@ -58,18 +61,18 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
         await db.Database.MigrateAsync(ct);
         var missingSigningKey = await RunApiOnDatabaseAsync(_connectionString, null, [], ct, includeSigningKey: false);
         Assert.NotEqual(0, missingSigningKey.ExitCode);
-        Assert.Contains("Authentication:SigningPrivateKeyPem", missingSigningKey.Output);
+        Assert.True(missingSigningKey.Output.Contains("Authentication:SigningPrivateKeyPem", StringComparison.Ordinal));
 
         var reset = await RunApiAsync(fixture.AdminPassword, ct, "reset-admin-password", "--stdin");
         Assert.Equal(1, reset.ExitCode);
-        Assert.Contains("数据库中没有管理员账号", reset.Output);
+        Assert.True(reset.Output.Contains("数据库中没有管理员账号", StringComparison.Ordinal));
         Assert.False(await db.AdminAccounts.AnyAsync(ct));
 
         // Then Production 无须初始密码，重复启动保留同一条未初始化占位。
         for (var attempt = 0; attempt < 2; attempt++)
         {
             var started = await RunApiOnDatabaseAsync(_connectionString, null, [], ct, stopWhenListening: true);
-            Assert.True(started.Started, started.Output);
+            Assert.True(started.Started);
             var admin = await db.AdminAccounts.AsNoTracking().SingleAsync(ct);
             Assert.Equal(1, admin.Id);
             Assert.Equal("管理员", admin.Name);
@@ -157,24 +160,34 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
             """SELECT "Id" FROM "AdminAccounts" WHERE "Id" = 1 FOR UPDATE""", observer, transaction);
         Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
 
-        var reset = RunApiAsync(replacement, ct, "reset-admin-password", "--stdin");
+        using var operations = new CancellationTokenSource();
+        var reset = RunApiAsync(replacement, operations.Token, "reset-admin-password", "--stdin");
+        var resetOperation = new BlockedOperation("重置密码 CLI", reset,
+            () => $"退出码 {reset.Result.ExitCode}");
         Task<AdminRefreshToken?>? login = null;
+        Exception? failure = null;
         try
         {
-            await AuthenticationIntegrationTests.WaitForAdminLocksAsync(observer, 1, ct);
-            login = store.LoginAsync("admin", fixture.AdminPassword, RandomNumberGenerator.GetBytes(32), ct);
-            await AuthenticationIntegrationTests.WaitForAdminLocksAsync(observer, 2, ct);
+            await AuthenticationConcurrency.WaitForAdminLocksAsync(observer, 1, ct, "等待 CLI 重置占用管理员锁",
+                [resetOperation]);
+            login = store.LoginAsync("admin", fixture.AdminPassword, RandomNumberGenerator.GetBytes(32), operations.Token);
+            await AuthenticationConcurrency.WaitForAdminLocksAsync(observer, 2, ct, "等待 CLI 重置和旧密码登录",
+                [resetOperation, new("旧密码登录", login)]);
+        }
+        catch (Exception error)
+        {
+            failure = error;
         }
         finally
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            await AuthenticationConcurrency.ReleaseAsync(transaction.RollbackAsync, operations, failure, ct, reset, login);
         }
 
         var result = await reset;
 
         // Then 两个旧刷新令牌和旧密码均失效，新密码保留首尾空白且能登录。
         Assert.Equal(0, result.ExitCode);
-        Assert.DoesNotContain(replacement, result.Output);
+        Assert.False(result.Output.Contains(replacement, StringComparison.Ordinal), "CLI 输出泄露了通过标准输入提交的密码。");
         Assert.Null(await login!);
         Assert.Null(await store.FindActiveRefreshTokenAsync(one.Id, ct));
         Assert.Null(await store.FindActiveRefreshTokenAsync(two.Id, ct));
@@ -222,7 +235,8 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
 
     internal static async Task<(int ExitCode, string Output, bool Started)> RunApiOnDatabaseAsync(
         string connectionString, string? password, string[] args, CancellationToken ct,
-        bool stopWhenListening = false, bool includeSigningKey = true)
+        bool stopWhenListening = false, bool includeSigningKey = true,
+        Action<ProcessStartInfo>? configureStart = null, TimeSpan? processBudget = null)
     {
         var start = new ProcessStartInfo("dotnet")
         {
@@ -255,38 +269,171 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
             start.Environment["ConnectionStrings__seaweedfs"] = "Endpoint=http://127.0.0.1:1;AccessKey=test;SecretKey=test";
         }
 
-        using var process = Process.Start(start) ?? throw new InvalidOperationException("无法启动测试用 API 进程。");
-        if (password is not null)
-            await process.StandardInput.WriteLineAsync(password.AsMemory(), ct);
-        process.StandardInput.Close();
+        var secrets = new List<string?> { password, connectionString };
+        secrets.Add(new NpgsqlConnectionStringBuilder(connectionString).Password);
+        if (start.Environment.TryGetValue("Authentication__SigningPrivateKeyPem", out var pem) && pem is not null)
+            secrets.AddRange(pem.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
+        configureStart?.Invoke(start);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(15));
-        var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-        var stdout = new System.Text.StringBuilder();
+        timeout.CancelAfter(processBudget ?? AuthenticationConcurrency.ProcessBudget);
+        timeout.Token.ThrowIfCancellationRequested();
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("无法启动测试用 API 进程。");
+
+        // 从启动时开始排空两个流，操作取消后继续读取，直到收尾关闭子进程的管道。
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+        var listening = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var input = process.StandardInput;
+        var inputPipe = input.BaseStream;
+        var outputReader = process.StandardOutput;
+        var errorReader = process.StandardError;
+        using var drainCancellation = new CancellationTokenSource();
+        var readStdout = ReadOutputAsync(outputReader, stdout, drainCancellation.Token, stopWhenListening ? listening : null);
+        var readStderr = ReadOutputAsync(errorReader, stderr, drainCancellation.Token);
+        var readOutput = Task.WhenAll(readStdout, readStderr);
+        var phase = "写入标准输入";
+        Exception? failure = null;
+        var cleanupFailures = new List<Exception>();
         var started = false;
         try
         {
-            while (await process.StandardOutput.ReadLineAsync(timeout.Token) is { } line)
+            if (password is not null)
+                await input.WriteLineAsync(password.AsMemory(), timeout.Token);
+            await input.FlushAsync(timeout.Token);
+            input.Close();
+
+            phase = "等待子进程退出";
+            if (stopWhenListening)
             {
-                stdout.AppendLine(line);
-                if (stopWhenListening && line.Contains("Now listening on:", StringComparison.Ordinal))
+                phase = "等待 Production 监听";
+                await Task.WhenAny(listening.Task, readStdout).WaitAsync(timeout.Token);
+                started = listening.Task.IsCompletedSuccessfully;
+            }
+
+            if (!started)
+                await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (Exception error)
+        {
+            failure = error;
+        }
+        finally
+        {
+            // 进程收尾有独立 10 秒子预算，让上层事务协调仍能在 30 秒内观察其终态。
+            using var cleanup = new CancellationTokenSource(AuthenticationConcurrency.ProcessCleanupBudget);
+            if (failure is not null || started)
+            {
+                try
                 {
-                    started = true;
-                    process.Kill(entireProcessTree: true);
-                    break;
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException) when (process.HasExited)
+                {
+                    // 子进程在检查状态后自行退出。
+                }
+                catch (Exception error)
+                {
+                    cleanupFailures.Add(error);
                 }
             }
-            await process.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException) when (!process.HasExited)
-        {
-            process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync();
-            throw;
+
+            try
+            {
+                await process.WaitForExitAsync(cleanup.Token);
+            }
+            catch (Exception error)
+            {
+                cleanupFailures.Add(error);
+            }
+
+            try
+            {
+                await readOutput.WaitAsync(cleanup.Token);
+            }
+            catch (OperationCanceledException) when (cleanup.IsCancellationRequested && !readOutput.IsCompleted)
+            {
+                cleanupFailures.Add(new TimeoutException("读取子进程输出超时。"));
+                try
+                {
+                    await drainCancellation.CancelAsync();
+                }
+                catch (Exception error)
+                {
+                    cleanupFailures.Add(error);
+                }
+            }
+            catch
+            {
+                // 下方在关闭管道后统一观察并记录读取错误。
+            }
+
+            // Process 不负责释放调用方读取过的流。写入失败时直接关闭管道，避免再次写入密码。
+            foreach (var pipe in new IDisposable[] { inputPipe, outputReader, errorReader })
+            {
+                try
+                {
+                    pipe.Dispose();
+                }
+                catch (Exception error)
+                {
+                    cleanupFailures.Add(error);
+                }
+            }
+
+            try
+            {
+                await readOutput;
+            }
+            catch (OperationCanceledException) when (drainCancellation.IsCancellationRequested)
+            {
+                // 已记录排空超时。读取任务已进入终态。
+            }
+            catch (Exception error)
+            {
+                if (readOutput.Exception is { } outputErrors)
+                    cleanupFailures.AddRange(outputErrors.InnerExceptions);
+                else
+                    cleanupFailures.Add(error);
+            }
         }
 
-        return (process.ExitCode, stdout.ToString() + await stderr, started);
+        var output = stdout.ToString() + stderr;
+        // 使用 xUnit 原生输出通道，普通断言失败时同样能取得脱敏后的子进程日志。
+        var diagnosticOutput = Redact(output);
+        TestContext.Current.TestOutputHelper!.WriteLine(diagnosticOutput);
+        if (failure is not null || cleanupFailures.Count > 0)
+        {
+            var reason = failure is OperationCanceledException && timeout.IsCancellationRequested
+                ? ct.IsCancellationRequested ? "操作已取消" : "操作超时"
+                : failure is null ? "读取子进程输出" : $"{failure.GetType().Name}：{Redact(failure.Message)}";
+            var exitCode = process.HasExited ? process.ExitCode.ToString() : "未知";
+            var cleanup = cleanupFailures.Count == 0 ? "" : "；收尾失败："
+                + string.Join("；", cleanupFailures.Select(error => $"{error.GetType().Name}：{Redact(error.Message)}"));
+            throw new InvalidOperationException($"{phase}失败（{reason}，退出码 {exitCode}）{cleanup}。\n{diagnosticOutput}");
+        }
+
+        return (process.ExitCode, output, started);
+
+        string Redact(string value)
+        {
+            foreach (var secret in secrets.OfType<string>().Where(secret => secret.Length > 0).OrderByDescending(secret => secret.Length))
+                value = value.Replace(secret, "[已隐藏]", StringComparison.Ordinal);
+            return value;
+        }
+    }
+
+    private static async Task ReadOutputAsync(StreamReader stream, StringBuilder output,
+        CancellationToken ct, TaskCompletionSource? listening = null)
+    {
+        while (await stream.ReadLineAsync(ct) is { } line)
+        {
+            output.AppendLine(line);
+
+            if (listening is not null && line.Contains("Now listening on:", StringComparison.Ordinal))
+                listening.TrySetResult();
+        }
     }
 
     private sealed class TestClock : TimeProvider

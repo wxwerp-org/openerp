@@ -11,8 +11,13 @@ using Xunit;
 namespace OpenERP.Api.Tests;
 
 [Collection(nameof(AspireIntegrationCollection))]
-public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixture)
+public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixture) : IAsyncLifetime
 {
+    public async ValueTask InitializeAsync() =>
+        await fixture.EnsureApiStartedAsync(TestContext.Current.CancellationToken);
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private string AdminPassword => fixture.AdminPassword;
     internal const string CsrfHeader = "X-CSRF-TOKEN";
     private const string CsrfCookieName = "__Host-OpenERP.Csrf";
@@ -173,40 +178,51 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
         await LoginAsync(second, ct, AdminPassword);
         await RefreshCsrfAsync(racer, ct);
         const string newPassword = " new-password ";
-        using var invalid = await first.PostAsJsonAsync("/api/auth/change-password",
-            new { oldPassword = "wrong-password", newPassword }, ct);
-        await AssertProblemAsync(invalid, HttpStatusCode.BadRequest, ct);
-        using var missingOld = await first.PostAsJsonAsync("/api/auth/change-password", new { newPassword }, ct);
-        await AssertProblemAsync(missingOld, HttpStatusCode.BadRequest, ct);
-
-        // When 外部行锁使改密先进入锁队列，旧密码的登录随后也必须等待同一行。
-        await using var observer = new NpgsqlConnection(await fixture.GetPostgresConnectionStringAsync(ct));
-        await observer.OpenAsync(ct);
-        await using var transaction = await observer.BeginTransactionAsync(ct);
-        await using var lockAdmin = new NpgsqlCommand(
-            """SELECT "Id" FROM "AdminAccounts" WHERE "Id" = 1 FOR UPDATE""", observer, transaction);
-        Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
-
-        first.DefaultRequestHeaders.Remove(CsrfHeader);
-        var changeTask = first.PostAsJsonAsync("/api/auth/change-password",
-            new { oldPassword = AdminPassword, newPassword }, ct);
-        Task<HttpResponseMessage>? loginTask = null;
+        using var operations = new CancellationTokenSource();
+        Exception? failure = null;
         try
         {
-            await WaitForAdminLocksAsync(observer, 1, ct);
-            loginTask = PostJsonAnonymouslyAsync(racer, "/api/auth/login",
-                new { username = "admin", password = AdminPassword }, ct);
-            await WaitForAdminLocksAsync(observer, 2, ct);
-        }
-        finally
-        {
-            await transaction.RollbackAsync(CancellationToken.None);
-        }
+            using var invalid = await first.PostAsJsonAsync("/api/auth/change-password",
+                new { oldPassword = "wrong-password", newPassword }, ct);
+            await AssertProblemAsync(invalid, HttpStatusCode.BadRequest, ct);
+            using var missingOld = await first.PostAsJsonAsync("/api/auth/change-password", new { newPassword }, ct);
+            await AssertProblemAsync(missingOld, HttpStatusCode.BadRequest, ct);
 
-        using var changed = await changeTask;
-        Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
-        try
-        {
+            // When 外部行锁使改密先进入锁队列，旧密码的登录随后也必须等待同一行。
+            await using var observer = new NpgsqlConnection(await fixture.GetPostgresConnectionStringAsync(ct));
+            await observer.OpenAsync(ct);
+            await using var transaction = await observer.BeginTransactionAsync(ct);
+            await using var lockAdmin = new NpgsqlCommand(
+                """SELECT "Id" FROM "AdminAccounts" WHERE "Id" = 1 FOR UPDATE""", observer, transaction);
+            Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
+
+            first.DefaultRequestHeaders.Remove(CsrfHeader);
+            var changeTask = first.PostAsJsonAsync("/api/auth/change-password",
+                new { oldPassword = AdminPassword, newPassword }, operations.Token);
+            Task<HttpResponseMessage>? loginTask = null;
+            Exception? coordinationFailure = null;
+            try
+            {
+                await AuthenticationConcurrency.WaitForAdminLocksAsync(observer, 1, ct, "HTTP 改密进入锁队列",
+                    [new("改密请求", changeTask, () => $"HTTP {(int)changeTask.Result.StatusCode}")]);
+                loginTask = PostJsonAnonymouslyAsync(racer, "/api/auth/login",
+                    new { username = "admin", password = AdminPassword }, operations.Token);
+                await AuthenticationConcurrency.WaitForAdminLocksAsync(observer, 2, ct, "旧密码登录进入锁队列",
+                    [new("改密请求", changeTask, () => $"HTTP {(int)changeTask.Result.StatusCode}"),
+                     new("旧密码登录", loginTask, () => $"HTTP {(int)loginTask.Result.StatusCode}")]);
+            }
+            catch (Exception exception)
+            {
+                coordinationFailure = exception;
+            }
+            finally
+            {
+                await AuthenticationConcurrency.ReleaseAsync(transaction.RollbackAsync, operations,
+                    coordinationFailure, ct, changeTask, loginTask);
+            }
+
+            using var changed = await changeTask;
+            Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
             // Then 登录在持锁验证时只能看到新密码，两个已签发会话也都被撤销。
             using var raced = await loginTask!;
             await AssertProblemAsync(raced, HttpStatusCode.Unauthorized, ct);
@@ -215,34 +231,40 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
                 using var response = await client.GetAsync("/api/auth/me", ct);
                 await AssertProblemAsync(response, HttpStatusCode.Unauthorized, ct);
             }
+            using var changedPasswordClient = fixture.CreateApiClient();
+            await LoginAsync(changedPasswordClient, ct, newPassword);
         }
-        finally
+        catch (Exception exception)
         {
-            using var fresh = fixture.CreateApiClient();
-            await LoginAsync(fresh, ct, newPassword);
-            using var restored = await fresh.PostAsJsonAsync("/api/auth/change-password",
-                new { oldPassword = newPassword, newPassword = AdminPassword }, ct);
-            Assert.Equal(HttpStatusCode.NoContent, restored.StatusCode);
+            failure = exception;
         }
+
+        // 即使锁协调失败，请求仍可能已提交；使用独立预算确认并恢复共享账号。
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try
+        {
+            await RestoreAdminPasswordAsync(cleanup.Token);
+        }
+        catch (Exception exception)
+        {
+            if (failure is not null)
+                throw new AggregateException("改密测试失败，且共享账号恢复失败。", failure, exception);
+            throw;
+        }
+        if (failure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
-    internal static async Task WaitForAdminLocksAsync(NpgsqlConnection observer, long expected, CancellationToken ct, bool includeUpdates = false)
+    private async Task RestoreAdminPasswordAsync(CancellationToken ct)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(5));
-        await using var blocked = new NpgsqlCommand("""
-            SELECT count(*) FROM pg_stat_activity
-            WHERE datname = current_database() AND wait_event_type = 'Lock'
-              AND (query LIKE '%"AdminAccounts"%FOR UPDATE%'
-                   OR (@includeUpdates AND query LIKE '%UPDATE "AdminAccounts"%'))
-            """, observer);
-        blocked.Parameters.AddWithValue("includeUpdates", includeUpdates);
-        await using var clearSnapshot = new NpgsqlCommand("SELECT pg_stat_clear_snapshot()", observer);
-        while ((long)(await blocked.ExecuteScalarAsync(timeout.Token))! != expected)
-        {
-            await clearSnapshot.ExecuteNonQueryAsync(timeout.Token);
-            await Task.Delay(20, timeout.Token);
-        }
+        // CLI 在相同行锁内重置密码并撤销旧会话，晚到的原改密请求也不能再次改变密码。
+        var connectionString = await fixture.GetPostgresConnectionStringAsync(ct);
+        var reset = await AuthenticationStartupTests.RunApiOnDatabaseAsync(connectionString, AdminPassword,
+            ["reset-admin-password", "--stdin"], ct);
+        Assert.Equal(0, reset.ExitCode);
+        Assert.False(reset.Output.Contains(AdminPassword, StringComparison.Ordinal), "CLI 输出泄露了重置密码。");
+        using var fresh = fixture.CreateApiClient();
+        await LoginAsync(fresh, ct, AdminPassword);
     }
 
     [Fact]

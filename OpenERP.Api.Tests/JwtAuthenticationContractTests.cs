@@ -11,8 +11,13 @@ using Xunit;
 namespace OpenERP.Api.Tests;
 
 [Collection(nameof(AspireIntegrationCollection))]
-public sealed class JwtAuthenticationContractTests(AspireIntegrationFixture fixture)
+public sealed class JwtAuthenticationContractTests(AspireIntegrationFixture fixture) : IAsyncLifetime
 {
+    public async ValueTask InitializeAsync() =>
+        await fixture.EnsureApiStartedAsync(TestContext.Current.CancellationToken);
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     [Fact]
     public async Task Login_issues_a_bearer_token_and_refresh_cookie_cannot_access_business()
     {

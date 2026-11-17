@@ -29,6 +29,14 @@ pnpm --dir OpenERP.Web build
 pnpm --dir OpenERP.Web test
 ```
 
+### 后端集成测试资源与失败诊断
+
+集成测试使用项目的 AppHost 模型，由 `AspireIntegrationFixture` 管理测试会话。fixture 初始化只启动 PostgreSQL 并等待 `openerp` 数据库健康；数据库与 CLI 测试可直接使用它，无须启动 API、Redis 或对象存储。需要存储的测试调用 `EnsureStorageStartedAsync`（获取存储连接时也会确保就绪）；HTTP 测试在异步初始化中调用 `EnsureApiStartedAsync`，按依赖顺序准备存储、Redis 和 API。`StartWebAsync` 先准备 API，再启动前端安装器和前端。同步创建 HTTP 客户端不会隐式启动服务。
+
+兼容的测试在同一 xUnit collection 内复用 PostgreSQL 服务器，数据库专用用例仍各自创建和删除独立数据库；共享 API 的用例保持串行。首次初始化与浏览器验收继续使用独立 fixture，避免共享账号、迁移和初始化状态。资源启动任务只执行一次，失败不会自动重试；已经启动的资源保留至 fixture 结束，因此全量运行中后续数据库用例可能与已启动的 API 共存。容器、密钥目录和存储卷属于本次测试会话，存储卷在测试内跨重启保留数据，最终随 fixture 清理。
+
+认证并发测试先用真实 PostgreSQL 行锁确认操作进入等待队列，同时观察 CLI 或 HTTP 操作是否提前结束。默认每阶段锁等待最多 30 秒，真实子进程执行最多 90 秒；测试取消仍会提前终止等待。失败输出包含阶段、耗时、锁数量及操作结果，CLI 的退出码和已收集输出也会保留，子进程日志脱敏后交给 xUnit 的 `ITestOutputHelper`，随对应测试进入标准报告；不要在诊断中输出密码、stdin、私钥或完整连接字符串。失败后先结束测试持有的事务，再有界等待操作完成、取消并回收尚未结束的操作，最后释放连接和删除数据库；清理使用独立的 30 秒预算，事务释放与子进程回收各使用 10 秒子预算，主错误与清理错误同时报告。共享改密测试在释放观察连接后通过真实 CLI 恢复密码并撤销旧会话，避免晚到的改密请求再次改变共享账号。排障时先查看测试输出和 CTRF 报告，区分资源未就绪、操作提前退出、锁等待超时与清理失败，不以自动重跑掩盖失败。
+
 ### 前端静态检查
 
 [ESLint 配置](../OpenERP.Web/eslint.config.js) 使用 flat config，以 `@eslint/js`、`typescript-eslint` 和 `eslint-plugin-vue` 的官方配置为基础。Vue 采用官方 error-prevention（`flat/essential`）规则集，并补充官方 `flat/recommended` 中 10 条非排版正确性/安全规则（如 `vue/no-v-html`、`vue/require-explicit-emits`），覆盖模板和 `<script setup lang="ts">`；单元测试与浏览器测试分别使用 `@vitest/eslint-plugin` 和 `eslint-plugin-playwright` 的推荐规则。这套组合与仓库现有 Node.js 26、TypeScript 6、Vue 3.5 的版本范围兼容，且不引入旧式 `.eslintrc`。
