@@ -1,5 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { adminAccount } from './adminAccount'
 import ShopsView from '../../src/views/ShopsView.vue'
 
 const shop = {
@@ -72,6 +73,13 @@ function configureFetch(options: {
     if (url === '/api/auth/csrf') {
       return jsonResponse({ requestToken: 'shop-token' })
     }
+    if (url === '/api/auth/login') {
+      return jsonResponse({
+        accessToken: 'shop-access',
+        accessTokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+        account: adminAccount,
+      })
+    }
     if (url === '/api/erp/config') {
       return jsonResponse(options.getConfig?.() ?? {
         configured: true,
@@ -106,6 +114,8 @@ function configureFetch(options: {
 }
 
 async function mountShops(): Promise<VueWrapper> {
+  const { login } = await import('../../src/account/session')
+  await login('admin', 'test-password')
   const wrapper = mount(ShopsView)
   await flushPromises()
   return wrapper
@@ -137,7 +147,7 @@ describe('店铺历史订单同步', () => {
     { tokenStatus: true, tokenLabel: '有效' },
     { tokenStatus: false, tokenLabel: '无效' },
     { tokenStatus: null, tokenLabel: '未知' },
-  ])('Given 店铺授权$tokenLabel When 点击同步历史订单 Then 携带防伪令牌发起无请求体的任务并显示进度', async ({ tokenStatus, tokenLabel }) => {
+  ])('Given 店铺授权$tokenLabel When 点击同步历史订单 Then 使用 Bearer 访问令牌发起无请求体的任务并显示进度', async ({ tokenStatus, tokenLabel }) => {
     const fetchMock = configureFetch({ tokenStatus })
     wrapper = await mountShops()
 
@@ -152,7 +162,8 @@ describe('店铺历史订单同步', () => {
     const postCall = fetchMock.mock.calls.find(([input, init]) =>
       String(input) === '/api/erp/shops/42/order-sync' && init?.method === 'POST',
     )
-    expect(new Headers(postCall?.[1]?.headers).get('X-CSRF-TOKEN')).toBe('shop-token')
+    expect(new Headers(postCall?.[1]?.headers).get('Authorization')).toBe('Bearer shop-access')
+    expect(new Headers(postCall?.[1]?.headers).has('X-CSRF-TOKEN')).toBe(false)
     expect(postCall?.[1]?.body).toBeUndefined()
     expect(postCall?.[1]?.signal).toBeUndefined()
     expect(wrapper.text()).toContain('读取 4 / 10')
@@ -469,6 +480,14 @@ describe('店铺历史订单同步', () => {
     let status43Calls = 0
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
+      if (url === '/api/auth/csrf') return jsonResponse({ requestToken: 'shop-token' })
+      if (url === '/api/auth/login') {
+        return jsonResponse({
+          accessToken: 'shop-access',
+          accessTokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+          account: adminAccount,
+        })
+      }
       if (url === '/api/erp/config') {
         return jsonResponse({ configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: true })
       }

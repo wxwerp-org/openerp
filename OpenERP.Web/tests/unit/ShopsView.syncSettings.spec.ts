@@ -43,6 +43,7 @@ type FetchOptions = {
   getSettings?: () => Response
   getShops?: () => Response
   getTask?: () => Response
+  refresh?: () => Response
   putSettings?: (body: PutBody) => Response
 }
 
@@ -76,8 +77,12 @@ function configureFetch(options: FetchOptions = {}) {
     if (url === '/api/auth/status') {
       return jsonResponse({ initialized: true })
     }
-    if (url === '/api/auth/me') {
-      return jsonResponse(adminAccount)
+    if (url === '/api/auth/refresh') {
+      return options.refresh?.() ?? jsonResponse({
+        accessToken: 'schedule-access',
+        accessTokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+        account: adminAccount,
+      })
     }
     if (url === '/api/auth/csrf') {
       return jsonResponse({ requestToken: 'schedule-token' })
@@ -96,8 +101,9 @@ function configureFetch(options: FetchOptions = {}) {
       return options.getShops?.() ?? jsonResponse({ items: options.shops ?? allShops })
     }
     if (url === '/api/erp/order-sync-settings' && init?.method === 'PUT') {
-      if (new Headers(init.headers).get('X-CSRF-TOKEN') !== 'schedule-token') {
-        return jsonResponse({ title: '防伪校验失败' }, 400)
+      const headers = new Headers(init.headers)
+      if (headers.get('Authorization') !== 'Bearer schedule-access' || headers.has('X-CSRF-TOKEN')) {
+        return jsonResponse({ title: '认证请求头不符合约定' }, 400)
       }
       const body = JSON.parse(String(init.body)) as PutBody
       return options.putSettings?.(body) ?? jsonResponse({ ...body, intervalMinutes: 30 })
@@ -199,7 +205,7 @@ describe('店铺定时同步设置', () => {
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
   })
 
-  it('Given 全选可见店铺 When 保存 Then 通过防伪校验并显示启用反馈', async () => {
+  it('Given 全选可见店铺 When 保存 Then 通过 Bearer 认证并显示启用反馈', async () => {
     // Given 可选店铺覆盖表格当前页之外的另一家店。
     const putBodies: PutBody[] = []
     configureFetch({
@@ -224,7 +230,10 @@ describe('店铺定时同步设置', () => {
   })
 
   it('Given 管理员会话已通过初始检查 When 读取定时同步设置返回 401 Then 会话变为未登录', async () => {
-    configureFetch({ getSettings: () => new Response(null, { status: 401 }) })
+    configureFetch({
+      getSettings: () => new Response(null, { status: 401 }),
+      refresh: () => new Response(null, { status: 401 }),
+    })
     wrapper = await mountShops()
 
     const { account, sessionState } = await import('../../src/account/session')

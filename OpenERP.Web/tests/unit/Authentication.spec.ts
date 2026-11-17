@@ -30,10 +30,20 @@ function mockInitializedFetch(fetch: (url: string, request?: RequestInit) => Pro
     : fetch(url, request))
 }
 
+function sessionResponse(value = admin, accessToken = 'unit-access'): Response {
+  return Response.json({
+    accessToken,
+    accessTokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+    account: value,
+  })
+}
+
 describe('真实会话路由', () => {
   it('Given 首次直达受保护页且会话仍在验证 When 会话确认无效 Then 始终隐藏业务界面并保留目标地址', async () => {
     let resolve: (response: Response) => void = () => { throw new Error('未发起会话请求') }
-    mockInitializedFetch(() => new Promise<Response>((finish) => { resolve = finish }))
+    mockInitializedFetch((url: string) => url === '/api/auth/csrf'
+      ? Promise.resolve(Response.json({ requestToken: 'route-token' }))
+      : new Promise<Response>((finish) => { resolve = finish }))
     const { app, router } = await mountAt('/users?from=notice#main')
 
     expect(app.find('.sidebar').exists()).toBe(false)
@@ -47,9 +57,17 @@ describe('真实会话路由', () => {
   })
 
   it('Given 会话服务暂时不可用 When 检查返回 503 后重试成功 Then 保留当前地址并进入工作台', async () => {
-    const fetch = vi.fn()
-      .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockResolvedValueOnce(Response.json(admin))
+    let refreshAttempts = 0
+    const fetch = vi.fn((url: string) => {
+      if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'retry-token' }))
+      if (url === '/api/auth/refresh') {
+        refreshAttempts++
+        return Promise.resolve(refreshAttempts === 1
+          ? new Response(null, { status: 503 })
+          : sessionResponse())
+      }
+      return Promise.resolve(new Response(null, { status: 404 }))
+    })
     mockInitializedFetch(fetch)
     const { app, router } = await mountAt('/users')
 
@@ -66,13 +84,13 @@ describe('真实会话路由', () => {
     let csrfCount = 0
     const fetch = vi.fn((url: string, request?: RequestInit) => {
       if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: `csrf-${++csrfCount}` }))
-      if (url === '/api/auth/me') return Promise.resolve(new Response(null, { status: 401 }))
+      if (url === '/api/auth/refresh') return Promise.resolve(new Response(null, { status: 401 }))
       const credentials = JSON.parse(String(request?.body))
       if (credentials.password !== ' valid ') {
         return Promise.resolve(Response.json({ detail: '用户名或密码错误' }, { status: 401 }))
       }
       const token = new Headers(request?.headers).get('X-CSRF-TOKEN')
-      return Promise.resolve(token ? Response.json(admin) : new Response(null, { status: 400 }))
+      return Promise.resolve(token ? sessionResponse() : new Response(null, { status: 400 }))
     })
     mockInitializedFetch(fetch)
     const { app, router } = await mountAt('/login?returnTo=%2F%2Fexample.test')
@@ -94,20 +112,26 @@ describe('真实会话路由', () => {
     expect(csrfCount).toBeGreaterThan(1)
   })
 
-  it('Given 已登录 When 会话检查暂时失败后业务接口返回 401 Then 先保留工作台再退出到登录页', async () => {
-    let meStatus = 200
+  it('Given 已登录 When 刷新暂时失败后业务接口令牌明确失效 Then 保留工作台直至刷新确认会话失效', async () => {
+    let refreshStatus = 200
     mockInitializedFetch((url: string) => {
-      if (url !== '/api/auth/me') return Promise.resolve(new Response(null, { status: 401 }))
-      return Promise.resolve(meStatus === 200 ? Response.json(admin) : new Response(null, { status: meStatus }))
+      if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'session-check-token' }))
+      if (url === '/api/auth/refresh') {
+        return Promise.resolve(refreshStatus === 200
+          ? sessionResponse()
+          : new Response(null, { status: refreshStatus }))
+      }
+      return Promise.resolve(new Response(null, { status: 401 }))
     })
     const { app, router } = await mountAt('/')
     expect(app.get('.account-button').text()).toContain('值班管理员')
 
-    meStatus = 503
+    refreshStatus = 503
     window.dispatchEvent(new Event('focus'))
     await flushPromises()
     expect(app.find('.sidebar').exists()).toBe(true)
 
+    refreshStatus = 401
     await router.push('/service-connection')
     await flushPromises()
 
@@ -115,19 +139,61 @@ describe('真实会话路由', () => {
     expect(app.find('.sidebar').exists()).toBe(false)
   })
 
-  it('Given 会话即将到达固定期限 When 到达过期时间 Then 无须业务请求即回到登录页', async () => {
-    const expiresAt = new Date(Date.now() + 30_000).toISOString()
+  it('Given 浏览器时钟越过固定期限 When 后端刷新确认 Cookie 已失效 Then 才回到登录页', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
-    mockInitializedFetch(() => Promise.resolve(Response.json({ ...admin, expiresAt })))
+    let refreshCount = 0
+    mockInitializedFetch((url: string) => {
+      if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'expiry-token' }))
+      if (url === '/api/auth/refresh') {
+        refreshCount++
+        return Promise.resolve(refreshCount === 1 ? sessionResponse() : new Response(null, { status: 401 }))
+      }
+      return Promise.resolve(new Response(null, { status: 404 }))
+    })
     const { app, router } = await mountAt('/')
     expect(app.find('.sidebar').exists()).toBe(true)
 
-    await vi.advanceTimersByTimeAsync(30_000)
+    vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000)
+    await flushPromises()
+    expect(app.find('.sidebar').exists()).toBe(true)
+
+    window.dispatchEvent(new Event('focus'))
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/login')
     expect(app.find('.sidebar').exists()).toBe(false)
   })
+
+  it.each(['focus', 'online', 'visibilitychange'] as const)(
+    'Given 页面恢复活动且五分钟刷新点已过 When 收到 %s Then 重新验证并刷新访问令牌',
+    async (eventName) => {
+      vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+      let refreshCount = 0
+      mockInitializedFetch((url: string) => {
+        if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'activity-token' }))
+        if (url === '/api/auth/refresh') {
+          refreshCount++
+          return Promise.resolve(sessionResponse())
+        }
+        return Promise.resolve(new Response(null, { status: 404 }))
+      })
+      const { app } = await mountAt('/users')
+      expect(refreshCount).toBe(1)
+
+      const refreshDeadline = performance.now() + 6 * 60 * 1000
+      vi.spyOn(performance, 'now').mockReturnValue(refreshDeadline)
+      if (eventName === 'visibilitychange') {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+        document.dispatchEvent(new Event(eventName))
+      } else {
+        window.dispatchEvent(new Event(eventName))
+      }
+      await flushPromises()
+
+      expect(refreshCount).toBe(2)
+      expect(app.get('.account-button').text()).toContain(admin.name)
+    },
+  )
 })
 
 async function openAccountDialog(app: VueWrapper, action: 'profile' | 'password'): Promise<void> {
@@ -140,10 +206,10 @@ describe('真实账号操作', () => {
     let saves = 0
     mockInitializedFetch((url: string, request?: RequestInit) => {
       if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'account-token' }))
-      if (url === '/api/auth/me') return Promise.resolve(Response.json(admin))
+      if (url === '/api/auth/refresh') return Promise.resolve(sessionResponse())
       const fields = JSON.parse(String(request?.body))
-      const token = new Headers(request?.headers).get('X-CSRF-TOKEN')
-      if (url !== '/api/account/profile' || request?.method !== 'PUT' || token !== 'account-token' || fields.name !== '仓库管理员') {
+      const token = new Headers(request?.headers).get('Authorization')
+      if (url !== '/api/account/profile' || request?.method !== 'PUT' || token !== 'Bearer unit-access' || fields.name !== '仓库管理员') {
         return Promise.resolve(new Response(null, { status: 400 }))
       }
       saves++
@@ -181,7 +247,7 @@ describe('真实账号操作', () => {
     let saves = 0
     mockInitializedFetch((url: string) => {
       if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'account-token' }))
-      if (url === '/api/auth/me') return Promise.resolve(Response.json(admin))
+      if (url === '/api/auth/refresh') return Promise.resolve(sessionResponse())
       saves++
       return Promise.resolve(Response.json(admin))
     })
@@ -213,7 +279,7 @@ describe('真实账号操作', () => {
   it.each([
     { label: '重新聚焦并校验会话', refocus: true },
     { label: '第一次写请求被拒绝后重试', refocus: false },
-  ])('Given 另一页签更换共享 Cookie When $label Then 取得新会话的防伪令牌并保存', async ({ refocus }) => {
+  ])('Given 另一页签更换刷新会话 When $label Then 取得新内存令牌并保存', async ({ refocus }) => {
     let sessionNumber = 1
     let attempts = 0
     let savedName = admin.name
@@ -221,13 +287,16 @@ describe('真实账号操作', () => {
       const session = { ...admin, name: savedName, expiresAt: `2099-01-0${sessionNumber}T00:00:00Z` }
       const token = `session-${sessionNumber}`
       if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: token }))
-      if (url === '/api/auth/me') return Promise.resolve(Response.json(session))
-      attempts++
-      if (new Headers(request?.headers).get('X-CSRF-TOKEN') !== token) {
-        return Promise.resolve(Response.json({ detail: 'CSRF 校验失败' }, { status: 400 }))
+      if (url === '/api/auth/refresh') return Promise.resolve(sessionResponse(session, `access-${sessionNumber}`))
+      if (url === '/api/account/profile') {
+        attempts++
+        if (new Headers(request?.headers).get('Authorization') !== `Bearer access-${sessionNumber}`) {
+          return Promise.resolve(new Response(null, { status: 401 }))
+        }
+        savedName = JSON.parse(String(request?.body)).name
+        return Promise.resolve(Response.json({ ...session, name: savedName }))
       }
-      savedName = JSON.parse(String(request?.body)).name
-      return Promise.resolve(Response.json({ ...session, name: savedName }))
+      return Promise.resolve(new Response(null, { status: 404 }))
     })
     const { app } = await mountAt('/')
     await openAccountDialog(app, 'profile')
@@ -261,10 +330,10 @@ describe('真实账号操作', () => {
   it('Given 已登录 When 原密码错误后用正确原密码提交 Then 先保留弹窗再回到登录页', async () => {
     mockInitializedFetch((url: string, request?: RequestInit) => {
       if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'password-token' }))
-      if (url === '/api/auth/me') return Promise.resolve(Response.json(admin))
+      if (url === '/api/auth/refresh') return Promise.resolve(sessionResponse())
       const { oldPassword, newPassword } = JSON.parse(String(request?.body))
-      const token = new Headers(request?.headers).get('X-CSRF-TOKEN')
-      if (url === '/api/auth/change-password' && token === 'password-token' && oldPassword === ' previous ' && newPassword === ' newpwd ') {
+      const token = new Headers(request?.headers).get('Authorization')
+      if (url === '/api/auth/change-password' && token === 'Bearer unit-access' && oldPassword === ' previous ' && newPassword === ' newpwd ') {
         return Promise.resolve(new Response(null, { status: 204 }))
       }
       return Promise.resolve(Response.json({ detail: '原密码错误' }, { status: 400 }))
@@ -290,10 +359,10 @@ describe('真实账号操作', () => {
   it('Given 已登录 When 退出请求失败后重试成功 Then 仅成功退出时离开工作台', async () => {
     let failed = true
     mockInitializedFetch((url: string, request?: RequestInit) => {
-      if (url === '/api/auth/me') return Promise.resolve(Response.json(admin))
+      if (url === '/api/auth/refresh') return Promise.resolve(sessionResponse())
       if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'logout-token' }))
       const token = new Headers(request?.headers).get('X-CSRF-TOKEN')
-      if (url === '/api/auth/logout' && request?.method === 'POST' && token === 'logout-token') {
+      if (url === '/api/auth/logout' && request?.method === 'POST' && request.body === undefined && token === 'logout-token' && !new Headers(request.headers).has('Authorization')) {
         return Promise.resolve(failed ? Response.json({ detail: '暂时无法退出' }, { status: 503 }) : new Response(null, { status: 204 }))
       }
       return Promise.resolve(new Response(null, { status: 400 }))
@@ -332,8 +401,8 @@ function mockInitializationService(service: InitializationService) {
         ? new Response(null, { status: 503 })
         : Response.json({ initialized: service.initialized ?? false })
     }
-    if (url === '/api/auth/me') return service.signedIn
-      ? Response.json(admin)
+    if (url === '/api/auth/refresh') return service.signedIn
+      ? sessionResponse()
       : new Response(null, { status: 401 })
     if (url === '/api/auth/csrf') return Response.json({ requestToken: 'initialization-token' })
     if (url === '/api/auth/initialize' && request?.method === 'POST') {
@@ -345,7 +414,7 @@ function mockInitializationService(service: InitializationService) {
       service.initialized = true
       return new Response(null, { status: 204 })
     }
-    if (url === '/api/auth/login' && service.initialized) return Response.json(admin)
+    if (url === '/api/auth/login' && service.initialized) return sessionResponse()
     return new Response(null, { status: 404 })
   })
   return { submissions, statusRequests }

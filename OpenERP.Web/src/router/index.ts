@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
-import { checkSession, expireSession, sessionState } from '../account/session'
+import { checkSession, sessionState } from '../account/session'
 import { sessionRedirect } from './authRoutes'
 import InitializeView from '../views/InitializeView.vue'
 import LoginView from '../views/LoginView.vue'
@@ -42,7 +42,6 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   if (sessionState.value === 'pending') await checkSession()
-  expireSession()
   return sessionRedirect(router, to, sessionState.value)
 })
 

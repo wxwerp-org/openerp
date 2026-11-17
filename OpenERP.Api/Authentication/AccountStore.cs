@@ -10,7 +10,7 @@ internal sealed class AccountStore(
     IPasswordHasher<AdminAccount> passwords,
     TimeProvider clock)
 {
-    internal static readonly TimeSpan SessionLifetime = TimeSpan.FromHours(24);
+    internal static readonly TimeSpan RefreshLifetime = TimeSpan.FromHours(24);
 
     internal static bool IsValidPassword(string? password) => password is { Length: >= 6 and <= 20 };
 
@@ -51,7 +51,7 @@ internal sealed class AccountStore(
         return false;
     }
 
-    internal async Task<AdminSession?> LoginAsync(string? username, string? password, CancellationToken ct)
+    internal async Task<AdminRefreshToken?> LoginAsync(string? username, string? password, byte[] tokenHash, CancellationToken ct)
     {
         if (username != AdminAccount.Username || !IsValidPassword(password))
             return null;
@@ -75,27 +75,32 @@ internal sealed class AccountStore(
         // PostgreSQL 时间戳保留微秒精度，首次响应与后续数据库读取保持一致。
         var now = clock.GetUtcNow();
         now = now.AddTicks(-(now.Ticks % 10));
-        await write.AdminSessions.Where(session => session.ExpiresAt <= now).ExecuteDeleteAsync(ct);
+        await write.RefreshTokens.Where(token => token.ExpiresAt <= now).ExecuteDeleteAsync(ct);
         admin.LastLoginAt = now;
-        var session = new AdminSession { Id = Guid.NewGuid(), Admin = admin, ExpiresAt = now + SessionLifetime };
-        write.AdminSessions.Add(session);
+        var token = new AdminRefreshToken
+        {
+            Id = Guid.NewGuid(), Admin = admin, TokenHash = tokenHash, ExpiresAt = now + RefreshLifetime
+        };
+        write.RefreshTokens.Add(token);
         await write.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        return session;
+        return token;
     }
 
-    internal Task<AdminSession?> FindSessionAsync(Guid id, CancellationToken ct) =>
-        db.AdminSessions.AsNoTracking().Include(session => session.Admin)
-            .SingleOrDefaultAsync(session => session.Id == id && session.ExpiresAt > clock.GetUtcNow() && session.Admin.PasswordHash != null, ct);
+    internal Task<AdminRefreshToken?> FindActiveRefreshTokenAsync(Guid id, CancellationToken ct) =>
+        ActiveRefreshTokens().SingleOrDefaultAsync(token => token.Id == id, ct);
 
-    internal async Task RevokeAsync(Guid id, CancellationToken ct)
+    internal Task<AdminRefreshToken?> FindActiveRefreshTokenAsync(byte[] tokenHash, CancellationToken ct) =>
+        ActiveRefreshTokens().SingleOrDefaultAsync(token => token.TokenHash == tokenHash, ct);
+
+    internal async Task RevokeAsync(byte[] tokenHash, CancellationToken ct)
     {
         await using var write = CreateWriteContext();
-        await write.AdminSessions.Where(session => session.Id == id).ExecuteDeleteAsync(ct);
+        await write.RefreshTokens.Where(token => token.TokenHash == tokenHash).ExecuteDeleteAsync(ct);
     }
 
     internal async Task<PasswordChangeResult> ChangePasswordAsync(
-        Guid sessionId, string? oldPassword, string newPassword, CancellationToken ct)
+        Guid loginId, string? oldPassword, string newPassword, CancellationToken ct)
     {
         await using var write = CreateWriteContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
@@ -104,8 +109,8 @@ internal sealed class AccountStore(
             throw new AccountStoreUnavailableException();
 
         // 认证中间件与持锁之间，改密或重置可能已撤销本次会话。
-        if (admin.PasswordHash is null || !await write.AdminSessions.AnyAsync(
-                session => session.Id == sessionId && session.ExpiresAt > clock.GetUtcNow(), ct))
+        if (admin.PasswordHash is null || !await write.RefreshTokens.AnyAsync(
+                token => token.Id == loginId && token.ExpiresAt > clock.GetUtcNow(), ct))
             return PasswordChangeResult.SessionExpired;
 
         if (!IsValidPassword(oldPassword) ||
@@ -130,8 +135,8 @@ internal sealed class AccountStore(
         return true;
     }
 
-    internal async Task<AdminSession?> UpdateProfileAsync(
-        Guid sessionId, string name, string? phone, string? email, CancellationToken ct)
+    internal async Task<AdminRefreshToken?> UpdateProfileAsync(
+        Guid loginId, string name, string? phone, string? email, CancellationToken ct)
     {
         await using var write = CreateWriteContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
@@ -139,9 +144,9 @@ internal sealed class AccountStore(
         if (admin is null)
             throw new AccountStoreUnavailableException();
 
-        var session = await write.AdminSessions.SingleOrDefaultAsync(
-            session => session.Id == sessionId && session.ExpiresAt > clock.GetUtcNow(), ct);
-        if (admin.PasswordHash is null || session is null)
+        var token = await write.RefreshTokens.SingleOrDefaultAsync(
+            token => token.Id == loginId && token.ExpiresAt > clock.GetUtcNow(), ct);
+        if (admin.PasswordHash is null || token is null)
             return null;
 
         admin.Name = name;
@@ -149,7 +154,14 @@ internal sealed class AccountStore(
         admin.Email = email;
         await write.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        return session;
+        return token;
+    }
+
+    private IQueryable<AdminRefreshToken> ActiveRefreshTokens()
+    {
+        var now = clock.GetUtcNow();
+        return db.RefreshTokens.AsNoTracking().Include(token => token.Admin)
+            .Where(token => token.ExpiresAt > now && token.Admin.PasswordHash != null);
     }
 
     private AppDbContext CreateWriteContext()
@@ -174,7 +186,7 @@ internal sealed class AccountStore(
     {
         admin.PasswordHash = passwords.HashPassword(admin, newPassword);
         await write.SaveChangesAsync(ct);
-        await write.AdminSessions.Where(session => session.AdminId == admin.Id).ExecuteDeleteAsync(ct);
+        await write.RefreshTokens.Where(token => token.AdminId == admin.Id).ExecuteDeleteAsync(ct);
     }
 }
 

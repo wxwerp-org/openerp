@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -44,7 +45,7 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
     }
 
     [Fact]
-    public async Task Production_requires_migrations_then_creates_exactly_one_uninitialized_account_without_a_secret()
+    public async Task Production_requires_migrations_then_creates_one_uninitialized_account_without_an_initial_password()
     {
         // Given 独立空库和未配置管理员密码的 Production 进程。
         var ct = TestContext.Current.CancellationToken;
@@ -55,6 +56,10 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
 
         // When 部署侧应用数据库迁移，CLI 在缺少占位行时仍失败。
         await db.Database.MigrateAsync(ct);
+        var missingSigningKey = await RunApiOnDatabaseAsync(_connectionString, null, [], ct, includeSigningKey: false);
+        Assert.NotEqual(0, missingSigningKey.ExitCode);
+        Assert.Contains("Authentication:SigningPrivateKeyPem", missingSigningKey.Output);
+
         var reset = await RunApiAsync(fixture.AdminPassword, ct, "reset-admin-password", "--stdin");
         Assert.Equal(1, reset.ExitCode);
         Assert.Contains("数据库中没有管理员账号", reset.Output);
@@ -81,9 +86,9 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Upgrade_preserves_existing_password_profile_and_original_sessions(bool hadRequiredPasswordChange)
+    public async Task Upgrade_preserves_existing_account_and_replaces_the_legacy_session_table(bool hadRequiredPasswordChange)
     {
-        // Given 旧数据库中的两种账户状态均已经保存密码、资料和会话。
+        // Given 旧数据库中的两种账户状态均已保存密码、资料和旧会话记录。
         var ct = TestContext.Current.CancellationToken;
         await using var db = CreateContext();
         await db.Database.GetService<IMigrator>().MigrateAsync("20261116092521_RequireInitialPasswordChange", ct);
@@ -99,7 +104,7 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
             VALUES ({first}, 1, {expiresAt}), ({second}, 1, {expiresAt.AddMinutes(1)});
             """, ct);
 
-        // When 应用迁移；Then 移除旧列并保留所有密码、资料和会话。
+        // When 应用迁移；Then 移除旧列和旧会话表，保留密码与资料。
         await db.Database.MigrateAsync(ct);
         Assert.False(await db.Database.SqlQueryRaw<bool>("""
             SELECT EXISTS (
@@ -112,32 +117,38 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
         Assert.Equal("existing@example.com", existing.Email);
         Assert.Equal(hash, existing.PasswordHash);
         Assert.Equal(now, existing.LastLoginAt);
+        Assert.False(await db.Database.SqlQueryRaw<bool>("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = 'AdminSessions') AS "Value"
+            """).SingleAsync(ct));
+        Assert.Empty(await db.RefreshTokens.AsNoTracking().ToListAsync(ct));
 
         var store = CreateStore(db, new TestClock { UtcNow = now });
-        Assert.Equal(expiresAt, (await store.FindSessionAsync(first, ct))?.ExpiresAt);
-        Assert.Equal(expiresAt.AddMinutes(1), (await store.FindSessionAsync(second, ct))?.ExpiresAt);
-        Assert.NotNull(await store.LoginAsync("admin", fixture.AdminPassword, ct));
+        var login = await store.LoginAsync("admin", fixture.AdminPassword, RandomNumberGenerator.GetBytes(32), ct);
+        Assert.NotNull(login);
+        Assert.Equal(now.AddHours(24), login.ExpiresAt);
     }
 
     [Fact]
-    public async Task Reset_reads_stdin_updates_existing_admin_and_revokes_all_sessions()
+    public async Task Cli_reset_reads_stdin_updates_admin_and_revokes_all_refresh_tokens_without_signing_key()
     {
-        // Given 已初始化的数据库、两个会话以及不带 Redis/S3 配置的独立进程。
+        // Given 已初始化的数据库、两个刷新令牌以及不带 signing key、Redis、S3 配置的 CLI 进程。
         var ct = TestContext.Current.CancellationToken;
         await using var db = CreateContext();
         await db.Database.MigrateAsync(ct);
         var store = CreateStore(db, TimeProvider.System);
         await store.SeedAsync(ct);
         Assert.True(await store.InitializeAsync(fixture.AdminPassword, ct));
-        var one = await store.LoginAsync("admin", fixture.AdminPassword, ct);
-        var two = await store.LoginAsync("admin", fixture.AdminPassword, ct);
+        var one = await store.LoginAsync("admin", fixture.AdminPassword, RandomNumberGenerator.GetBytes(32), ct);
+        var two = await store.LoginAsync("admin", fixture.AdminPassword, RandomNumberGenerator.GetBytes(32), ct);
         Assert.NotNull(one);
         Assert.NotNull(two);
 
         // When 传递额外 argv 被拒绝，显式 --stdin 重置成功。
         var invalid = await RunApiAsync(null, ct, "reset-admin-password", "unused-argument");
         Assert.NotEqual(0, invalid.ExitCode);
-        Assert.NotNull(await store.FindSessionAsync(one.Id, ct));
+        Assert.NotNull(await store.FindActiveRefreshTokenAsync(one.Id, ct));
         const string replacement = " replacement ";
         await using var observer = new NpgsqlConnection(_connectionString);
         await observer.OpenAsync(ct);
@@ -147,11 +158,11 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
         Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
 
         var reset = RunApiAsync(replacement, ct, "reset-admin-password", "--stdin");
-        Task<AdminSession?>? login = null;
+        Task<AdminRefreshToken?>? login = null;
         try
         {
             await AuthenticationIntegrationTests.WaitForAdminLocksAsync(observer, 1, ct);
-            login = store.LoginAsync("admin", fixture.AdminPassword, ct);
+            login = store.LoginAsync("admin", fixture.AdminPassword, RandomNumberGenerator.GetBytes(32), ct);
             await AuthenticationIntegrationTests.WaitForAdminLocksAsync(observer, 2, ct);
         }
         finally
@@ -161,21 +172,21 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
 
         var result = await reset;
 
-        // Then 两个旧会话和旧密码均失效，新密码保留首尾空白且能登录。
+        // Then 两个旧刷新令牌和旧密码均失效，新密码保留首尾空白且能登录。
         Assert.Equal(0, result.ExitCode);
         Assert.DoesNotContain(replacement, result.Output);
         Assert.Null(await login!);
-        Assert.Null(await store.FindSessionAsync(one.Id, ct));
-        Assert.Null(await store.FindSessionAsync(two.Id, ct));
-        Assert.Null(await store.LoginAsync("admin", fixture.AdminPassword, ct));
-        var replacementSession = await store.LoginAsync("admin", replacement, ct);
-        Assert.NotNull(replacementSession);
+        Assert.Null(await store.FindActiveRefreshTokenAsync(one.Id, ct));
+        Assert.Null(await store.FindActiveRefreshTokenAsync(two.Id, ct));
+        Assert.Null(await store.LoginAsync("admin", fixture.AdminPassword, RandomNumberGenerator.GetBytes(32), ct));
+        var replacementToken = await store.LoginAsync("admin", replacement, RandomNumberGenerator.GetBytes(32), ct);
+        Assert.NotNull(replacementToken);
     }
 
     [Fact]
-    public async Task Session_is_expired_at_the_exact_deadline_and_next_login_prunes_it()
+    public async Task Refresh_token_expires_at_the_exact_deadline_and_next_login_prunes_it()
     {
-        // Given 使用可控制时间的时钟签发一个数据库会话。
+        // Given 使用可控制时间的时钟签发一个数据库刷新令牌。
         var ct = TestContext.Current.CancellationToken;
         await using var db = CreateContext();
         await db.Database.MigrateAsync(ct);
@@ -183,19 +194,19 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
         var store = CreateStore(db, clock);
         await store.SeedAsync(ct);
         Assert.True(await store.InitializeAsync(fixture.AdminPassword, ct));
-        var session = await store.LoginAsync("admin", fixture.AdminPassword, ct);
-        Assert.NotNull(session);
-        Assert.Equal(clock.UtcNow.AddHours(24), session.ExpiresAt);
+        var token = await store.LoginAsync("admin", fixture.AdminPassword, RandomNumberGenerator.GetBytes(32), ct);
+        Assert.NotNull(token);
+        Assert.Equal(clock.UtcNow.AddHours(24), token.ExpiresAt);
 
         // When 到期前一微秒和恰好到期时查询。
-        clock.UtcNow = session.ExpiresAt.AddTicks(-10);
-        Assert.NotNull(await store.FindSessionAsync(session.Id, ct));
-        clock.UtcNow = session.ExpiresAt;
+        clock.UtcNow = token.ExpiresAt.AddTicks(-10);
+        Assert.NotNull(await store.FindActiveRefreshTokenAsync(token.Id, ct));
+        clock.UtcNow = token.ExpiresAt;
 
         // Then 恰好到期即失效，后续登录清理已过期记录。
-        Assert.Null(await store.FindSessionAsync(session.Id, ct));
-        Assert.NotNull(await store.LoginAsync("admin", fixture.AdminPassword, ct));
-        Assert.False(await db.AdminSessions.AnyAsync(current => current.Id == session.Id, ct));
+        Assert.Null(await store.FindActiveRefreshTokenAsync(token.Id, ct));
+        Assert.NotNull(await store.LoginAsync("admin", fixture.AdminPassword, RandomNumberGenerator.GetBytes(32), ct));
+        Assert.False(await db.RefreshTokens.AnyAsync(current => current.Id == token.Id, ct));
     }
 
     private AppDbContext CreateContext() => new(CreateOptions());
@@ -210,7 +221,8 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
         RunApiOnDatabaseAsync(_connectionString, password, args, ct);
 
     internal static async Task<(int ExitCode, string Output, bool Started)> RunApiOnDatabaseAsync(
-        string connectionString, string? password, string[] args, CancellationToken ct, bool stopWhenListening = false)
+        string connectionString, string? password, string[] args, CancellationToken ct,
+        bool stopWhenListening = false, bool includeSigningKey = true)
     {
         var start = new ProcessStartInfo("dotnet")
         {
@@ -225,12 +237,19 @@ public sealed class AuthenticationStartupTests(AspireIntegrationFixture fixture)
         start.Environment["DOTNET_ENVIRONMENT"] = "Production";
         start.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
         start.Environment.Remove("Authentication__InitialPassword");
+        start.Environment.Remove("Authentication__SigningPrivateKeyPem");
         start.Environment["ConnectionStrings__openerp"] = connectionString;
         start.Environment.Remove("ConnectionStrings__redis");
         start.Environment.Remove("ConnectionStrings__seaweedfs");
         start.Environment["ASPNETCORE_URLS"] = "http://127.0.0.1:0";
         if (args.Length == 0)
         {
+            if (includeSigningKey)
+            {
+                using var rsa = RSA.Create(2048);
+                start.Environment["Authentication__SigningPrivateKeyPem"] = rsa.ExportPkcs8PrivateKeyPem();
+            }
+
             // Production 启动测试仅验证启动和数据库，不调用 Redis 或文件存储。
             start.Environment["ConnectionStrings__redis"] = "localhost:1";
             start.Environment["ConnectionStrings__seaweedfs"] = "Endpoint=http://127.0.0.1:1;AccessKey=test;SecretKey=test";

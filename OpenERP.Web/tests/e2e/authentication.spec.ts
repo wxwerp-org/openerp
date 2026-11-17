@@ -1,6 +1,13 @@
 import { randomBytes } from 'node:crypto'
 import { expect, test, type Page } from '@playwright/test'
-import { adminPassword, csrfHeaders, signInForWorkspace, signInWithApi } from './authentication'
+import {
+  adminPassword,
+  authenticatedHeaders,
+  csrfHeaders,
+  expectSessionResponse,
+  signInForWorkspace,
+  signInWithApi,
+} from './authentication'
 
 // eslint-disable-next-line playwright/no-skipped-test -- 真实会话用例使用隔离宿主和测试设置的密码。
 test.skip(!adminPassword, '设置 OPENERP_TEST_ADMIN_PASSWORD 以使用真实管理员会话。')
@@ -12,7 +19,7 @@ async function restorePassword(page: Page, newPassword: string): Promise<number>
     return initialLogin.ok() ? 204 : initialLogin.status()
   }
   const restored = await page.request.post('/api/auth/change-password', {
-    headers: await csrfHeaders(page.request),
+    headers: await authenticatedHeaders(page.request),
     data: { oldPassword: newPassword, newPassword: adminPassword },
   })
   return restored.status()
@@ -22,6 +29,17 @@ async function submitLogin(page: Page, password: string): Promise<void> {
   await page.getByLabel('用户名').fill('admin')
   await page.getByLabel('密码', { exact: true }).fill(password)
   await page.getByRole('button', { name: '登录', exact: true }).click()
+}
+
+async function expectAccessTokenNotPersisted(page: Page, accessToken: string): Promise<void> {
+  const entries = await page.evaluate(() => {
+    const readStorage = (storage: Storage) => Array.from({ length: storage.length }, (_, index) => {
+      const key = storage.key(index) ?? ''
+      return { key, value: storage.getItem(key) ?? '' }
+    })
+    return [...readStorage(localStorage), ...readStorage(sessionStorage)]
+  })
+  expect(entries.some(({ key, value }) => /access.?token/i.test(key) || value.includes(accessToken))).toBe(false)
 }
 
 test('Given 全新数据库尚未初始化 When 浏览器设置管理员密码 Then 重新登录后返回原地址且其他页签转到登录', async ({ page, browser, baseURL }, testInfo) => {
@@ -85,6 +103,65 @@ test('Given 全新数据库尚未初始化 When 浏览器设置管理员密码 T
   }
 })
 
+test('Given 首个浏览器已登录且持有持久刷新 Cookie When 新浏览器 context 打开工作台 Then 恢复管理员账号且 access token 未写入本地存储', async ({ browser, baseURL }) => {
+  const firstContext = await browser.newContext({ baseURL })
+  try {
+    const firstPage = await firstContext.newPage()
+    await firstPage.goto('/login')
+    const loginResponsePromise = firstPage.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/api/auth/login' && response.request().method() === 'POST',
+    )
+    await submitLogin(firstPage, adminPassword)
+    const loginResponse = await loginResponsePromise
+    expect(loginResponse.status()).toBe(200)
+    const loginSession = await expectSessionResponse(loginResponse)
+    await expect(firstPage.locator('.account-button')).toHaveText(loginSession.account.name)
+    await expectAccessTokenNotPersisted(firstPage, loginSession.accessToken)
+
+    const storageState = await firstContext.storageState()
+    const refreshCookie = storageState.cookies.find((cookie) => cookie.name === '__Secure-OpenERP.Refresh')
+    expect(refreshCookie).toMatchObject({
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Strict',
+      path: '/api/auth',
+    })
+    expect(refreshCookie?.expires).toBeGreaterThan(Date.now() / 1000)
+
+    const refreshOnlyState = {
+      cookies: storageState.cookies.filter((cookie) => cookie.name === '__Secure-OpenERP.Refresh'),
+      origins: [],
+    }
+    const restoredContext = await browser.newContext({ baseURL, storageState: refreshOnlyState })
+    try {
+      const restoredPage = await restoredContext.newPage()
+      const refreshRequestPromise = restoredPage.waitForRequest((request) =>
+        new URL(request.url()).pathname === '/api/auth/refresh' && request.method() === 'POST',
+      )
+      const refreshResponsePromise = restoredPage.waitForResponse((response) =>
+        new URL(response.url()).pathname === '/api/auth/refresh' && response.request().method() === 'POST',
+      )
+      await restoredPage.goto('/users')
+
+      const [refreshRequest, refreshResponse] = await Promise.all([refreshRequestPromise, refreshResponsePromise])
+      expect(refreshResponse.status()).toBe(200)
+      const headers = await refreshRequest.allHeaders()
+      expect(refreshRequest.postData()).toBeNull()
+      expect(headers['x-csrf-token']).toBeTruthy()
+      expect(headers.authorization).toBeUndefined()
+      expect(headers.cookie).toContain('__Secure-OpenERP.Refresh=')
+
+      const refreshedSession = await expectSessionResponse(refreshResponse)
+      await expect(restoredPage.locator('.account-button')).toHaveText(refreshedSession.account.name)
+      await expectAccessTokenNotPersisted(restoredPage, refreshedSession.accessToken)
+    } finally {
+      await restoredContext.close()
+    }
+  } finally {
+    await firstContext.close()
+  }
+})
+
 test('Given 未登录时直达工作台 When 错误凭证失败后成功登录 Then 返回原地址且刷新后保持会话', async ({ page, request }, testInfo) => {
   await signInForWorkspace(request)
   await page.goto('/users?from=login#main')
@@ -106,7 +183,7 @@ test('Given 未登录时直达工作台 When 错误凭证失败后成功登录 T
 
 test('Given 两个浏览器已登录 When 保存资料然后退出当前浏览器 Then 资料刷新后保持且另一浏览器继续在线', async ({ page, browser, baseURL }, testInfo) => {
   await signInForWorkspace(page.request)
-  const me = await page.request.get('/api/auth/me')
+  const me = await page.request.get('/api/auth/me', { headers: await authenticatedHeaders(page.request) })
   expect(me.status()).toBe(200)
   const { name, phone, email } = await me.json()
   const secondDevice = await browser.newContext({ baseURL })
@@ -134,14 +211,29 @@ test('Given 两个浏览器已登录 When 保存资料然后退出当前浏览�
     await expect(page.locator('.account-button')).toHaveText(newName)
 
     await page.locator('.account-button').click()
+    const logoutRequestPromise = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === '/api/auth/logout' && request.method() === 'POST',
+    )
     await page.getByRole('menuitem', { name: '退出登录' }).click()
+    const logoutRequest = await logoutRequestPromise
+    const logoutHeaders = await logoutRequest.allHeaders()
+    expect(logoutRequest.postData()).toBeNull()
+    expect(logoutHeaders['x-csrf-token']).toBeTruthy()
+    expect(logoutHeaders.authorization).toBeUndefined()
     await expect(page.getByRole('heading', { name: '登录 OpenERP' })).toBeVisible()
-    expect((await page.request.get('/api/auth/me')).status()).toBe(401)
-    expect((await secondDevice.request.get('/api/auth/me')).status()).toBe(200)
+    expect((await page.request.get('/api/auth/me', {
+      headers: await authenticatedHeaders(page.request),
+    })).status()).toBe(401)
+    expect((await page.request.post('/api/auth/refresh', {
+      headers: await csrfHeaders(page.request),
+    })).status()).toBe(401)
+    expect((await secondDevice.request.get('/api/auth/me', {
+      headers: await authenticatedHeaders(secondDevice.request),
+    })).status()).toBe(200)
   } finally {
     try {
       const restored = await secondDevice.request.put('/api/account/profile', {
-        headers: await csrfHeaders(secondDevice.request),
+        headers: await authenticatedHeaders(secondDevice.request),
         data: { name, phone: phone ?? '', email: email ?? '' },
       })
       expect(restored.status()).toBe(200)
@@ -175,9 +267,14 @@ test('Given 两个浏览器已登录 When 原密码校验失败后修改密码�
     restore = () => restorePassword(page, newPassword)
     await page.getByRole('button', { name: '确认修改' }).click()
     await expect(page.getByRole('heading', { name: '登录 OpenERP' })).toBeVisible()
-    expect((await page.request.get('/api/auth/me')).status()).toBe(401)
+    expect((await page.request.get('/api/auth/me', {
+      headers: await authenticatedHeaders(page.request),
+    })).status()).toBe(401)
     await secondPage.evaluate(() => window.dispatchEvent(new Event('focus')))
     await expect(secondPage.getByRole('heading', { name: '登录 OpenERP' })).toBeVisible()
+    expect((await secondDevice.request.get('/api/auth/me', {
+      headers: await authenticatedHeaders(secondDevice.request),
+    })).status()).toBe(401)
     expect((await signInWithApi(page.request)).status()).toBe(401)
     expect((await signInWithApi(page.request, newPassword)).status()).toBe(200)
   } finally {
@@ -189,7 +286,7 @@ test('Given 两个浏览器已登录 When 原密码校验失败后修改密码�
   }
 })
 
-test('Given 隔离宿主中的管理员已登录 When 保存关闭状态的定时同步设置 Then 通过防伪校验并保存店铺选择', async ({ page, request }) => {
+test('Given 隔离宿主中的管理员已登录 When 保存关闭状态的定时同步设置 Then 使用 Bearer 身份验证并保存店铺选择', async ({ page, request }) => {
   // eslint-disable-next-line playwright/no-skipped-test -- 此用例只写入浏览器验收宿主的隔离数据库。
   test.skip(process.env.OPENERP_RUN_BROWSER_TESTS !== '1', '通过隔离宿主运行定时同步保存验收。')
   await signInForWorkspace(request)
@@ -211,7 +308,9 @@ test('Given 隔离宿主中的管理员已登录 When 保存关闭状态的定�
   await expect(settings.getByText('未启用')).toBeVisible()
 
   const settingsUrl = '/api/erp/order-sync-settings'
-  const initial = await page.request.get(settingsUrl)
+  const initial = await request.get(settingsUrl, {
+    headers: await authenticatedHeaders(request),
+  })
   await expect(initial).toBeOK()
   const { enabled, shopSids } = await initial.json()
   expect(enabled).toBe(false)
@@ -220,12 +319,14 @@ test('Given 隔离宿主中的管理员已登录 When 保存关闭状态的定�
   try {
     await settings.getByRole('button', { name: '保存', exact: true }).click()
     await expect(settings.getByRole('status')).toHaveText('定时同步已关闭。')
-    const saved = await page.request.get(settingsUrl)
+    const saved = await request.get(settingsUrl, {
+      headers: await authenticatedHeaders(request),
+    })
     await expect(saved).toBeOK()
     expect(await saved.json()).toMatchObject({ enabled: false, shopSids: [42] })
   } finally {
-    const restored = await page.request.put(settingsUrl, {
-      headers: await csrfHeaders(page.request),
+    const restored = await request.put(settingsUrl, {
+      headers: await authenticatedHeaders(request),
       data: { enabled, shopSids },
     })
     await expect(restored).toBeOK()

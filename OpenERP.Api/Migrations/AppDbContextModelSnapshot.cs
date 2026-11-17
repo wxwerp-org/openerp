@@ -72,7 +72,7 @@ namespace OpenERP.Api.Migrations
                         });
                 });
 
-            modelBuilder.Entity("OpenERP.Api.Authentication.AdminSession", b =>
+            modelBuilder.Entity("OpenERP.Api.Authentication.AdminRefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -84,11 +84,18 @@ namespace OpenERP.Api.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AdminId");
 
-                    b.ToTable("AdminSessions", (string)null);
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("RefreshTokens", (string)null);
                 });
 
             modelBuilder.Entity("OpenERP.Api.Orders.OrderLineRecord", b =>
@@ -216,7 +223,7 @@ namespace OpenERP.Api.Migrations
                     b.ToTable("PlatformOrders", (string)null);
                 });
 
-            modelBuilder.Entity("OpenERP.Api.Authentication.AdminSession", b =>
+            modelBuilder.Entity("OpenERP.Api.Authentication.AdminRefreshToken", b =>
                 {
                     b.HasOne("OpenERP.Api.Authentication.AdminAccount", "Admin")
                         .WithMany()
