@@ -15,6 +15,15 @@
 - 代理执行 .NET `restore`、`build` 必须直接使用沙箱外权限；`run`、`test` 涉及隐式或显式还原时同样适用。
 - 遵守[贡献指南](CONTRIBUTING.md#测试与验证要求)的验证要求，按[开发说明](docs/development.md#构建与测试)执行验证，并在任务回复中汇报实际验证结果和未验证项；纯文档改动按内容验证，不编造红绿测试。
 
+## PR 提交与评审约定
+
+- PR 合并必须由人类开发者执行，代理无权合并。
+- PR 合并前必须确认 PR head 的 status checks 全部通过；检查失败、未完成或状态未知时不得合并。
+- 提交信息遵循 Conventional Commits。
+- PR 必须附验收截图，临时验收产物禁止提交进 git。
+- Review 线程只有在问题真正修复并验证后才回复并 resolve。
+- CI/测试类改动需先完成本地验收（含失败归因验证），再提 PR。
+
 ## Aspire 官方指导（强制）
 
 - 涉及 Aspire 的开发、配置、运行或排障前，必须读取并严格遵循项目内 [Aspire Skill](.agents/skills/aspire/SKILL.md)，再按其路由读取对应子 Skill；不得仅凭经验或本文件摘要执行。项目内 Skill 优先于同名插件 Skill。
