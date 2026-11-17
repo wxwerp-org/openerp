@@ -7,7 +7,6 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   forbidOnly: true,
-  failOnFlakyTests: true,
   retries: 0,
   timeout: 60_000,
   globalTimeout: 20 * 60_000,

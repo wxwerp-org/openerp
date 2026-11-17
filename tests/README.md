@@ -53,7 +53,7 @@ aspire certs trust
 pnpm test:e2e
 ```
 
-同一 checkout 若已有 AppHost 在运行，入口会拒绝执行；先结束该会话，或在另一个 worktree 运行测试。改动 C# 代码后重新执行上述构建。数据库断言由 [`e2e/verify-orders.cs`](../e2e/verify-orders.cs) 直接查询本次 Aspire 数据库，不启动辅助 HTTP 服务。测试需要容器运行时、Node.js/pnpm、Chromium 和受信任的开发证书。Playwright 使用单 worker、`forbidOnly` 和原生 HTML/JSON 报告；原生退出码决定 Actions 结果，不再维护自定义 reporter。核对报告中的通过、失败和跳过明细，不将跳过报告为通过。
+同一 checkout 若已有 AppHost 在运行，入口会拒绝执行；先结束该会话，或在另一个 worktree 运行测试。改动 C# 代码后重新执行上述构建。[`e2e/verify-orders.cs`](../e2e/verify-orders.cs) 只读取本次 Aspire 数据库及真实 wxw 模式所需的上游数据，不启动辅助 HTTP 服务。两种模式均由 Playwright 原生断言比较完整字段和重复行数量。测试需要容器运行时、Node.js/pnpm、Chromium 和受信任的开发证书。Playwright 使用单 worker、`forbidOnly` 和原生 HTML/JSON 报告；原生退出码决定 Actions 结果，不再维护自定义 reporter。核对报告中的通过、失败和跳过明细，不将跳过报告为通过。
 
 ### 真实 wxw E2E
 

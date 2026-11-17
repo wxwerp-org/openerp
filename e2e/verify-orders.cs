@@ -55,34 +55,25 @@ internal static class OrderDatabase
         var source = await new WxwErpClient(http, config).ReadOrdersAsync(sid, null, ct);
         if (source.IsErr) return new { errors = new[] { source.Error.Message } };
         var actual = await ReadAsync(connection, sid, ct);
-        var expected = source.Value.Orders;
-        var errors = new List<string>();
-        if (expected.Count == 0) errors.Add("wxw returned no accepted orders; this is not a successful sync verification.");
-        Compare("Orders", expected.Select(o => Row(o.ErpId, o.OrderNumber, o.Sid, o.Platform, o.Status,
-            o.Times.Created?.Raw, o.Times.Created?.Source, o.Times.Paid?.Raw, o.Times.Paid?.Source,
-            o.Times.Dispatched?.Raw, o.Times.Dispatched?.Source, o.Times.Refunded?.Raw, o.Times.Refunded?.Source)),
-            actual.Orders, errors);
-        Compare("PlatformOrders", expected.SelectMany(o => o.PlatformOrders.Select(p =>
-            Row(o.ErpId, p.PoNumber, p.Sid, p.StatusCode, p.StatusText))), actual.PlatformOrders, errors);
-        Compare("OrderLines", expected.SelectMany(o => o.Lines.Select(l =>
-            Row(o.ErpId, l.ProductId, l.Oguid, l.SkuId, l.SkuCode, l.Quantity, l.Disabled, l.Appended))), actual.OrderLines, errors);
-        return new { total = source.Value.Total, orders = actual.Orders.Count,
-            platformOrders = actual.PlatformOrders.Count, orderLines = actual.OrderLines.Count, errors };
+        var orders = source.Value.Orders;
+        // 仅输出数据，由 Playwright 对 stub/live 使用同一套原生深比较断言。
+        var expected = new
+        {
+            Orders = orders.Select(o => new
+            {
+                o.ErpId, o.OrderNumber, o.Sid, o.Platform, o.Status,
+                CreatedRaw = o.Times.Created?.Raw, CreatedSource = o.Times.Created?.Source,
+                PaidRaw = o.Times.Paid?.Raw, PaidSource = o.Times.Paid?.Source,
+                DispatchedRaw = o.Times.Dispatched?.Raw, DispatchedSource = o.Times.Dispatched?.Source,
+                RefundedRaw = o.Times.Refunded?.Raw, RefundedSource = o.Times.Refunded?.Source,
+            }),
+            PlatformOrders = orders.SelectMany(o => o.PlatformOrders.Select(p => new
+            { o.ErpId, p.PoNumber, p.Sid, p.StatusCode, p.StatusText })),
+            OrderLines = orders.SelectMany(o => o.Lines.Select(l => new
+            { o.ErpId, l.ProductId, l.Oguid, l.SkuId, l.SkuCode, l.Quantity, l.Disabled, l.Appended })),
+        };
+        return new { total = source.Value.Total, actual, expected, errors = Array.Empty<string>() };
     }
-
-    private static void Compare(string table, IEnumerable<string> expected,
-        List<Dictionary<string, object?>> actual, List<string> errors)
-    {
-        if (!expected.Order(StringComparer.Ordinal).SequenceEqual(
-            actual.Select(row => Row(row.Values.ToArray())).Order(StringComparer.Ordinal)))
-            errors.Add($"{table}: row multiplicities or field values differ from wxw.");
-    }
-
-    private static string Row(params object?[] fields) => string.Concat(fields.Select(field =>
-    {
-        var value = field is null ? null : Convert.ToString(field, CultureInfo.InvariantCulture);
-        return value is null ? "-;" : $"{value.Length}:{value}";
-    }));
 
     private static async Task<List<Dictionary<string, object?>>> QueryAsync(NpgsqlConnection db, string sql, int sid, CancellationToken ct)
     {

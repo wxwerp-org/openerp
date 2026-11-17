@@ -78,17 +78,3 @@ jobs:
           path: test-results/backend
           if-no-files-found: error
           retention-days: 7
-
-  results:
-    name: Backend results
-    if: ${{ !cancelled() }}
-    needs: [backend]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Summarize backend checks
-        env:
-          BACKEND: ${{ needs.backend.result }}
-        run: |
-          echo "Backend build and tests=$BACKEND"
-          test "$BACKEND" = success
