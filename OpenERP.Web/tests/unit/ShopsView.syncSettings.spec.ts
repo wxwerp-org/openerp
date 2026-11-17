@@ -230,13 +230,44 @@ describe('店铺定时同步设置', () => {
   })
 
   it('Given 管理员会话已通过初始检查 When 读取定时同步设置返回 401 Then 会话变为未登录', async () => {
-    configureFetch({
-      getSettings: () => new Response(null, { status: 401 }),
-      refresh: () => new Response(null, { status: 401 }),
+    const { account, sessionState } = await import('../../src/account/session')
+    let sessionStateWhenSettingsRequested: string | undefined
+    const refreshStatuses: number[] = []
+    const fetchMock = configureFetch({
+      getSettings: () => {
+        sessionStateWhenSettingsRequested = sessionState.value
+        return new Response(null, { status: 401 })
+      },
+      refresh: () => {
+        const response = refreshStatuses.length === 0
+          ? jsonResponse({
+            accessToken: 'schedule-access',
+            accessTokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+            account: adminAccount,
+          })
+          : new Response(null, { status: 401 })
+        refreshStatuses.push(response.status)
+        return response
+      },
     })
     wrapper = await mountShops()
 
-    const { account, sessionState } = await import('../../src/account/session')
+    const settingsRequests = fetchMock.mock.calls.filter(([input]) =>
+      String(input) === '/api/erp/order-sync-settings',
+    )
+    const requestIndexes = fetchMock.mock.calls.map(([input], index) =>
+      String(input) === '/api/auth/refresh' ? index : -1,
+    ).filter((index) => index >= 0)
+    const settingsRequestIndex = fetchMock.mock.calls.findIndex(([input]) =>
+      String(input) === '/api/erp/order-sync-settings',
+    )
+    expect(sessionStateWhenSettingsRequested).toBe('authenticated')
+    expect(refreshStatuses).toEqual([200, 401])
+    expect(settingsRequests).toHaveLength(1)
+    expect(new Headers(settingsRequests[0]?.[1]?.headers).get('Authorization')).toBe('Bearer schedule-access')
+    expect(requestIndexes).toHaveLength(2)
+    expect(requestIndexes[0]).toBeLessThan(settingsRequestIndex)
+    expect(requestIndexes[1]).toBeGreaterThan(settingsRequestIndex)
     expect(sessionState.value).toBe('anonymous')
     expect(account.value).toBeNull()
   })

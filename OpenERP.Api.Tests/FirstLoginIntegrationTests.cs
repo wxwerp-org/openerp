@@ -38,6 +38,31 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task Refresh_reports_unavailable_when_the_administrator_record_is_missing()
+    {
+        // Given 隔离宿主中已登录的设备可用当前 Cookie 成功刷新。
+        var ct = TestContext.Current.CancellationToken;
+        await using var fixture = new AspireIntegrationFixture();
+        await fixture.InitializeAsync();
+        using var client = fixture.CreateApiClient();
+        await AuthenticationIntegrationTests.LoginAsync(client, ct, fixture.AdminPassword);
+        using var initial = await AuthenticationIntegrationTests.PostAnonymouslyAsync(client, "/api/auth/refresh", null, ct);
+        Assert.Equal(HttpStatusCode.OK, initial.StatusCode);
+
+        // When 运行中的数据库丢失管理员记录，外键级联删除登录凭证。
+        await using var connection = new NpgsqlConnection(await fixture.GetPostgresConnectionStringAsync(ct));
+        await connection.OpenAsync(ct);
+        await using var delete = new NpgsqlCommand("""DELETE FROM "AdminAccounts" WHERE "Id" = 1""", connection);
+        Assert.Equal(1, await delete.ExecuteNonQueryAsync(ct));
+        using var response = await AuthenticationIntegrationTests.PostAnonymouslyAsync(client, "/api/auth/refresh", null, ct);
+
+        // Then 返回服务不可用的 ProblemDetails，浏览器可保留当前会话状态。
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.False(response.Headers.Contains("Set-Cookie"));
+    }
+
+    [Fact]
     public async Task Initialization_rolls_back_on_database_failure_and_two_connections_have_one_winner()
     {
         // Given 两个匿名会话和独立的未初始化数据库。

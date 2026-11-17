@@ -199,9 +199,15 @@ internal static partial class AuthenticationEndpoints
     private static async Task<Results<Ok<TokenResponse>, ProblemHttpResult>> RefreshAsync(
         HttpContext context, AccountStore store, AccessTokens tokens, TimeProvider clock, CancellationToken ct)
     {
-        var login = context.Request.Cookies.TryGetValue(RefreshCookie, out var refreshToken)
-            ? await store.FindActiveRefreshTokenAsync(HashRefreshToken(refreshToken), ct)
-            : null;
+        AdminRefreshToken? login = null;
+        if (context.Request.Cookies.TryGetValue(RefreshCookie, out var refreshToken))
+        {
+            login = await store.FindActiveRefreshTokenAsync(HashRefreshToken(refreshToken), ct);
+            // 管理员记录缺失时会级联删除凭证，由现有异常处理返回 503。
+            if (login is null)
+                await store.IsInitializedAsync(ct);
+        }
+
         var response = login is null ? null : IssueAccess(tokens, login, clock.GetUtcNow());
         if (response is null)
             return TypedResults.Problem("登录会话已失效。", statusCode: 401);
