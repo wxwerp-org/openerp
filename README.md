@@ -44,7 +44,7 @@ pnpm --dir OpenERP.Web install --frozen-lockfile
 
 设置成功后进入登录页，使用 `admin` 与刚设置的密码登录即可访问业务。初始化前不能登录或调用业务 API。初始化只能成功一次，重复提交不会覆盖已设置的密码。
 
-本地忘记密码时可使用[管理员密码重置命令](docs/development.md#本地初始化与密码重置)。正式环境的配置、初始化和 JWT 升级步骤见[部署说明](docs/deployment.md)。
+本地忘记密码时可使用[管理员密码重置命令](docs/development.md#本地初始化与密码重置)。正式环境的 Release 产物、首次部署和版本升级见[部署说明](docs/deployment.md)。
 
 ### 配置 ERP Token
 

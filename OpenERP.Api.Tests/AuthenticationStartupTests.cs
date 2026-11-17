@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
@@ -68,11 +69,14 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
         Assert.True(reset.Output.Contains("数据库中没有管理员账号", StringComparison.Ordinal));
         Assert.False(await db.AdminAccounts.AnyAsync(ct));
 
-        // Then Production 无须初始密码，重复启动保留同一条未初始化占位。
+        // Then Production 无须初始密码，重复启动保留同一条未初始化占位；
+        // 文件和订单同步已经注册，并继续要求先初始化管理员。
+        var storage = await fixture.GetStorageConnectionStringAsync(ct);
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var started = await RunApiOnDatabaseAsync(_connectionString, null, [], ct, stopWhenListening: true);
-            Assert.True(started.Started);
+            var started = await RunApiOnDatabaseAsync(_connectionString, null, [], ct,
+                storageConnectionString: storage, verifyListening: VerifyProductionRoutesAsync);
+            Assert.True(started.Started, started.Output);
             var admin = await db.AdminAccounts.AsNoTracking().SingleAsync(ct);
             Assert.Equal(1, admin.Id);
             Assert.Equal("管理员", admin.Name);
@@ -235,8 +239,9 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
 
     internal static async Task<(int ExitCode, string Output, bool Started)> RunApiOnDatabaseAsync(
         string connectionString, string? password, string[] args, CancellationToken ct,
-        bool stopWhenListening = false, bool includeSigningKey = true,
-        Action<ProcessStartInfo>? configureStart = null, TimeSpan? processBudget = null)
+        bool includeSigningKey = true, Action<ProcessStartInfo>? configureStart = null,
+        TimeSpan? processBudget = null, string? storageConnectionString = null,
+        Func<Uri, CancellationToken, Task>? verifyListening = null)
     {
         var start = new ProcessStartInfo("dotnet")
         {
@@ -264,12 +269,13 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
                 start.Environment["Authentication__SigningPrivateKeyPem"] = rsa.ExportPkcs8PrivateKeyPem();
             }
 
-            // Production 启动测试仅验证启动和数据库，不调用 Redis 或文件存储。
+            // 只有完整启动场景需要真实的对象存储连接。
             start.Environment["ConnectionStrings__redis"] = "localhost:1";
-            start.Environment["ConnectionStrings__seaweedfs"] = "Endpoint=http://127.0.0.1:1;AccessKey=test;SecretKey=test";
+            start.Environment["ConnectionStrings__seaweedfs"] = storageConnectionString
+                ?? "Endpoint=http://127.0.0.1:1;AccessKey=test;SecretKey=test";
         }
 
-        var secrets = new List<string?> { password, connectionString };
+        var secrets = new List<string?> { password, connectionString, storageConnectionString };
         secrets.Add(new NpgsqlConnectionStringBuilder(connectionString).Password);
         if (start.Environment.TryGetValue("Authentication__SigningPrivateKeyPem", out var pem) && pem is not null)
             secrets.AddRange(pem.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
@@ -283,13 +289,14 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
         // 从启动时开始排空两个流，操作取消后继续读取，直到收尾关闭子进程的管道。
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
-        var listening = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var listening = new TaskCompletionSource<Uri>(TaskCreationOptions.RunContinuationsAsynchronously);
         var input = process.StandardInput;
         var inputPipe = input.BaseStream;
         var outputReader = process.StandardOutput;
         var errorReader = process.StandardError;
         using var drainCancellation = new CancellationTokenSource();
-        var readStdout = ReadOutputAsync(outputReader, stdout, drainCancellation.Token, stopWhenListening ? listening : null);
+        var readStdout = ReadOutputAsync(outputReader, stdout, drainCancellation.Token,
+            verifyListening is not null ? listening : null);
         var readStderr = ReadOutputAsync(errorReader, stderr, drainCancellation.Token);
         var readOutput = Task.WhenAll(readStdout, readStderr);
         var phase = "写入标准输入";
@@ -304,11 +311,16 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
             input.Close();
 
             phase = "等待子进程退出";
-            if (stopWhenListening)
+            if (verifyListening is not null)
             {
                 phase = "等待 Production 监听";
                 await Task.WhenAny(listening.Task, readStdout).WaitAsync(timeout.Token);
                 started = listening.Task.IsCompletedSuccessfully;
+                if (started)
+                {
+                    phase = "检查 Production HTTP 接口";
+                    await verifyListening(await listening.Task, timeout.Token);
+                }
             }
 
             if (!started)
@@ -425,15 +437,25 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
     }
 
     private static async Task ReadOutputAsync(StreamReader stream, StringBuilder output,
-        CancellationToken ct, TaskCompletionSource? listening = null)
+        CancellationToken ct, TaskCompletionSource<Uri>? listening = null)
     {
         while (await stream.ReadLineAsync(ct) is { } line)
         {
             output.AppendLine(line);
 
-            if (listening is not null && line.Contains("Now listening on:", StringComparison.Ordinal))
-                listening.TrySetResult();
+            const string marker = "Now listening on: ";
+            if (listening is not null && line.IndexOf(marker, StringComparison.Ordinal) is var index && index >= 0
+                && Uri.TryCreate(line[(index + marker.Length)..], UriKind.Absolute, out var endpoint))
+                listening.TrySetResult(endpoint);
         }
+    }
+
+    private static async Task VerifyProductionRoutesAsync(Uri endpoint, CancellationToken ct)
+    {
+        using var client = new HttpClient { BaseAddress = endpoint };
+        using var files = await client.GetAsync("/api/files/", ct);
+        using var orderSettings = await client.GetAsync("/api/erp/order-sync-settings", ct);
+        Assert.Equal((HttpStatusCode.Conflict, HttpStatusCode.Conflict), (files.StatusCode, orderSettings.StatusCode));
     }
 
     private sealed class TestClock : TimeProvider

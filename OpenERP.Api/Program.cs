@@ -26,7 +26,7 @@ builder.Services.AddHttpClient<WxwErpClient>(client => client.Timeout = TimeSpan
     })
     .RedactLoggedHeaders(["AccessToken"]);
 builder.Services.AddTransient<IErpClient>(services => services.GetRequiredService<WxwErpClient>());
-if (builder.Environment.IsDevelopment())
+if (builder.Environment.IsDevelopment() || builder.Environment.IsProduction())
 {
     builder.Services.AddScoped<OrderStore>();
     builder.Services.AddSingleton<OrderSyncJobs>();
@@ -56,7 +56,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 app.UseAccountAuthentication();
 app.MapDefaultEndpoints();
 app.MapAccounts();
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     await app.Services.GetRequiredService<FileStore>().EnsureBucketAsync(app.Lifetime.ApplicationStopping);
     app.MapFiles();

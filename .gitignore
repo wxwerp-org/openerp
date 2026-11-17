@@ -494,6 +494,7 @@ $RECYCLE.BIN/
 **/dist/
 **/*.tsbuildinfo
 .aspire/
+aspire-output/
 .DS_Store
 *.user
 *.suo
