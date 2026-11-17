@@ -13,6 +13,11 @@
 .field-box:focus-within{border-color:var(--primary)}
 .field-box input{height:28px;border:0;outline:none;background:transparent;padding:0 10px;color:var(--text);font-size:12px;min-width:0}
 .field-box input::placeholder{color:var(--placeholder)}
+.field-box select{
+  height:28px;min-width:0;flex:1;border:0;outline:none;background:transparent;padding:0 10px;
+  color:var(--text);font-size:12px;appearance:none;-webkit-appearance:none;cursor:pointer;
+}
+.field-box select:disabled{color:var(--muted);cursor:default}
 .field-box .caret{width:10px;height:10px;color:#A9B0BA;margin-right:9px}
 .btn{
   height:30px;min-height:30px;flex:none;display:inline-flex;align-items:center;justify-content:center;gap:5px;

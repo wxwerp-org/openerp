@@ -154,6 +154,48 @@ describe('本地订单商品量快照报表', () => {
     expect(wrapper.text()).not.toContain('下单时间')
     expect(wrapper.text()).not.toContain('2026-11-17T01:02:03Z')
 
+    // 页签页只保留一个隐藏标题，不再重复渲染可见标题。
+    expect(wrapper.findAll('h1')).toHaveLength(1)
+    expect(wrapper.get('h1').classes()).toContain('visually-hidden')
+    expect(wrapper.get('h1').text()).toBe('商品量报表')
+
+    // 表格复用列表页外壳：table-area > table-scroll.is-y 且滚动区可聚焦。
+    const ordersScroll = wrapper.get('[aria-label="订单明细表格"]')
+    expect(ordersScroll.classes()).toContain('table-scroll')
+    expect(ordersScroll.classes()).toContain('is-y')
+    expect(ordersScroll.attributes('role')).toBe('region')
+    expect(ordersScroll.attributes('tabindex')).toBe('0')
+    expect(ordersScroll.element.parentElement?.className).toContain('table-area')
+    const groupsScroll = wrapper.get('[aria-label="分店汇总表格"]')
+    expect(groupsScroll.attributes('role')).toBe('region')
+    expect(groupsScroll.attributes('tabindex')).toBe('0')
+    expect(wrapper.findAll('.report-orders-table colgroup col')).toHaveLength(8)
+    expect(wrapper.findAll('.report-groups-table colgroup col')).toHaveLength(4)
+
+    // 刷新、分页与下拉统一使用 AppIcon，不再出现字符箭头。
+    expect(wrapper.get('button[aria-label="刷新"]').classes()).toContain('btn-icon')
+    expect(wrapper.get('button[aria-label="刷新"] use').attributes('href')).toBe('#i-refresh')
+    expect(wrapper.get('button[aria-label="上一页"] use').attributes('href')).toBe('#i-chev-left')
+    expect(wrapper.get('button[aria-label="下一页"] use').attributes('href')).toBe('#i-chev-right')
+    expect(wrapper.find('.page-size select[aria-label="每页条数"]').exists()).toBe(true)
+    expect(wrapper.get('.page-size use').attributes('href')).toBe('#i-chev-down')
+    expect(wrapper.get('.page-jump input').attributes('aria-label')).toBe('前往页码')
+    expect(wrapper.get('.report-select').classes()).toContain('field-box')
+    expect(wrapper.get('.report-select use').attributes('href')).toBe('#i-chev-down')
+    expect(wrapper.get('summary[aria-label="店铺筛选"]').classes()).toContain('control')
+    expect(wrapper.get('summary[aria-label="店铺筛选"] use').attributes('href')).toBe('#i-chev-down')
+    expect(wrapper.get('.report-scope').classes()).toContain('notice')
+    expect(wrapper.get('.report-scope use').attributes('href')).toBe('#i-info')
+    // 页签列表页骨架：共享筛选条与工具栏，汇总与口径在工具栏内，表格区复用 table-box 外壳。
+    expect(wrapper.get('.report-searchbar').classes()).toContain('list-searchbar')
+    expect(wrapper.get('.report-toolbar').classes()).toContain('list-toolbar')
+    expect(wrapper.find('.report-toolbar .report-scope').exists()).toBe(true)
+    expect(wrapper.get('[aria-label="订单总数"]').element.closest('.report-toolbar')).not.toBeNull()
+    expect(wrapper.get('.report-groups-panel').classes()).toContain('table-box')
+    expect(wrapper.get('.report-orders-panel').classes()).toContain('table-box')
+    expect(wrapper.get('.page-num').text()).toBe('1')
+    expect(wrapper.find('button[aria-label="第 2 页"]').exists()).toBe(true)
+
     await wrapper.get('button[aria-label="展开订单 ERP-001 商品明细"]').trigger('click')
     expect(wrapper.text()).toContain('PO-001')
     expect(wrapper.text()).toContain('SKU-A')
@@ -199,6 +241,52 @@ describe('本地订单商品量快照报表', () => {
     expect(resized.searchParams.get('pageSize')).toBe('100')
   })
 
+  it('Given 多页报表 When 点击页码或输入跳页 Then 复用共享 pager 请求目标页', async () => {
+    const requested: URL[] = []
+    stubFetch((url) => {
+      requested.push(new URL(url, 'https://local.test'))
+      return jsonResponse(reportBody({ page: 1, pageCount: 7 }))
+    })
+    wrapper = await mountReport()
+
+    expect(wrapper.find('.page-ellipsis').exists()).toBe(true)
+    expect(wrapper.find('button[aria-label="第 7 页"]').exists()).toBe(true)
+    await wrapper.get('button[aria-label="第 3 页"]').trigger('click')
+    await flushPromises()
+    expect(requested.at(-1)!.searchParams.get('page')).toBe('3')
+
+    await wrapper.get('.page-jump input').setValue('6')
+    await wrapper.get('.page-jump input').trigger('keyup.enter')
+    await flushPromises()
+    expect(requested.at(-1)!.searchParams.get('page')).toBe('6')
+
+    await wrapper.get('.page-jump input').setValue('99')
+    await wrapper.get('.page-jump input').trigger('keyup.enter')
+    await flushPromises()
+    expect(requested.at(-1)!.searchParams.get('page')).toBe('7')
+  })
+
+  it('Given 跳页请求尚未返回 When 输入框因加载被禁用而失焦 Then 只保留目标页请求', async () => {
+    const pending = deferred<Response>()
+    const requested: URL[] = []
+    stubFetch((url) => {
+      requested.push(new URL(url, 'https://local.test'))
+      if (requested.length === 2) return pending.promise
+      return jsonResponse(reportBody({ page: 1, pageCount: 7 }))
+    })
+    wrapper = await mountReport()
+
+    await wrapper.get('.page-jump input').setValue('3')
+    await wrapper.get('.page-jump input').trigger('keyup.enter')
+    // Chromium 在输入框被禁用时触发原生 blur；VTU 的 trigger 会跳过 disabled 元素，故直接派发。
+    wrapper.get('.page-jump input').element.dispatchEvent(new Event('blur'))
+    pending.resolve(jsonResponse(reportBody({ page: 3, pageCount: 7 })))
+    await flushPromises()
+
+    expect(requested.map((url) => url.searchParams.get('page'))).toEqual(['1', '3'])
+    expect(wrapper.get('.page-num').text()).toBe('3')
+  })
+
   it('Given 筛选请求尚未完成 When 新筛选结果先返回且旧响应晚到 Then 只展示最新查询结果', async () => {
     const oldResponse = deferred<Response>()
     const fetchMock = stubFetch((url) => {
@@ -214,6 +302,7 @@ describe('本地订单商品量快照报表', () => {
     wrapper = mount(OrderSnapshotReportView)
     await wrapper.get('select[aria-label="平台筛选"]').setValue('AliExpress')
     expect(wrapper.get('[role="status"]').text()).toContain('正在加载')
+    expect(wrapper.get('.report-orders-panel .empty-overlay').text()).toContain('正在加载')
     await wrapper.get('select[aria-label="平台筛选"]').setValue('TemuPop')
     await flushPromises()
     oldResponse.resolve(jsonResponse(reportBody({
@@ -240,11 +329,13 @@ describe('本地订单商品量快照报表', () => {
     })))
     wrapper = await mountReport()
 
-    expect(wrapper.text()).toContain('暂无符合条件的本地订单')
+    expect(wrapper.get('.report-orders-panel .empty-overlay').text()).toContain('暂无符合条件的本地订单')
+    expect(wrapper.get('.report-groups-panel .empty-overlay').text()).toContain('暂无分店汇总')
     expect(wrapper.get('[aria-label="订单总数"]').text()).toBe('0')
     expect(wrapper.get('[aria-label="商品件数"]').text()).toBe('0')
     expect(wrapper.get('button[aria-label="上一页"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('button[aria-label="下一页"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('.page-num').text()).toBe('1')
   })
 
   it('Given 数据服务暂不可用 When 请求失败后重试 Then 显示 ProblemDetails 标题并恢复报表', async () => {
@@ -256,6 +347,8 @@ describe('本地订单商品量快照报表', () => {
     wrapper = await mountReport()
 
     expect(wrapper.get('[role="alert"]').text()).toContain('报表数据暂不可用')
+    expect(wrapper.get('.notice.red use').attributes('href')).toBe('#i-warning')
+    expect(wrapper.get('.report-orders-panel .empty-overlay').text()).toContain('报表加载失败')
     expect(wrapper.find('button[aria-label="重试"]').exists()).toBe(true)
     failed = false
     await wrapper.get('button[aria-label="重试"]').trigger('click')
