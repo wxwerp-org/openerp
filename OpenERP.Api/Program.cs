@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OpenERP.Api;
 using OpenERP.Api.Authentication;
+using OpenERP.Api.Deployment;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using OpenERP.Api.Reports;
@@ -8,6 +9,8 @@ using OpenERP.Core.Reports;
 
 if (args is ["reset-admin-password", ..])
     return await ResetAdminPassword.RunAsync(args);
+if (args is ["initialize-compose-credentials", ..])
+    return ComposeCredentials.Run(args);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +21,7 @@ builder.AddFileStorage();
 builder.Services.AddSingleton<FileStore>();
 builder.AddAccountAuthentication();
 builder.Services.AddScoped<IOrderSnapshotReportQuery, OrderSnapshotReportQuery>();
+builder.Services.AddScoped<IErpTokenStore, ErpTokenStore>();
 builder.Services.AddHttpClient<WxwErpClient>(client => client.Timeout = TimeSpan.FromSeconds(15))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
     {

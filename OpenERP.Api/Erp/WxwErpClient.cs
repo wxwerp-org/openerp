@@ -4,16 +4,21 @@ using OpResult;
 
 namespace OpenERP.Api.Erp;
 
-public sealed partial class WxwErpClient(HttpClient http, IConfiguration configuration) : IErpClient
+public sealed partial class WxwErpClient(HttpClient http, IErpTokenStore tokens) : IErpClient
 {
-    // 本期接入已确认的站点，不接受浏览器提交任意目标地址或凭证。
+    // ERP Token 只发往这里指定的上游站点。
     private const string BaseUrl = "https://v3-api.wxwerp.com";
-    private string Token => configuration["Erp:AccessToken"]?.Trim() ?? "";
-    public ErpConfiguration Configuration => new(!string.IsNullOrEmpty(Token), BaseUrl);
+
+    public async Task<ErpConfiguration> GetConfigurationAsync(CancellationToken cancellationToken) =>
+        new(await tokens.IsConfiguredAsync(cancellationToken), BaseUrl);
 
     public async Task<(OpResult<ShopPage> Result, int Status)> GetShopsAsync(int page, int pageSize, CancellationToken ct)
     {
-        var (result, statusCode) = await GetShopListAsync(page, pageSize, ct);
+        if (page < 1 || pageSize is < 1 or > 100)
+            return (OpResults.Err("页码必须大于 0，每页数量必须在 1 至 100 之间。"), 400);
+
+        var accessToken = await tokens.GetAsync(ct);
+        var (result, statusCode) = await GetShopListAsync(accessToken, page, pageSize, ct);
         if (result.IsErr)
             return (result.Error, statusCode);
 
@@ -24,7 +29,7 @@ public sealed partial class WxwErpClient(HttpClient http, IConfiguration configu
             await limit.WaitAsync(ct);
             try
             {
-                var (status, _) = await PostAsync("/open-api/shop/get_status", new { sid = shop.Sid }, ct);
+                var (status, _) = await PostAsync(accessToken, "/open-api/shop/get_status", new { sid = shop.Sid }, ct);
                 if (status.IsErr)
                     return shop with { StatusError = status.Error.Message };
                 if (status.Value.TryGetProperty("data", out var statusData) &&
@@ -43,19 +48,23 @@ public sealed partial class WxwErpClient(HttpClient http, IConfiguration configu
         return (list with { Items = withStatus }, statusCode);
     }
 
-    public async Task<OpResult<IReadOnlyList<ErpShop>>> GetAllShopsAsync(CancellationToken ct)
+    public async Task<(OpResult<IReadOnlyList<ErpShop>> Result, int Status)> GetAllShopsAsync(CancellationToken ct)
     {
         const int pageSize = 100;
         const int maxPages = 100;
         var shops = new List<ErpShop>();
+        var accessToken = await tokens.GetAsync(ct);
+        if (accessToken.Length == 0)
+            return (OpResults.Err("尚未配置私有 ERP AccessToken。"), 503);
+
         for (var page = 1; ; page++)
         {
             if (page > maxPages)
-                return OpResults.Err("ERP 店铺数量超出选店接口可读取范围。");
+                return (OpResults.Err("ERP 店铺数量超出选店接口可读取范围。"), 502);
 
-            var (result, _) = await GetShopListAsync(page, pageSize, ct);
+            var (result, _) = await GetShopListAsync(accessToken, page, pageSize, ct);
             if (result.IsErr)
-                return result.Error;
+                return (result.Error, 502);
 
             var list = result.Value;
             shops.AddRange(list.Items);
@@ -63,17 +72,16 @@ public sealed partial class WxwErpClient(HttpClient http, IConfiguration configu
                 break;
         }
 
-        return OpResults.Ok<IReadOnlyList<ErpShop>>(shops.DistinctBy(shop => shop.Sid).ToArray());
+        return (OpResults.Ok<IReadOnlyList<ErpShop>>(shops.DistinctBy(shop => shop.Sid).ToArray()), 200);
     }
 
-    private async Task<(OpResult<ShopPage> Result, int Status)> GetShopListAsync(int page, int pageSize, CancellationToken ct)
+    private async Task<(OpResult<ShopPage> Result, int Status)> GetShopListAsync(
+        string accessToken, int page, int pageSize, CancellationToken ct)
     {
-        if (page < 1 || pageSize is < 1 or > 100)
-            return (OpResults.Err("页码必须大于 0，每页数量必须在 1 至 100 之间。"), 400);
-        if (!Configuration.Configured)
+        if (accessToken.Length == 0)
             return (OpResults.Err("尚未配置私有 ERP AccessToken。"), 503);
 
-        var (response, status) = await PostAsync("/open-api/shop/get_shops", new
+        var (response, status) = await PostAsync(accessToken, "/open-api/shop/get_shops", new
         {
             page, page_size = pageSize, platform = "TemuPop"
         }, ct);
@@ -99,10 +107,11 @@ public sealed partial class WxwErpClient(HttpClient http, IConfiguration configu
         return (new ShopPage(shops, page, pageSize, totalCount, pageCount), 200);
     }
 
-    private async Task<(OpResult<JsonElement> Result, int Status)> PostAsync(string path, object body, CancellationToken ct)
+    private async Task<(OpResult<JsonElement> Result, int Status)> PostAsync(
+        string accessToken, string path, object body, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, BaseUrl + path);
-        if (!request.Headers.TryAddWithoutValidation("AccessToken", Token) || Token.Contains('\r') || Token.Contains('\n'))
+        if (!request.Headers.TryAddWithoutValidation("AccessToken", accessToken))
             return (OpResults.Err("ERP AccessToken 配置格式不正确。"), 503);
         request.Content = JsonContent.Create(body);
         try
@@ -125,7 +134,7 @@ public sealed partial class WxwErpClient(HttpClient http, IConfiguration configu
                 return (OpResults.Err(message switch
                 {
                     "AccessToken invalid" or "AccessToken disabled" or "AccessToken expired" or "AccessToken is empty"
-                        => "ERP AccessToken 无效、停用或过期，请检查服务端配置。",
+                        => "ERP AccessToken 无效、停用或过期，请在系统设置中检查。",
                     "AccessToken scope denied" => "ERP AccessToken 没有此接口的访问权限。",
                     _ => "ERP 拒绝了请求，请检查 Token 权限、账号额度及店铺访问范围。"
                 }), 502);

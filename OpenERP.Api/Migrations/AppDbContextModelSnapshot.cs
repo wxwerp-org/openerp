@@ -98,6 +98,23 @@ namespace OpenERP.Api.Migrations
                     b.ToTable("RefreshTokens", (string)null);
                 });
 
+            modelBuilder.Entity("OpenERP.Api.Erp.ErpSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProtectedAccessToken")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ErpSettings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ErpSettings_Singleton", "\"Id\" = 1");
+                        });
+                });
+
             modelBuilder.Entity("OpenERP.Api.Orders.OrderLineRecord", b =>
                 {
                     b.Property<string>("ErpId")

@@ -9,6 +9,9 @@ internal sealed class TestErpClient : IErpClient
 {
     public ErpConfiguration Configuration { get; init; } = new(true, "https://erp.test");
 
+    public Task<ErpConfiguration> GetConfigurationAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(Configuration);
+
     public Func<int, CancellationToken, Task<OpResult<OrderImportBatch>>> ReadOrders { get; init; } =
         (_, _) => Task.FromResult(OpResults.Ok(new OrderImportBatch(0, [], new Dictionary<string, int>())));
 
@@ -19,12 +22,33 @@ internal sealed class TestErpClient : IErpClient
         int page, int pageSize, CancellationToken cancellationToken) =>
         throw new NotSupportedException("测试不经过分页店铺接口。");
 
-    public Task<OpResult<IReadOnlyList<ErpShop>>> GetAllShopsAsync(CancellationToken cancellationToken) =>
-        GetAllShops(cancellationToken);
+    public async Task<(OpResult<IReadOnlyList<ErpShop>> Result, int Status)> GetAllShopsAsync(CancellationToken cancellationToken)
+    {
+        if (!Configuration.Configured)
+            return (OpResults.Err("尚未配置私有 ERP AccessToken。"), 503);
+
+        var result = await GetAllShops(cancellationToken);
+        return (result, result.IsErr ? 502 : 200);
+    }
 
     public Task<OpResult<OrderImportBatch>> ReadOrdersAsync(
         int sid, Action<OrderReadProgress>? report, CancellationToken cancellationToken) =>
         ReadOrders(sid, cancellationToken);
+}
+
+internal sealed class TestErpTokenStore(string value = "") : IErpTokenStore
+{
+    private string _value = value.Trim();
+
+    public Task<bool> IsConfiguredAsync(CancellationToken cancellationToken) => Task.FromResult(_value.Length > 0);
+
+    public Task<string> GetAsync(CancellationToken cancellationToken) => Task.FromResult(_value);
+
+    public Task<OpResult.OpResult> SaveAsync(string accessToken, CancellationToken cancellationToken)
+    {
+        _value = accessToken;
+        return Task.FromResult(OpResults.Ok());
+    }
 }
 
 /// <summary>内存版定时同步设置存储，记录最后一次保存结果。</summary>

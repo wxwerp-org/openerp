@@ -8,9 +8,27 @@ public static class ErpEndpoints
     public static void MapErp(this WebApplication app)
     {
         var orderSyncEnabled = app.Environment.IsDevelopment() || app.Environment.IsProduction();
-        app.MapGet("/api/erp/config", (IErpClient erp) => TypedResults.Ok(
-            new ErpConfigurationResponse(erp.Configuration.Configured, erp.Configuration.BaseUrl, orderSyncEnabled)))
+        app.MapGet("/api/erp/config", async (IErpClient erp, CancellationToken cancellationToken) =>
+        {
+            var configuration = await erp.GetConfigurationAsync(cancellationToken);
+            return TypedResults.Ok(new ErpConfigurationResponse(configuration.Configured, configuration.BaseUrl, orderSyncEnabled));
+        })
             .WithSummary("查询私有 ERP 接入配置状态，不返回 Token");
+
+        app.MapPut("/api/erp/config", async Task<Results<NoContent, ProblemHttpResult>>
+            (UpdateErpTokenRequest request, IErpTokenStore store, CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.AccessToken) || request.AccessToken.Contains('\r') || request.AccessToken.Contains('\n'))
+                return TypedResults.Problem(statusCode: 400, title: "请输入单行 ERP AccessToken");
+
+            var saved = await store.SaveAsync(request.AccessToken.Trim(), cancellationToken);
+            return saved.IsErr
+                ? TypedResults.Problem(statusCode: 503, title: saved.Error.Message)
+                : TypedResults.NoContent();
+        }).RequireAuthorization()
+            .WithSummary("保存或更换私有 ERP AccessToken")
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         app.MapGet("/api/erp/shops", async Task<Results<Ok<ShopPage>, ProblemHttpResult>>
             (IErpClient erp, int? page, int? pageSize, CancellationToken cancellationToken) =>
@@ -27,6 +45,9 @@ public static class ErpEndpoints
     }
 
     private sealed record ErpConfigurationResponse(bool Configured, string BaseUrl, bool OrderSyncEnabled);
+
+    /// <summary>管理员提交的新 ERP AccessToken。</summary>
+    private sealed record UpdateErpTokenRequest(string? AccessToken);
 }
 
 /// <summary>接入配置状态，绝不包含凭证。</summary>

@@ -1,5 +1,4 @@
 using System.Globalization;
-using Microsoft.Extensions.Configuration;
 using Npgsql;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
@@ -98,11 +97,8 @@ public sealed class OrderLiveAcceptanceTests(ITestOutputHelper output)
         Timeout = TimeSpan.FromSeconds(15)
     };
 
-    private static WxwErpClient CreateErp(HttpClient http) => new(http, new ConfigurationBuilder()
-        .AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Erp:AccessToken"] = Environment.GetEnvironmentVariable("OPENERP_TEST_ERP_TOKEN")
-        }).Build());
+    private static WxwErpClient CreateErp(HttpClient http) => new(http,
+        new TestErpTokenStore(Environment.GetEnvironmentVariable("OPENERP_TEST_ERP_TOKEN") ?? ""));
 
     private static async Task<List<string>> QueryAsync(NpgsqlConnection db, string sql, string[] acceptedIds, CancellationToken ct)
     {

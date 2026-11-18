@@ -4,16 +4,16 @@ OpenERP 是一个基于 Vue 和 ASP.NET Core 的 ERP 项目，目前支持从私
 
 前端使用 Vue 和 TypeScript，后端使用 ASP.NET Core Minimal API 和 EF Core；Aspire 统一启动前后端、PostgreSQL、Redis 和 SeaweedFS，并提供日志与追踪面板。
 
-目前用于本地开发，业务页面与 API 需要管理员登录。历史订单同步和文件存储 API 仅在 Development 环境开放。
+业务页面与 API 需要管理员登录。
 
 ## 功能
 
 - **管理员账户**：支持多设备登录、个人资料编辑、修改密码和退出。访问令牌最长有效 20 分钟，每次登录的刷新期限固定为 24 小时。
 - **店铺查询**：分页查看当前 ERP Token 可见的 TemuPop 店铺及平台授权状态，支持失败重试。
 - **历史订单同步**：在店铺页手动同步私有 ERP 中已有的订单，查看进度以及新增、更新、未变化和跳过计数。订单保存在 PostgreSQL，重复同步会更新已有记录。
-- **定时同步**：在店铺页按固定周期（默认 30 分钟）尝试自动同步选中的店铺；单店失败不影响其他店铺，下一周期会重新扫描。仅 Development 开放。
+- **定时同步**：在店铺页按固定周期（默认 30 分钟）尝试自动同步选中的店铺；单店失败不影响其他店铺，下一周期会重新扫描。
 - **本地商品量报表**：按平台、店铺汇总已同步来源订单和当前商品件数，支持分页及商品明细核对。数量是源端快照，不代表净销量；详见[报表口径与接口](docs/order-snapshot-report.md)。
-- **开发文件存储**：通过 SeaweedFS 提供 S3 兼容存储及文件上传、下载 API。
+- **文件存储**：通过 SeaweedFS 提供 S3 兼容存储及文件上传、下载 API。
 
 店铺和订单功能需要 [私有 ERP](https://v3-api.wxwerp.com) 的 Open API Token。未配置 Token 时仍可启动项目，店铺页会提示配置。
 
@@ -44,17 +44,7 @@ pnpm --dir OpenERP.Web install --frozen-lockfile
 
 设置成功后进入登录页，使用 `admin` 与刚设置的密码登录即可访问业务。初始化前不能登录或调用业务 API。初始化只能成功一次，重复提交不会覆盖已设置的密码。
 
-本地忘记密码时可使用[管理员密码重置命令](docs/development.md#本地初始化与密码重置)。正式环境的 Release 产物、首次部署和版本升级见[部署说明](docs/deployment.md)。
-
-### 配置 ERP Token
-
-需要使用店铺和订单功能时执行：
-
-```bash
-dotnet user-secrets set "Parameters:wxw-erp-access-token" "你的Token" --project OpenERP.AppHost
-```
-
-Token 保存在 .NET User Secrets 中，仅供后端使用，不会发送到浏览器或写入 Git。修改后需重新启动应用。
+本地忘记密码时可使用[管理员密码重置命令](docs/development.md#本地初始化与密码重置)。Release 首次部署和凭据运维见[部署说明](docs/deployment.md)。
 
 ### 启动并访问
 
@@ -69,6 +59,10 @@ aspire start --isolated
 也可以在安装了 Aspire 扩展的 VS Code 中，选择仓库提供的 `apphost` 启动配置运行；需要 worktree 隔离时使用上面的 CLI 入口。
 
 Aspire 会自动启动前端及依赖服务。打开启动输出中的 Dashboard 登录链接，等待 `web` 就绪后点击其 HTTPS 地址；端口动态分配，以 Dashboard 显示为准。首次使用立即按上文设置管理员密码，再登录应用；首页显示 `pong` 表示前后端已连通。Dashboard 登录与应用管理员登录相互独立。
+
+### 配置 ERP Token
+
+需要使用店铺和订单功能时，登录管理员账户后，在右上角「系统设置 → 基础 → ERP 接入」填写并保存 Token。后续查询和同步使用新配置。
 
 进入 `/shops` 查看店铺，点击「同步历史订单」即可导入该店铺的历史订单。也可在「定时同步」卡片启用后按固定周期自动同步选中的店铺。平台授权失效不妨碍读取私有 ERP 中已有的订单，但 ERP Token 仍需有权访问该店铺。后台同一时间执行一个同步任务；刷新页面可恢复最近任务的状态，API 重启后定时同步会在下一个周期重跑，批次结束后也可手动补跑。
 

@@ -51,25 +51,22 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
     [Fact]
     public async Task Production_requires_migrations_then_creates_one_uninitialized_account_without_an_initial_password()
     {
-        // Given 独立空库和未配置管理员密码的 Production 进程。
+        // Given 独立空库和未配置管理员密码或 JWT 签名密钥的 Production 进程。
         var ct = TestContext.Current.CancellationToken;
         await using var db = CreateContext();
         var unmigrated = await RunApiAsync(null, ct);
         Assert.NotEqual(0, unmigrated.ExitCode);
+        Assert.Contains(PostgresErrorCodes.UndefinedTable, unmigrated.Output);
         Assert.Empty(await db.Database.GetAppliedMigrationsAsync(ct));
 
         // When 部署侧应用数据库迁移，CLI 在缺少占位行时仍失败。
         await db.Database.MigrateAsync(ct);
-        var missingSigningKey = await RunApiOnDatabaseAsync(_connectionString, null, [], ct, includeSigningKey: false);
-        Assert.NotEqual(0, missingSigningKey.ExitCode);
-        Assert.True(missingSigningKey.Output.Contains("Authentication:SigningPrivateKeyPem", StringComparison.Ordinal));
-
         var reset = await RunApiAsync(fixture.AdminPassword, ct, "reset-admin-password", "--stdin");
         Assert.Equal(1, reset.ExitCode);
         Assert.True(reset.Output.Contains("数据库中没有管理员账号", StringComparison.Ordinal));
         Assert.False(await db.AdminAccounts.AnyAsync(ct));
 
-        // Then Production 无须初始密码，重复启动保留同一条未初始化占位；
+        // Then Production 无须初始密码或 JWT 签名密钥，重复启动保留同一条未初始化占位；
         // 文件和订单同步仍要求初始化；来自 HTTPS 反代的请求可以获取防伪令牌。
         var storage = await fixture.GetStorageConnectionStringAsync(ct);
         for (var attempt = 0; attempt < 2; attempt++)
@@ -139,9 +136,9 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
     }
 
     [Fact]
-    public async Task Cli_reset_reads_stdin_updates_admin_and_revokes_all_refresh_tokens_without_signing_key()
+    public async Task Cli_reset_reads_stdin_updates_admin_and_revokes_all_refresh_tokens_without_redis_or_storage()
     {
-        // Given 已初始化的数据库、两个刷新令牌以及不带 signing key、Redis、S3 配置的 CLI 进程。
+        // Given 已初始化的数据库、两个刷新令牌以及未配置 Redis 或对象存储的 CLI 进程。
         var ct = TestContext.Current.CancellationToken;
         await using var db = CreateContext();
         await db.Database.MigrateAsync(ct);
@@ -240,7 +237,7 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
 
     internal static async Task<(int ExitCode, string Output, bool Started)> RunApiOnDatabaseAsync(
         string connectionString, string? password, string[] args, CancellationToken ct,
-        bool includeSigningKey = true, Action<ProcessStartInfo>? configureStart = null,
+        Action<ProcessStartInfo>? configureStart = null,
         TimeSpan? processBudget = null, string? storageConnectionString = null,
         Func<Uri, CancellationToken, Task>? verifyListening = null)
     {
@@ -264,12 +261,6 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
         start.Environment["ASPNETCORE_URLS"] = "http://127.0.0.1:0";
         if (args.Length == 0)
         {
-            if (includeSigningKey)
-            {
-                using var rsa = RSA.Create(2048);
-                start.Environment["Authentication__SigningPrivateKeyPem"] = rsa.ExportPkcs8PrivateKeyPem();
-            }
-
             // 只有完整启动场景需要真实的对象存储连接。
             start.Environment["ConnectionStrings__redis"] = "localhost:1";
             start.Environment["ConnectionStrings__seaweedfs"] = storageConnectionString
@@ -278,8 +269,6 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
 
         var secrets = new List<string?> { password, connectionString, storageConnectionString };
         secrets.Add(new NpgsqlConnectionStringBuilder(connectionString).Password);
-        if (start.Environment.TryGetValue("Authentication__SigningPrivateKeyPem", out var pem) && pem is not null)
-            secrets.AddRange(pem.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
         configureStart?.Invoke(start);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
