@@ -27,11 +27,10 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: 安装固定版本的 Aspire CLI 并还原 EF 工具
+      - name: 安装固定版本的 Aspire CLI
         run: |
           dotnet tool install aspire.cli --tool-path "$RUNNER_TEMP/aspire-bin" --version "$(jq -r '.tools["aspire.cli"].version' .config/dotnet-tools.json)"
           echo "$RUNNER_TEMP/aspire-bin" >> "$GITHUB_PATH"
-          dotnet tool restore
 
       - name: 登录 GHCR
         uses: docker/login-action@v3
