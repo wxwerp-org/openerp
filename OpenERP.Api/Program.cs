@@ -30,6 +30,16 @@ builder.Services.AddHttpClient<WxwErpClient>(client => client.Timeout = TimeSpan
     })
     .RedactLoggedHeaders(["AccessToken"]);
 builder.Services.AddTransient<IErpClient>(services => services.GetRequiredService<WxwErpClient>());
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<IShopSyncNotifier, ShopSyncNotifier>();
+builder.Services.AddSingleton<ShopSyncJob>();
+builder.Services.AddSingleton<IShopSyncJob>(services => services.GetRequiredService<ShopSyncJob>());
+builder.Services.AddOptions<ShopSyncOptions>()
+    .Bind(builder.Configuration.GetSection("ShopSync"))
+    .Validate(options => options.IntervalMinutes is
+        >= ShopSyncOptions.MinIntervalMinutes and <= ShopSyncOptions.MaxIntervalMinutes,
+        "ShopSync:IntervalMinutes 必须在 1 到 1440 之间。")
+    .ValidateOnStart();
 if (builder.Environment.IsDevelopment() || builder.Environment.IsProduction())
 {
     builder.Services.AddScoped<OrderStore>();
@@ -45,6 +55,7 @@ if (builder.Environment.IsDevelopment() || builder.Environment.IsProduction())
         .ValidateOnStart();
     builder.Services.AddSingleton<OrderSyncScheduler>();
     builder.Services.AddHostedService(services => services.GetRequiredService<OrderSyncScheduler>());
+    builder.Services.AddHostedService<ShopSyncScheduler>();
 }
 
 await using var app = builder.Build();
@@ -65,7 +76,9 @@ if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
     await app.Services.GetRequiredService<FileStore>().EnsureBucketAsync(app.Lifetime.ApplicationStopping);
     app.MapFiles();
 }
+app.UseWebSockets();
 app.MapErp();
+app.MapHub<ErpHub>("/api/hubs/erp", options => options.CloseOnAuthenticationExpiration = true);
 app.MapOrderReports();
 app.MapGet("/api/ping", (ILogger<Program> logger) =>
 {

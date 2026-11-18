@@ -131,8 +131,8 @@ function configureFetch(options: FetchOptions = {}) {
 async function mountShops(): Promise<VueWrapper> {
   const { checkSession } = await import('../../src/account/session')
   await checkSession()
-  const { default: ShopsView } = await import('../../src/views/ShopsView.vue')
-  const wrapper = mount(ShopsView)
+  const { default: OrderSyncView } = await import('../../src/views/OrderSyncView.vue')
+  const wrapper = mount(OrderSyncView)
   await flushPromises()
   await flushPromises()
   return wrapper
@@ -149,7 +149,7 @@ async function setScheduleEnabled(wrapper: VueWrapper, enabled: boolean): Promis
   await flushPromises()
 }
 
-describe('店铺定时同步设置', () => {
+describe('订单同步页定时同步设置', () => {
   let wrapper: VueWrapper | undefined
 
   beforeEach(() => vi.resetModules())

@@ -232,6 +232,11 @@ function usesBearer(path: string): boolean {
   return path.startsWith('/api/') && !bearerExcludedPaths.has(path)
 }
 
+/** 当前 access token，仅供 SignalR accessTokenFactory 使用。 */
+export function currentAccessToken(): string | null {
+  return accessToken
+}
+
 function safeToRetry(method: string): boolean {
   return method === 'GET' || method === 'HEAD'
 }

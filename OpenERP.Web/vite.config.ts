@@ -13,6 +13,7 @@ export default defineConfig(({ command }) => {
             '/api': {
               target: apiBaseUrl,
               changeOrigin: true,
+              ws: true,
             },
           }
         : undefined,

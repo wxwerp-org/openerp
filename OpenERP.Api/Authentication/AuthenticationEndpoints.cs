@@ -36,7 +36,19 @@ internal static partial class AuthenticationEndpoints
             {
                 // 防伪令牌与匿名身份绑定。公开接口和健康检查无须验证 JWT。
                 if (context.HttpContext.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() is not null)
+                {
                     context.NoResult();
+                    return Task.CompletedTask;
+                }
+
+                // 浏览器无法为 WebSocket 设置 Authorization 头；只允许 Hub 从查询参数读取。
+                if (context.HttpContext.Request.Path.StartsWithSegments("/api/hubs"))
+                {
+                    var accessToken = context.Request.Query["access_token"].ToString();
+                    if (!string.IsNullOrEmpty(accessToken))
+                        context.Token = accessToken;
+                }
+
                 return Task.CompletedTask;
             };
             options.Events.OnTokenValidated = ValidateLoginAsync;

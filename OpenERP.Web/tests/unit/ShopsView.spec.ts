@@ -1,23 +1,374 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import ShopsView from '../../src/views/ShopsView.vue'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ref, type Ref } from 'vue'
+import type { ErpHubState, ShopSyncStatus } from '../../src/composables/useErpHub'
+import { installNativeDialogShim } from './installNativeDialogShim'
 
-type Shop = {
+type ShopRow = {
   sid: string
   name: string
   platform: string
   region: string | null
+  memberId: string | null
   isTokenOk: boolean | null
-  statusError: string | null
+  tokenError: string | null
+  syncedAt: string | null
 }
 
-const baseShop: Shop = {
-  sid: '42',
-  name: '测试店铺',
-  platform: 'Temu',
-  region: 'US',
-  isTokenOk: true,
-  statusError: null,
+const hubMock = vi.hoisted(
+  () =>
+    ({}) as {
+      state: Ref<ErpHubState>
+      status: Ref<ShopSyncStatus | null>
+      connect: ReturnType<typeof vi.fn>
+      disconnect: ReturnType<typeof vi.fn>
+      startShopSync: ReturnType<typeof vi.fn>
+      onStatus: ReturnType<typeof vi.fn>
+      listener: ((status: ShopSyncStatus) => void) | null
+    },
+)
+
+vi.mock('../../src/composables/useErpHub', () => ({ useErpHub: () => hubMock }))
+
+let fetchMock: ReturnType<typeof vi.fn>
+
+beforeAll(installNativeDialogShim)
+
+beforeEach(() => {
+  hubMock.state = ref<ErpHubState>('connected')
+  hubMock.status = ref<ShopSyncStatus | null>(null)
+  hubMock.connect = vi.fn(async () => undefined)
+  hubMock.disconnect = vi.fn(async () => undefined)
+  hubMock.startShopSync = vi.fn(async () => {
+    const running = statusBody({ running: true, total: 131, checked: 0 })
+    hubMock.status.value = running
+    return { accepted: true, status: running, error: null }
+  })
+  hubMock.listener = null
+  hubMock.onStatus = vi.fn((listener: (status: ShopSyncStatus) => void) => {
+    hubMock.listener = listener
+    return () => {
+      hubMock.listener = null
+    }
+  })
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
+
+describe('授权店铺页', () => {
+  let wrapper: VueWrapper | undefined
+
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
+  })
+
+  it('Given 本地已有店铺 When 打开授权页 Then 只读本地接口并渲染汇总、列表与最后同步', async () => {
+    const syncedAt = new Date(Date.now() - 15 * 60_000).toISOString()
+    const items = [
+      shop({ isTokenOk: true, syncedAt }),
+      shop({ sid: '6', name: 'Beta 店', platform: 'AliExpress', isTokenOk: false, syncedAt }),
+    ]
+    installFetch(
+      defaultHandler(items, { valid: 1, invalid: 1, unknown: 0, lastSyncedAt: syncedAt }),
+    )
+    wrapper = await mountView()
+
+    expect(hubMock.connect).toHaveBeenCalled()
+    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(2)
+    expect(wrapper.get('.shop-summary-card.is-static').text()).toContain('15 分钟前')
+    expect(wrapper.text()).toContain('有效')
+    expect(wrapper.text()).toContain('无效')
+    expect(wrapper.text()).toContain('共 2 家店铺')
+    expect(wrapper.findAll('.shop-summary-card')).toHaveLength(4)
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/erp/shops?'))).toBe(true)
+  })
+
+  it('Given 点击无效汇总卡 When 查询 Then 后端按 status 过滤且汇总不随 status 变化', async () => {
+    const items = [
+      shop({ isTokenOk: true }),
+      shop({ sid: '6', name: 'Beta 店', platform: 'AliExpress', isTokenOk: false }),
+    ]
+    installFetch(defaultHandler(items, { valid: 1, invalid: 1, unknown: 0, lastSyncedAt: null }))
+    wrapper = await mountView()
+
+    await wrapper.get('[aria-label^="无效"]').trigger('click')
+    await flushPromises()
+
+    expect(lastShopsUrl()).toContain('status=invalid')
+    expect(lastShopsUrl()).toContain('page=1')
+    expect(wrapper.get('[aria-label^="无效"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('[aria-label^="有效"]').text()).toContain('1')
+    expect(wrapper.get('[aria-label^="无效"]').text()).toContain('1')
+    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(1)
+
+    await wrapper.get('[aria-label^="无效"]').trigger('click')
+    await flushPromises()
+    expect(lastShopsUrl()).not.toContain('status=')
+  })
+
+  it('Given 选择平台与输入关键词 When 查询 Then 参数进入本地 SQL 请求', async () => {
+    installFetch(defaultHandler([shop()], { valid: 1, invalid: 0, unknown: 0, lastSyncedAt: null }))
+    wrapper = await mountView()
+
+    await wrapper.get('select[aria-label="平台筛选"]').setValue('AliExpress')
+    await flushPromises()
+    expect(lastShopsUrl()).toContain('platform=AliExpress')
+
+    const search = wrapper.get('form[role="search"]')
+    await search.get('input').setValue('Alpha')
+    await search.trigger('submit')
+    await flushPromises()
+    expect(lastShopsUrl()).toContain('keyword=Alpha')
+    expect(lastShopsUrl()).toContain('page=1')
+  })
+
+  it('Given 多页店铺 When 翻页与修改每页条数 Then 使用本地分页参数', async () => {
+    const items = Array.from({ length: 45 }, (_, index) =>
+      shop({ sid: String(index + 1), name: `分页店铺 ${index + 1}` }),
+    )
+    installFetch(defaultHandler(items, { valid: 45, invalid: 0, unknown: 0, lastSyncedAt: null }))
+    wrapper = await mountView()
+
+    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(20)
+    expect(wrapper.get('.page-num').text()).toBe('1')
+
+    await wrapper.get('button[aria-label="下一页"]').trigger('click')
+    await flushPromises()
+    expect(lastShopsUrl()).toContain('page=2')
+    expect(wrapper.get('.page-num').text()).toBe('2')
+    expect(wrapper.findAll('.shops-table tbody tr')[0].text()).toContain('分页店铺 21')
+
+    await wrapper.get('select[aria-label="每页条数"]').setValue('50')
+    await flushPromises()
+    expect(lastShopsUrl()).toContain('pageSize=50')
+    expect(lastShopsUrl()).toContain('page=1')
+    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(45)
+  })
+
+  it('Given 点击详情 When 打开弹窗 Then 展示可用字段且深链在新标签打开', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    installFetch(
+      defaultHandler([shop({ memberId: 'member-42', syncedAt: new Date().toISOString() })], {
+        valid: 1,
+        invalid: 0,
+        unknown: 0,
+        lastSyncedAt: null,
+      }),
+    )
+    wrapper = await mountView()
+
+    await firstButton(wrapper, '详情').trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.get('#shopDetailLayer')
+    expect(dialog.attributes('open')).toBeDefined()
+    expect(dialog.text()).toContain('member-42')
+    expect(dialog.text()).toContain('wxw ERP（OpenERP 只读）')
+    expect(dialog.text()).toContain('授权范围、有效期、授权历史由 wxw ERP 管理')
+    expect(dialog.text()).not.toContain('授权历史记录')
+
+    await wrapper.get('#shopAuthorize').trigger('click')
+    expect(open).toHaveBeenCalledWith(
+      'https://v3.wxwerp.com/system/authorize',
+      '_blank',
+      'noopener,noreferrer',
+    )
+
+    await wrapper.get('#closeShopDetail').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('#shopDetailLayer').attributes('open')).toBeUndefined()
+  })
+
+  it('Given 实时连接正常 When 点击立即同步 Then 显示 Hub 进度并在完成后刷新列表', async () => {
+    const items = [shop()]
+    installFetch(defaultHandler(items, { valid: 1, invalid: 0, unknown: 0, lastSyncedAt: null }))
+    wrapper = await mountView()
+    const initialShopsCalls = shopsCalls()
+
+    await firstButton(wrapper, '立即同步').trigger('click')
+    await flushPromises()
+    expect(hubMock.startShopSync).toHaveBeenCalledTimes(1)
+    expect(firstButton(wrapper, '同步中 0/131').attributes('disabled')).toBeDefined()
+
+    hubMock.status.value = statusBody({ running: true, total: 131, checked: 10, valid: 10 })
+    hubMock.listener?.(hubMock.status.value)
+    await flushPromises()
+    expect(firstButton(wrapper, '同步中 10/131')).toBeTruthy()
+
+    hubMock.status.value = statusBody({ running: false, total: 1, checked: 1, valid: 1 })
+    hubMock.listener?.(hubMock.status.value)
+    await flushPromises()
+    expect(firstButton(wrapper, '立即同步')).toBeTruthy()
+    expect(shopsCalls()).toBeGreaterThan(initialShopsCalls)
+  })
+
+  it('Given 实时连接断开 When 查看 Then 列表仍可读且同步按钮禁用', async () => {
+    hubMock.state = ref<ErpHubState>('disconnected')
+    installFetch(defaultHandler([shop()], { valid: 1, invalid: 0, unknown: 0, lastSyncedAt: null }))
+    wrapper = await mountView()
+
+    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(1)
+    expect(wrapper.text()).toContain('实时连接已断开')
+    expect(firstButton(wrapper, '立即同步').attributes('disabled')).toBeDefined()
+  })
+
+  it('Given 未配置 Token When 打开 Then 提示配置且禁用同步但保留本地数据', async () => {
+    installFetch((url) => {
+      if (url === '/api/erp/config')
+        return jsonResponse({
+          configured: false,
+          baseUrl: 'https://erp.test',
+          orderSyncEnabled: false,
+        })
+      return defaultHandler([shop()], { valid: 1, invalid: 0, unknown: 0, lastSyncedAt: null })(url)
+    })
+    wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('尚未配置私有 ERP AccessToken')
+    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(1)
+    expect(firstButton(wrapper, '立即同步').attributes('disabled')).toBeDefined()
+  })
+
+  it('Given 本地无店铺 When 打开 Then 显示可操作的同步空态', async () => {
+    installFetch(defaultHandler([], { valid: 0, invalid: 0, unknown: 0, lastSyncedAt: null }))
+    wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('本地暂无店铺数据')
+    expect(firstButton(wrapper, '立即同步')).toBeTruthy()
+  })
+
+  it('Given 本地接口失败 When 打开 Then 显示错误详情且可重试', async () => {
+    installFetch((url) => {
+      if (url === '/api/erp/config') return configResponse()
+      if (url === '/api/erp/platforms') return platformsResponse()
+      if (url === '/api/erp/shop-sync') return jsonResponse(statusBody())
+      return jsonResponse({ title: '本地店铺数据暂时不可用', detail: '数据库连接失败。' }, 503)
+    })
+    wrapper = await mountView()
+
+    const notice = wrapper.get('.notice.red')
+    expect(notice.text()).toContain('数据库连接失败。')
+    expect(firstButton(wrapper, '重试')).toBeTruthy()
+  })
+
+  it('Given 授权页 When 查看 Then 不再出现订单同步或定时同步入口', async () => {
+    installFetch(defaultHandler([shop()], { valid: 1, invalid: 0, unknown: 0, lastSyncedAt: null }))
+    wrapper = await mountView()
+
+    expect(wrapper.text()).not.toContain('同步历史订单')
+    expect(wrapper.text()).not.toContain('定时同步')
+    expect(wrapper.text()).not.toContain('订单同步')
+  })
+
+  it('Given 断线期间同步完成 When 重连收到新的完成时间 Then 刷新本地列表', async () => {
+    const initialCompletedAt = '2026-11-18T05:20:00Z'
+    const nextCompletedAt = '2026-11-18T05:30:00Z'
+    const base = defaultHandler([shop()], {
+      valid: 1,
+      invalid: 0,
+      unknown: 0,
+      lastSyncedAt: initialCompletedAt,
+    })
+    installFetch((url) =>
+      url === '/api/erp/shop-sync'
+        ? jsonResponse(statusBody({ completedAt: initialCompletedAt }))
+        : base(url),
+    )
+    wrapper = await mountView()
+    const before = shopsCalls()
+
+    hubMock.listener?.(statusBody({ completedAt: nextCompletedAt, total: 1, checked: 1, valid: 1 }))
+    await flushPromises()
+    await flushPromises()
+
+    expect(shopsCalls()).toBeGreaterThan(before)
+  })
+
+  it('Given 重连收到的完成时间未变化 When 应用状态 Then 不重复刷新本地列表', async () => {
+    const completedAt = '2026-11-18T05:20:00Z'
+    const base = defaultHandler([shop()], {
+      valid: 1,
+      invalid: 0,
+      unknown: 0,
+      lastSyncedAt: completedAt,
+    })
+    installFetch((url) =>
+      url === '/api/erp/shop-sync' ? jsonResponse(statusBody({ completedAt })) : base(url),
+    )
+    wrapper = await mountView()
+    const before = shopsCalls()
+
+    hubMock.listener?.(statusBody({ completedAt }))
+    await flushPromises()
+
+    expect(shopsCalls()).toBe(before)
+  })
+})
+
+async function mountView(): Promise<VueWrapper> {
+  const { default: ShopsView } = await import('../../src/views/ShopsView.vue')
+  const view = mount(ShopsView)
+  await flushPromises()
+  await flushPromises()
+  return view
+}
+
+function shop(overrides: Partial<ShopRow> = {}): ShopRow {
+  return {
+    sid: '42',
+    name: 'Alpha 店',
+    platform: 'TemuPop',
+    region: 'US',
+    memberId: null,
+    isTokenOk: true,
+    tokenError: null,
+    syncedAt: new Date().toISOString(),
+    ...overrides,
+  }
+}
+
+function statusBody(overrides: Partial<ShopSyncStatus> = {}): ShopSyncStatus {
+  return {
+    running: false,
+    startedAt: null,
+    completedAt: null,
+    total: 0,
+    checked: 0,
+    valid: 0,
+    invalid: 0,
+    unknown: 0,
+    error: null,
+    ...overrides,
+  }
+}
+
+function configResponse(configured = true): Response {
+  return jsonResponse({ configured, baseUrl: 'https://erp.test', orderSyncEnabled: false })
+}
+
+function platformsResponse(): Response {
+  return jsonResponse({
+    items: [
+      {
+        name: 'TemuPop',
+        displayName: 'Temu半托管',
+        icon: 'icon-temupop',
+        isProduction: true,
+        shopCount: 2,
+      },
+      {
+        name: 'AliExpress',
+        displayName: '速卖通',
+        icon: 'icon-aliexpress',
+        isProduction: true,
+        shopCount: 1,
+      },
+    ],
+  })
 }
 
 function jsonResponse(value: unknown, status = 200): Response {
@@ -27,394 +378,68 @@ function jsonResponse(value: unknown, status = 200): Response {
   })
 }
 
-function configBody(overrides: Record<string, unknown> = {}) {
-  return {
-    configured: true,
-    baseUrl: 'https://erp.test',
-    orderSyncEnabled: false,
-    ...overrides,
-  }
-}
-
-function shopsBody(
-  items: Shop[],
-  overrides: { page?: number; pageSize?: number; totalCount?: number; pageCount?: number } = {},
+function defaultHandler(
+  items: ShopRow[],
+  summary: { valid: number; invalid: number; unknown: number; lastSyncedAt: string | null },
 ) {
-  return {
-    items,
-    page: overrides.page ?? 1,
-    pageSize: overrides.pageSize ?? 20,
-    totalCount: overrides.totalCount ?? items.length,
-    pageCount: overrides.pageCount ?? (items.length > 0 ? 1 : 0),
+  return (url: string): Response => {
+    if (url === '/api/erp/config') return configResponse()
+    if (url === '/api/erp/platforms') return platformsResponse()
+    if (url === '/api/erp/shop-sync') return jsonResponse(statusBody())
+    if (!url.startsWith('/api/erp/shops')) throw new Error(`意外的请求：${url}`)
+
+    const params = new URL(url, 'https://local.test').searchParams
+    const status = params.get('status')
+    const platform = params.get('platform')
+    const keyword = params.get('keyword')
+    const page = Number(params.get('page') ?? 1)
+    const pageSize = Number(params.get('pageSize') ?? 20)
+    const filtered = items.filter(
+      (item) =>
+        (!status ||
+          (status === 'valid' && item.isTokenOk === true) ||
+          (status === 'invalid' && item.isTokenOk === false) ||
+          (status === 'unknown' && item.isTokenOk === null)) &&
+        (!platform || item.platform === platform) &&
+        (!keyword || item.name.includes(keyword) || item.sid === keyword),
+    )
+    const pageCount = filtered.length === 0 ? 0 : Math.ceil(filtered.length / pageSize)
+    const start = (Math.min(page, Math.max(pageCount, 1)) - 1) * pageSize
+    return jsonResponse({
+      items: filtered.slice(start, start + pageSize),
+      page: Math.min(page, Math.max(pageCount, 1)),
+      pageSize,
+      totalCount: filtered.length,
+      pageCount,
+      summary,
+    })
   }
 }
 
-function stubbedShopPage(pageCount: number, totalCount = 45) {
-  const requested: string[] = []
-  const fetchMock = stubFetch((url) => {
-    if (url === '/api/erp/config') return jsonResponse(configBody())
-    const params = new URL(url, 'https://local.test').searchParams
-    const page = Number(params.get('page'))
-    const pageSize = Number(params.get('pageSize'))
-    requested.push(`page=${page}&pageSize=${pageSize}`)
-    return jsonResponse(
-      shopsBody(
-        Array.from({ length: pageSize }, (_, index): Shop => ({
-          ...baseShop,
-          sid: String((page - 1) * pageSize + index + 1),
-          name: `测试店铺 ${(page - 1) * pageSize + index + 1}`,
-        })),
-        { page, pageSize, totalCount, pageCount },
-      ),
-    )
+function installFetch(handler: (url: string) => Response): void {
+  fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    return handler(url)
   })
-  return { requested, fetchMock }
-}
-
-type Handler = (url: string, init?: RequestInit) => Response | Promise<Response>
-
-function stubFetch(handler: Handler) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
-    handler(String(input), init),
-  )
   vi.stubGlobal('fetch', fetchMock)
-  return fetchMock
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((fulfill) => {
-    resolve = fulfill
-  })
-  return { promise, resolve }
+function lastShopsUrl(): string {
+  const calls = fetchMock.mock.calls
+    .map(([url]) => String(url))
+    .filter((url) => url.startsWith('/api/erp/shops'))
+  return calls.at(-1) ?? ''
 }
 
-function shopListCalls(fetchMock: ReturnType<typeof stubFetch>) {
-  return fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/erp/shops?'))
+function shopsCalls(): number {
+  return fetchMock.mock.calls
+    .map(([url]) => String(url))
+    .filter((url) => url.startsWith('/api/erp/shops')).length
 }
 
-async function mountShops(): Promise<VueWrapper> {
-  const wrapper = mount(ShopsView)
-  await flushPromises()
-  return wrapper
+function firstButton(wrapper: VueWrapper, text: string) {
+  const button = wrapper.findAll('button').find((item) => item.text().trim() === text)
+  if (!button) throw new Error(`找不到按钮：${text}`)
+  return button
 }
-
-describe('授权店铺页', () => {
-  let wrapper: VueWrapper | undefined
-
-  afterEach(() => {
-    wrapper?.unmount()
-    wrapper = undefined
-    vi.unstubAllGlobals()
-  })
-
-  it('Given 配置已就绪 When 打开授权店铺 Then 使用共享表格结构且没有 Element Plus 节点', async () => {
-    stubFetch((url) => {
-      if (url === '/api/erp/config') return jsonResponse(configBody())
-      if (url.startsWith('/api/erp/shops?')) return jsonResponse(shopsBody([baseShop]))
-      throw new Error(`意外的请求：${url}`)
-    })
-    wrapper = await mountShops()
-
-    expect(wrapper.find('.el-table').exists()).toBe(false)
-    expect(wrapper.find('.el-pagination').exists()).toBe(false)
-    expect(wrapper.find('[class^="el-"], [class*=" el-"]').exists()).toBe(false)
-    expect(wrapper.get('.page').classes()).toContain('page-shops')
-    expect(wrapper.get('.page').attributes('aria-labelledby')).toBe('shops-title')
-    expect(wrapper.get('h1').attributes('id')).toBe('shops-title')
-    expect(wrapper.get('h1').text()).toBe('授权店铺')
-    expect(wrapper.get('.grid-table').classes()).toContain('is-wrap')
-    expect(wrapper.get('.table-scroll').classes()).toContain('is-y')
-
-    const scroll = wrapper.get('.table-scroll')
-    expect(scroll.attributes('role')).toBe('region')
-    expect(scroll.attributes('tabindex')).toBe('0')
-    expect(scroll.attributes('aria-label')).toBe('授权店铺表格')
-    expect(wrapper.get('caption').text()).toBe('授权店铺列表')
-    expect(wrapper.findAll('th[scope="col"]')).toHaveLength(5)
-    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
-
-    expect(wrapper.text()).toContain('共 1 家店铺')
-    expect(wrapper.text()).toContain('，共 1 页')
-    expect(wrapper.text()).toContain('私有 ERP AccessToken 已配置')
-    expect(wrapper.text()).toContain('店铺列表已更新')
-    expect(wrapper.get('button[aria-label="刷新"]').attributes('disabled')).toBeUndefined()
-    expect(wrapper.get('.table-pagination').text()).toContain('共 1 条')
-  })
-
-  it('Given 未配置 Token When 加载店铺页 Then 引导到系统设置并保留空态且不请求店铺列表', async () => {
-    const fetchMock = stubFetch((url) => {
-      if (url === '/api/erp/config') return jsonResponse(configBody({ configured: false }))
-      throw new Error(`意外的请求：${url}`)
-    })
-    wrapper = await mountShops()
-
-    expect(wrapper.text()).toContain('尚未配置私有 ERP AccessToken')
-    expect(wrapper.text()).toContain('请前往系统设置 → 基础 → ERP 接入填写 Token 后重试。')
-    expect(wrapper.text()).toContain('配置完成后，这里会显示 TemuPop 授权店铺')
-    expect(wrapper.text()).toContain('完成 ERP 接入设置后可查看店铺')
-    expect(wrapper.get('.notice').classes()).toContain('amber')
-    expect(wrapper.get('.notice').attributes('role')).toBe('alert')
-    expect(shopListCalls(fetchMock)).toHaveLength(0)
-  })
-
-  it('Given 配置读取失败 When 加载 Then 显示错误提示与重试入口', async () => {
-    stubFetch((url) => {
-      if (url === '/api/erp/config') {
-        return jsonResponse({ title: '配置服务不可用', detail: '稍后再试' }, 500)
-      }
-      throw new Error(`意外的请求：${url}`)
-    })
-    wrapper = await mountShops()
-
-    expect(wrapper.text()).toContain('配置服务不可用：稍后再试')
-    expect(wrapper.get('.notice').classes()).toContain('red')
-    expect(wrapper.get('.notice').attributes('role')).toBe('alert')
-    expect(wrapper.get('button[aria-label="上一页"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.find('button[aria-label="重试"]').exists()).toBe(true)
-  })
-
-  it('Given 店铺列表请求失败 When 加载 Then 显示既有错误文案与重试入口', async () => {
-    stubFetch((url) => {
-      if (url === '/api/erp/config') return jsonResponse(configBody())
-      return new Response('boom', { status: 500 })
-    })
-    wrapper = await mountShops()
-
-    expect(wrapper.text()).toContain('无法获取授权店铺（HTTP 500）')
-    expect(wrapper.get('.notice').classes()).toContain('red')
-    expect(wrapper.get('.notice').attributes('role')).toBe('alert')
-    expect(wrapper.get('button[aria-label="上一页"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.find('button[aria-label="重试"]').exists()).toBe(true)
-  })
-
-  it.each([
-    { isTokenOk: true, label: '有效', className: 'green' },
-    { isTokenOk: false, label: '无效', className: 'red' },
-    { isTokenOk: null, label: '未知', className: 'gray' },
-  ])(
-    'Given 授权状态 $label When 渲染 Then 使用对应状态标签并展示说明',
-    async ({ isTokenOk, label, className }) => {
-      stubFetch((url) => {
-        if (url === '/api/erp/config') return jsonResponse(configBody())
-        return jsonResponse(shopsBody([{ ...baseShop, isTokenOk, statusError: '授权校验失败' }]))
-      })
-      wrapper = await mountShops()
-
-      const tag = wrapper.findAll('.tag').find((candidate) => candidate.text() === label)
-      expect(tag).toBeDefined()
-      expect(tag!.classes()).toContain(className)
-      expect(wrapper.text()).toContain('授权校验失败')
-    },
-  )
-
-  it('Given 列表为空 When 加载成功 Then 显示暂无授权店铺且分页栏可见', async () => {
-    stubFetch((url) => {
-      if (url === '/api/erp/config') return jsonResponse(configBody())
-      return jsonResponse(shopsBody([], { pageCount: 0 }))
-    })
-    wrapper = await mountShops()
-
-    expect(wrapper.get('.empty-overlay').text()).toContain('暂无授权店铺')
-    expect(wrapper.findAll('tbody tr')).toHaveLength(0)
-    expect(wrapper.get('.table-pagination').text()).toContain('共 0 条')
-    expect(wrapper.get('button[aria-label="上一页"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('button[aria-label="下一页"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('.page-size select').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('.page-jump input').attributes('disabled')).toBeDefined()
-  })
-
-  it('Given 多页店铺 When 切换页码 Then 按对应页码请求并同步当前页与边界禁用', async () => {
-    const { requested } = stubbedShopPage(3)
-    wrapper = await mountShops()
-
-    expect(wrapper.get('.page-num').text()).toBe('1')
-    expect(wrapper.get('.page-num').attributes('aria-current')).toBe('page')
-    expect(wrapper.get('button[aria-label="上一页"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('button[aria-label="下一页"]').attributes('disabled')).toBeUndefined()
-
-    await wrapper.get('button[aria-label="下一页"]').trigger('click')
-    await flushPromises()
-
-    expect(requested.at(-1)).toBe('page=2&pageSize=20')
-    expect(wrapper.get('.page-num').text()).toBe('2')
-
-    const thirdPage = wrapper.findAll('.page-btn').find((button) => button.text() === '3')
-    expect(thirdPage).toBeDefined()
-    await thirdPage!.trigger('click')
-    await flushPromises()
-
-    expect(requested.at(-1)).toBe('page=3&pageSize=20')
-    expect(wrapper.get('.page-num').text()).toBe('3')
-    expect(wrapper.get('button[aria-label="下一页"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('button[aria-label="上一页"]').attributes('disabled')).toBeUndefined()
-  })
-
-  it('Given 停在第 3 页 When 刷新后仅剩 1 页 Then 自动请求第 1 页并标记当前页', async () => {
-    const requested: string[] = []
-    let shrunk = false
-    stubFetch((url) => {
-      if (url === '/api/erp/config') return jsonResponse(configBody())
-      const params = new URL(url, 'https://local.test').searchParams
-      const page = Number(params.get('page'))
-      const pageSize = Number(params.get('pageSize'))
-      requested.push(`page=${page}&pageSize=${pageSize}`)
-      if (shrunk) {
-        return jsonResponse(shopsBody([baseShop], { page, pageSize, totalCount: 1, pageCount: 1 }))
-      }
-      return jsonResponse(
-        shopsBody(
-          Array.from({ length: pageSize }, (_, index): Shop => ({
-            ...baseShop,
-            sid: String((page - 1) * pageSize + index + 1),
-            name: `测试店铺 ${(page - 1) * pageSize + index + 1}`,
-          })),
-          { page, pageSize, totalCount: 45, pageCount: 3 },
-        ),
-      )
-    })
-    wrapper = await mountShops()
-    await wrapper.get('button[aria-label="下一页"]').trigger('click')
-    await flushPromises()
-    await wrapper.get('button[aria-label="下一页"]').trigger('click')
-    await flushPromises()
-    expect(wrapper.get('.page-num').text()).toBe('3')
-
-    shrunk = true
-    await wrapper.get('button[aria-label="刷新"]').trigger('click')
-    await flushPromises()
-
-    expect(requested.at(-1)).toBe('page=1&pageSize=20')
-    expect(wrapper.get('.page-num').text()).toBe('1')
-    expect(wrapper.get('.page-num').attributes('aria-current')).toBe('page')
-    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
-    expect(wrapper.text()).not.toContain('暂无授权店铺')
-  })
-
-  it('Given 多页店铺 When 修改每页条数 Then 回到第 1 页并按新条数请求', async () => {
-    const { requested } = stubbedShopPage(3)
-    wrapper = await mountShops()
-    await wrapper.get('button[aria-label="下一页"]').trigger('click')
-    await flushPromises()
-
-    await wrapper.get('.page-size select').setValue('50')
-    await flushPromises()
-
-    expect(requested.at(-1)).toBe('page=1&pageSize=50')
-    expect((wrapper.get('.page-size select').element as HTMLSelectElement).value).toBe('50')
-  })
-
-  it('Given 多页店铺 When 输入页码并回车或失焦 Then 钳制到有效范围', async () => {
-    const { requested } = stubbedShopPage(3)
-    wrapper = await mountShops()
-    const input = wrapper.get('.page-jump input')
-
-    await input.setValue('5')
-    await input.trigger('keyup.enter')
-    await flushPromises()
-
-    expect(requested.at(-1)).toBe('page=3&pageSize=20')
-    expect(wrapper.get('.page-num').text()).toBe('3')
-    expect((wrapper.get('.page-jump input').element as HTMLInputElement).value).toBe('3')
-
-    await input.setValue('0')
-    await input.trigger('blur')
-    await flushPromises()
-
-    expect(requested.at(-1)).toBe('page=1&pageSize=20')
-    expect(wrapper.get('.page-num').text()).toBe('1')
-
-    const callCount = requested.length
-    await input.setValue('abc')
-    await input.trigger('blur')
-    await flushPromises()
-
-    expect(requested).toHaveLength(callCount)
-    expect((wrapper.get('.page-jump input').element as HTMLInputElement).value).toBe('1')
-  })
-
-  it('Given 店铺列表加载中 When 查看分页 Then 分页栏保留且全部禁用', async () => {
-    const shopsResponse = (() => {
-      let resolve!: (value: Response) => void
-      const promise = new Promise<Response>((fulfill) => {
-        resolve = fulfill
-      })
-      return { promise, resolve }
-    })()
-    stubFetch((url) => {
-      if (url === '/api/erp/config') return jsonResponse(configBody())
-      return shopsResponse.promise
-    })
-    const pendingWrapper = mount(ShopsView)
-    wrapper = pendingWrapper
-    await flushPromises()
-
-    expect(wrapper.find('.table-pagination').exists()).toBe(true)
-    expect(wrapper.get('[role="status"]').text()).toContain('正在加载店铺列表…')
-    for (const button of wrapper.findAll('.table-pagination button')) {
-      expect(button.attributes('disabled')).toBeDefined()
-    }
-    expect(wrapper.get('.table-pagination select').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('.page-jump input').attributes('disabled')).toBeDefined()
-
-    shopsResponse.resolve(jsonResponse(shopsBody([baseShop])))
-    await flushPromises()
-    expect(wrapper.get('button[aria-label="刷新"]').attributes('disabled')).toBeUndefined()
-  })
-
-  it('Given 已加载多页店铺 When 切换页码加载中 Then 分页保留总数与当前页并禁用', async () => {
-    let shopsCall = 0
-    const secondPage = deferred<Response>()
-    stubFetch((url) => {
-      if (url === '/api/erp/config') return jsonResponse(configBody())
-      shopsCall += 1
-      if (shopsCall === 1) {
-        return jsonResponse(
-          shopsBody(
-            Array.from({ length: 20 }, (_, index) => ({ ...baseShop, sid: String(index + 1) })),
-            { totalCount: 45, pageCount: 3 },
-          ),
-        )
-      }
-      return secondPage.promise
-    })
-    wrapper = await mountShops()
-
-    expect(wrapper.get('.page-num').text()).toBe('1')
-    expect(wrapper.get('.table-pagination').text()).toContain('共 45 条')
-
-    await wrapper.get('button[aria-label="下一页"]').trigger('click')
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.get('.table-pagination').text()).toContain('共 45 条')
-    expect(wrapper.get('.page-num').text()).toBe('2')
-    for (const button of wrapper.findAll('.table-pagination button')) {
-      expect(button.attributes('disabled')).toBeDefined()
-    }
-
-    secondPage.resolve(
-      jsonResponse(
-        shopsBody(
-          Array.from({ length: 20 }, (_, index) => ({ ...baseShop, sid: String(index + 21) })),
-          { page: 2, totalCount: 45, pageCount: 3 },
-        ),
-      ),
-    )
-    await flushPromises()
-    expect(wrapper.get('.page-num').text()).toBe('2')
-    expect(wrapper.findAll('tbody tr')).toHaveLength(20)
-  })
-
-  it('Given 同步能力关闭 When 加载 Then 不渲染历史订单列与同步按钮', async () => {
-    stubFetch((url) => {
-      if (url === '/api/erp/config') return jsonResponse(configBody())
-      return jsonResponse(shopsBody([baseShop]))
-    })
-    wrapper = await mountShops()
-
-    expect(wrapper.findAll('th').map((header) => header.text())).not.toContain('历史订单')
-    expect(wrapper.findAll('button').some((button) => button.text().includes('同步历史订单'))).toBe(
-      false,
-    )
-  })
-})
