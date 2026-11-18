@@ -8,6 +8,7 @@ import BusinessConfigView from '../views/BusinessConfigView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import HomeView from '../views/HomeView.vue'
 import NewDevView from '../views/NewDevView.vue'
+import NotFoundView from '../views/NotFoundView.vue'
 import OrdersView from '../views/OrdersView.vue'
 import OrderSnapshotReportView from '../views/OrderSnapshotReportView.vue'
 import ProductListView from '../views/ProductListView.vue'
@@ -39,6 +40,7 @@ const router = createRouter({
     })),
     { path: '/service-connection', name: 'service-connection', component: HomeView, meta: { title: '服务连接' } },
     { path: '/shops', name: 'shops', component: ShopsView, meta: { title: '授权店铺' } },
+    { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView, meta: { title: '页面不存在' } },
   ],
 })
 
