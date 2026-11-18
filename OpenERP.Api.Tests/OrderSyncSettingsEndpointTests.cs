@@ -203,6 +203,8 @@ public sealed class OrderSyncSettingsEndpointTests
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddSingleton<IErpClient>(erp ?? new TestErpClient());
+        builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore());
+        builder.Services.AddAuthorization();
         builder.Services.AddSingleton<IOrderSyncSettingsStore>(new TestSettingsStore());
         builder.Services.AddSingleton<OrderSyncJobs>();
         builder.Services.AddSingleton<OrderSyncScheduler>();

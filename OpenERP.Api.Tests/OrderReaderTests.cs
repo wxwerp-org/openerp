@@ -1,7 +1,6 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using Xunit;
@@ -395,9 +394,10 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 一次性读取全部可见店铺。
-        var result = await CreateClient(http).GetAllShopsAsync(TestContext.Current.CancellationToken);
+        var (result, status) = await CreateClient(http).GetAllShopsAsync(TestContext.Current.CancellationToken);
 
         // Then 合并所有分页，且没有额外的授权状态请求。
+        Assert.Equal(200, status);
         if (result.IsErr)
             throw new XunitException(result.Error.Message);
         Assert.Equal(["30", "31"], result.Value.Select(shop => shop.Sid));
@@ -429,11 +429,7 @@ public sealed class OrderReaderTests
         "times":[{"name":"_付款","time":"2025-08-12 13:01"}]}
         """;
 
-    private static WxwErpClient CreateClient(HttpClient http) => new(http,
-        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Erp:AccessToken"] = "fake-token"
-        }).Build());
+    private static WxwErpClient CreateClient(HttpClient http) => new(http, new TestErpTokenStore("fake-token"));
 
     private sealed class ErpHandler(params (string Path, string Data)[] responses) : HttpMessageHandler
     {

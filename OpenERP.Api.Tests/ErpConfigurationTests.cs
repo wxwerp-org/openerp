@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenERP.Api.Erp;
@@ -25,11 +24,9 @@ public sealed class ErpConfigurationTests
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = environment });
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Erp:AccessToken"] = "test-secret"
-        });
+        builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-secret"));
         builder.Services.AddHttpClient<IErpClient, WxwErpClient>();
+        builder.Services.AddAuthorization();
         builder.Services.AddSingleton<OrderSyncJobs>();
         builder.Services.AddSingleton<IOrderSyncSettingsStore>(new TestSettingsStore());
         builder.Services.AddOptions<OrderSyncSchedulerOptions>();

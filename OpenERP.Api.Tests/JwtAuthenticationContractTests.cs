@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using OpenERP.Api.Authentication;
@@ -38,6 +37,7 @@ public sealed class JwtAuthenticationContractTests(AspireIntegrationFixture fixt
         var segments = rawToken.Split('.');
         Assert.Equal(3, segments.Length);
         var jwt = new JsonWebToken(rawToken);
+        Assert.Equal(SecurityAlgorithms.RsaSha256, jwt.Alg);
         Assert.Equal(TimeSpan.FromMinutes(20), jwt.ValidTo - jwt.IssuedAt);
         Assert.Equal(jwt.ValidTo, tokens.GetProperty("accessTokenExpiresAt").GetDateTimeOffset().UtcDateTime);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", rawToken);
@@ -59,15 +59,19 @@ public sealed class JwtAuthenticationContractTests(AspireIntegrationFixture fixt
     }
 
     [Fact]
-    public async Task Persisted_refresh_cookie_restores_the_same_login_after_an_api_restart()
+    public async Task Api_restart_rejects_the_old_access_token_and_refresh_restores_the_same_login()
     {
-        // Given 已登录的浏览器持有 refresh Cookie 和匿名防伪令牌。
+        // Given 已登录的浏览器持有可访问业务的 JWT、refresh Cookie 和匿名防伪令牌。
         var ct = TestContext.Current.CancellationToken;
         using var client = fixture.CreateApiClient();
         var account = await AuthenticationIntegrationTests.LoginAsync(client, ct, fixture.AdminPassword);
+        using var beforeRestart = await client.GetAsync("/api/ping", ct);
+        Assert.Equal(HttpStatusCode.OK, beforeRestart.StatusCode);
 
-        // When 重启 API 后使用原 Cookie 刷新。
+        // When 重启 API；Then 旧 JWT 被拒绝，原 Cookie 仍可刷新。
         await fixture.RestartApiAsync(ct);
+        using var rejected = await client.GetAsync("/api/ping", ct);
+        Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
         client.DefaultRequestHeaders.Authorization = null;
         using var refresh = await client.PostAsync("/api/auth/refresh", null, ct);
         Assert.Equal(HttpStatusCode.OK, refresh.StatusCode);
@@ -131,11 +135,7 @@ public sealed class AccessTokenLifetimeTests
     public async Task Expired_access_cannot_pass_validation_during_the_default_clock_skew_window()
     {
         // Given 刷新登录仍有效，先签发一个已经过期一分钟的 JWT。
-        var builder = Host.CreateEmptyApplicationBuilder(new HostApplicationBuilderSettings
-        {
-            EnvironmentName = Environments.Development
-        });
-        var tokens = new AccessTokens(builder.Configuration, builder.Environment);
+        var tokens = new AccessTokens();
         var issuedAt = DateTimeOffset.UtcNow.AddMinutes(-21);
         var login = new AdminRefreshToken { Id = Guid.NewGuid(), ExpiresAt = issuedAt.AddHours(24) };
         var expired = tokens.Issue(login, issuedAt);
@@ -151,11 +151,7 @@ public sealed class AccessTokenLifetimeTests
     public void Access_issued_near_the_refresh_deadline_does_not_outlive_the_login()
     {
         // Given 刷新期限不足 20 分钟。
-        var builder = Host.CreateEmptyApplicationBuilder(new HostApplicationBuilderSettings
-        {
-            EnvironmentName = Environments.Development
-        });
-        var tokens = new AccessTokens(builder.Configuration, builder.Environment);
+        var tokens = new AccessTokens();
         var now = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         var deadline = now.AddMinutes(3);
         var login = new AdminRefreshToken { Id = Guid.NewGuid(), ExpiresAt = deadline };

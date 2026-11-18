@@ -140,7 +140,7 @@ describe('授权店铺页', () => {
     expect(wrapper.get('.table-pagination').text()).toContain('共 1 条')
   })
 
-  it('Given 未配置 Token When 加载 Then 显示既有未配置提示与空态且不请求店铺列表', async () => {
+  it('Given 未配置 Token When 加载店铺页 Then 引导到系统设置并保留空态且不请求店铺列表', async () => {
     const fetchMock = stubFetch((url) => {
       if (url === '/api/erp/config') return jsonResponse(configBody({ configured: false }))
       throw new Error(`意外的请求：${url}`)
@@ -148,9 +148,9 @@ describe('授权店铺页', () => {
     wrapper = await mountShops()
 
     expect(wrapper.text()).toContain('尚未配置私有 ERP AccessToken')
-    expect(wrapper.text()).toContain('请在服务端配置私有 ERP AccessToken 后重试。')
+    expect(wrapper.text()).toContain('请前往系统设置 → 基础 → ERP 接入填写 Token 后重试。')
     expect(wrapper.text()).toContain('配置完成后，这里会显示 TemuPop 授权店铺')
-    expect(wrapper.text()).toContain('完成服务端配置后可查看店铺')
+    expect(wrapper.text()).toContain('完成 ERP 接入设置后可查看店铺')
     expect(wrapper.get('.notice').classes()).toContain('amber')
     expect(wrapper.get('.notice').attributes('role')).toBe('alert')
     expect(shopListCalls(fetchMock)).toHaveLength(0)

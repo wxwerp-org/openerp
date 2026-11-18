@@ -102,7 +102,7 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 ### 本地初始化与密码重置
 
-Development 环境启动 API 时自动应用 EF Core 迁移，并默认使用临时 RS256 私钥。空库首次启动后，在应用的 HTTPS 页面设置管理员密码，再使用 `admin` 登录。已有登录的浏览器可以在 API 重启后使用持久刷新 Cookie 静默恢复。正式环境的配置、初始化和升级见[部署说明](deployment.md)。
+Development 环境启动 API 时自动应用 EF Core 迁移。API 每次启动生成临时 RS256 签名密钥。空库首次启动后，在应用的 HTTPS 页面设置管理员密码，再使用 `admin` 登录。已有登录的浏览器可以在 API 重启后使用持久刷新 Cookie 静默恢复。正式环境的配置、初始化和升级见[部署说明](deployment.md)。
 
 启动时只在管理员行缺失时创建占位行。设置密码通过数据库条件更新完成，并发请求只能有一方成功。初始化成功记录 UTC 时间、连接来源 IP 和 User-Agent，不记录密码，也不签发令牌或更新最近登录时间。
 
@@ -142,17 +142,20 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 
 ## ERP 接入与接口
 
-上游地址固定为 `https://v3-api.wxwerp.com`。AppHost 将 User Secrets 中的 `Parameters:wxw-erp-access-token` 注入 API 的 `Erp__AccessToken`；直接配置 API 时使用后者。Token 已配置只表示配置值存在，不代表凭证有效、接口权限充分或店铺平台授权有效。前端只读取配置状态，不获取 Token。
+上游地址固定为 `https://v3-api.wxwerp.com`。管理员在「系统设置 → 基础 → ERP 接入」填写或更换 Token。API 使用 ASP.NET Core Data Protection 保护 Token，并保存在 PostgreSQL 中。备份数据库时一并保留 Data Protection 密钥表。页面只显示保存状态。验证凭证与店铺权限时，以实际 ERP 请求的结果为准。
 
 | 接口 | 行为 |
 | --- | --- |
-| `GET /api/erp/config` | 返回配置状态、上游地址和 `orderSyncEnabled`；仅 Development 开启同步能力 |
+| `GET /api/erp/config` | 返回配置状态、上游地址和 `orderSyncEnabled` |
+| `PUT /api/erp/config` | 管理员提交 `{ accessToken }` 保存或更换 Token，成功返回 `204`，后续 ERP 请求使用新值 |
 | `GET /api/erp/shops?page=1&pageSize=20` | 查询当前 Token 可见的 TemuPop 店铺；每页 1–100 条，数量与页数来自 ERP |
-| `POST /api/erp/shops/{sid}/order-sync` | 仅 Development 提供；受理返回 `202`，已有同步返回 `409`，未配置 Token 返回 `503` |
-| `GET /api/erp/shops/{sid}/order-sync` | 仅 Development 提供；查询该店最近任务，无任务返回 `204` |
-| `GET /api/erp/order-sync-settings` | 仅 Development 提供；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes` |
-| `PUT /api/erp/order-sync-settings` | 仅 Development 提供；保存启用状态和店铺选择；启用时至少选择一家店铺，保存后动态通知调度器 |
-| `GET /api/erp/order-sync-settings/shops` | 仅 Development 提供；分页拉取 Token 可见的全部店铺基础信息，不查询平台授权状态 |
+| `POST /api/erp/shops/{sid}/order-sync` | 受理返回 `202`，已有同步返回 `409`，未配置 Token 返回 `503` |
+| `GET /api/erp/shops/{sid}/order-sync` | 查询该店最近任务，无任务返回 `204` |
+| `GET /api/erp/order-sync-settings` | 返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes` |
+| `PUT /api/erp/order-sync-settings` | 保存启用状态和店铺选择；启用时至少选择一家店铺，保存后动态通知调度器 |
+| `GET /api/erp/order-sync-settings/shops` | 分页拉取 Token 可见的全部店铺基础信息，不查询平台授权状态 |
+
+订单同步接口在 Development 和 Production 中启用。每次店铺查询或订单同步开始时读取当前 Token，同一操作后续的分页和详情请求继续使用该值。
 
 店铺列表请求失败时返回错误；单店平台授权状态查询失败时保留店铺，将授权状态标为未知。同步任务受理后还会检查店铺是否对当前 Token 可见，`202` 不代表订单已成功导入。实现见 [ErpEndpoints](../OpenERP.Api/Erp/ErpEndpoints.cs) 和 [OrderSyncEndpoints](../OpenERP.Api/Orders/OrderSyncEndpoints.cs)。
 
@@ -170,7 +173,7 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 
 ## 定时同步边界
 
-- 定时同步与手动同步同样只在 Development 提供。店铺页的「定时同步」卡片只配置是否启用和选择店铺，不提供周期配置。
+- 店铺页的「定时同步」卡片只配置是否启用和选择店铺，不提供周期配置。
 - 周期来自 API 配置 `OrderSync:SchedulerIntervalMinutes`（默认 `30`，允许 `1`–`1440` 分钟），启动时校验；修改后需重启 API，保存设置本身不需要重启。每轮受理后等待一个周期再尝试下一轮；若上一轮仍在运行，本轮跳过并等下一周期。启用后首次执行同样等待一个周期。
 - 设置保存在 PostgreSQL 的 `OrderSyncSettings` 单行表（`Id` 固定为 `1`，数据库检查约束拒绝第二行），迁移为 `AddOrderSyncSettings`。保存后 API 唤醒调度器重新读取设置；启用后首次执行仍等待一个完整周期。
 - 启用时必须至少选择一家店铺，空选返回 `400`，前端也会禁用保存。历史空选数据不会触发同步。启用还要求已配置私有 ERP AccessToken；未配置时保存启用状态返回 `503`，前端禁用开关和保存。

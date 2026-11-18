@@ -10,7 +10,6 @@ internal sealed class AccessTokens
     private const string Issuer = "OpenERP";
     private const string Audience = "OpenERP.Api";
     private const string SigningAlgorithm = SecurityAlgorithms.RsaSha256;
-    private const string PrivateKeySetting = "Authentication:SigningPrivateKeyPem";
     internal const string LoginIdClaim = "sid";
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(20);
 
@@ -18,27 +17,11 @@ internal sealed class AccessTokens
     private readonly SigningCredentials _signingCredentials;
     private readonly RsaSecurityKey _validationKey;
 
-    internal AccessTokens(IConfiguration configuration, IHostEnvironment environment)
+    internal AccessTokens()
     {
-        var pem = configuration[PrivateKeySetting];
-        if (string.IsNullOrWhiteSpace(pem) && !environment.IsDevelopment())
-            throw new InvalidOperationException($"必须配置 {PrivateKeySetting}。");
-
         using var rsa = RSA.Create(2048);
-        try
-        {
-            if (!string.IsNullOrWhiteSpace(pem))
-                rsa.ImportFromPem(pem);
-            if (rsa.KeySize < 2048)
-                throw new CryptographicException();
-
-            _signingCredentials = new SigningCredentials(new RsaSecurityKey(rsa.ExportParameters(true)), SigningAlgorithm);
-            _validationKey = new RsaSecurityKey(rsa.ExportParameters(false));
-        }
-        catch (Exception exception) when (exception is ArgumentException or CryptographicException)
-        {
-            throw new InvalidOperationException($"{PrivateKeySetting} 必须是至少 2048 位的 RSA 私钥 PEM。");
-        }
+        _signingCredentials = new SigningCredentials(new RsaSecurityKey(rsa.ExportParameters(true)), SigningAlgorithm);
+        _validationKey = new RsaSecurityKey(rsa.ExportParameters(false));
     }
 
     internal TokenValidationParameters ValidationParameters() => new()

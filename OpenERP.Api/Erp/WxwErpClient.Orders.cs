@@ -14,9 +14,10 @@ public sealed partial class WxwErpClient
     {
         const int shopPageSize = 100;
         var found = false;
+        var accessToken = await tokens.GetAsync(ct);
         for (var page = 1; ; page++)
         {
-            var (shops, _) = await GetShopListAsync(page, shopPageSize, ct);
+            var (shops, _) = await GetShopListAsync(accessToken, page, shopPageSize, ct);
             if (shops.IsErr)
                 return shops.Error;
 
@@ -29,7 +30,7 @@ public sealed partial class WxwErpClient
         if (!found)
             return OpResults.Err("当前 ERP AccessToken 无法访问该 TemuPop 店铺。");
 
-        var scan = await ReadOrderIndexAsync(sid, 20, report, ct);
+        var scan = await ReadOrderIndexAsync(accessToken, sid, 20, report, ct);
         if (scan.IsErr)
             return scan.Error;
 
@@ -40,7 +41,7 @@ public sealed partial class WxwErpClient
         report?.Invoke(new("details", index.Total, index.Total, processed));
         foreach (var header in index.Orders)
         {
-            var detail = await ReadOrderAsync(sid, header, ct);
+            var detail = await ReadOrderAsync(accessToken, sid, header, ct);
             if (detail.IsErr)
                 return detail.Error;
 
@@ -61,7 +62,14 @@ public sealed partial class WxwErpClient
     {
         if (sid <= 0 || pageSize is < 1 or > 500)
             return OpResults.Err("店铺或分页参数无效。");
-        if (!Configuration.Configured)
+
+        return await ReadOrderIndexAsync(await tokens.GetAsync(ct), sid, pageSize, report, ct);
+    }
+
+    private async Task<OpResult<OrderIndex>> ReadOrderIndexAsync(
+        string accessToken, int sid, int pageSize, Action<OrderReadProgress>? report, CancellationToken ct)
+    {
+        if (accessToken.Length == 0)
             return OpResults.Err("尚未配置私有 ERP AccessToken。");
 
         var filters = new
@@ -73,7 +81,7 @@ public sealed partial class WxwErpClient
         };
         const string countPath = "/open-api/order/get_list_page_count";
         var countRequest = new { filters, page_size = pageSize };
-        var (before, _) = await PostAsync(countPath, countRequest, ct);
+        var (before, _) = await PostAsync(accessToken, countPath, countRequest, ct);
         if (before.IsErr)
             return before.Error;
         if (!TryReadPageCount(before.Value, pageSize, out var total, out var pages))
@@ -86,7 +94,7 @@ public sealed partial class WxwErpClient
 
         for (var page = 1; page <= pages; page++)
         {
-            var (response, _) = await PostAsync("/open-api/order/get_list", new
+            var (response, _) = await PostAsync(accessToken, "/open-api/order/get_list", new
             {
                 filters, page, page_size = pageSize, sort = new { field = "w_order._id", order = "desc" }
             }, ct);
@@ -124,7 +132,7 @@ public sealed partial class WxwErpClient
             report?.Invoke(new("pages", total, ids.Count, 0));
         }
 
-        var (after, _) = await PostAsync(countPath, countRequest, ct);
+        var (after, _) = await PostAsync(accessToken, countPath, countRequest, ct);
         if (after.IsErr)
             return after.Error;
         if (!TryReadPageCount(after.Value, pageSize, out var afterTotal, out var afterPages) ||
@@ -134,18 +142,19 @@ public sealed partial class WxwErpClient
         return new OrderIndex(total, ids, orders, skips);
     }
 
-    private async Task<OpResult<OrderReadItem>> ReadOrderAsync(int sid, ErpOrderHeader header, CancellationToken ct)
+    private async Task<OpResult<OrderReadItem>> ReadOrderAsync(
+        string accessToken, int sid, ErpOrderHeader header, CancellationToken ct)
     {
-        var detail = await ReadOrderDetailAsync(sid, header, ct);
+        var detail = await ReadOrderDetailAsync(accessToken, sid, header, ct);
         if (detail.IsErr || detail.Value.Order is not { } order || order.Times.Created is not null)
             return detail;
 
-        var (timeResult, timeStatus) = await PostAsync(OrderTimePath, new { id = header.ErpId }, ct);
+        var (timeResult, timeStatus) = await PostAsync(accessToken, OrderTimePath, new { id = header.ErpId }, ct);
         if (timeResult.IsErr)
         {
             // 时间记录缺失和主单已消失的消息相同，重新读取并校验详情后才能保存。
             if (timeStatus == 404)
-                return await ReadOrderDetailAsync(sid, header, ct);
+                return await ReadOrderDetailAsync(accessToken, sid, header, ct);
 
             return timeResult.Error;
         }
@@ -163,9 +172,10 @@ public sealed partial class WxwErpClient
         }, null);
     }
 
-    private async Task<OpResult<OrderReadItem>> ReadOrderDetailAsync(int sid, ErpOrderHeader header, CancellationToken ct)
+    private async Task<OpResult<OrderReadItem>> ReadOrderDetailAsync(
+        string accessToken, int sid, ErpOrderHeader header, CancellationToken ct)
     {
-        var (response, _) = await PostAsync("/open-api/order_detail/get_base",
+        var (response, _) = await PostAsync(accessToken, "/open-api/order_detail/get_base",
             new { id = header.ErpId, ask = false, showAllProduct = true }, ct);
         if (response.IsErr)
             return response.Error;

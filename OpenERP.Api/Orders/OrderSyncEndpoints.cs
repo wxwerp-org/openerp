@@ -11,12 +11,12 @@ public static class OrderSyncEndpoints
 
     public static void MapOrderSync(this WebApplication app)
     {
-        app.MapPost(OrderSyncRoute, Results<Accepted<OrderSyncStatus>, ProblemHttpResult>
-            (int sid, IErpClient erp, OrderSyncJobs jobs) =>
+        app.MapPost(OrderSyncRoute, async Task<Results<Accepted<OrderSyncStatus>, ProblemHttpResult>>
+            (int sid, IErpClient erp, OrderSyncJobs jobs, CancellationToken cancellationToken) =>
         {
             if (sid <= 0)
                 return TypedResults.Problem(statusCode: 400, title: "店铺 SID 必须为正整数");
-            if (!erp.Configuration.Configured)
+            if (!(await erp.GetConfigurationAsync(cancellationToken)).Configured)
                 return TypedResults.Problem(statusCode: 503, title: "尚未配置私有 ERP AccessToken");
             var started = jobs.Start(sid);
             if (started.IsErr)
@@ -53,7 +53,7 @@ public static class OrderSyncEndpoints
                 return TypedResults.Problem(statusCode: 400, title: "启用定时同步前请至少选择一家店铺");
             if (request.ShopSids.Any(sid => sid <= 0))
                 return TypedResults.Problem(statusCode: 400, title: "店铺 SID 必须为正整数");
-            if (request.Enabled.Value && !erp.Configuration.Configured)
+            if (request.Enabled.Value && !(await erp.GetConfigurationAsync(cancellationToken)).Configured)
                 return TypedResults.Problem(statusCode: 503, title: "启用定时同步前请先配置私有 ERP AccessToken");
 
             var saved = await store.SaveAsync(request.Enabled.Value, request.ShopSids, cancellationToken);
@@ -67,12 +67,11 @@ public static class OrderSyncEndpoints
         app.MapGet($"{SettingsRoute}/shops", async Task<Results<Ok<OrderSyncShopSelection>, ProblemHttpResult>>
             (IErpClient erp, CancellationToken cancellationToken) =>
         {
-            if (!erp.Configuration.Configured)
+            var (shops, status) = await erp.GetAllShopsAsync(cancellationToken);
+            if (status == 503)
                 return TypedResults.Problem(statusCode: 503, title: "尚未配置私有 ERP AccessToken");
-
-            var shops = await erp.GetAllShopsAsync(cancellationToken);
             if (shops.IsErr)
-                return TypedResults.Problem(statusCode: 502, title: "获取店铺失败", detail: shops.Error.Message);
+                return TypedResults.Problem(statusCode: status, title: "获取店铺失败", detail: shops.Error.Message);
 
             return TypedResults.Ok(new OrderSyncShopSelection(
                 shops.Value.Select(shop => new OrderSyncShopOption(shop.Sid, shop.Name)).ToArray()));

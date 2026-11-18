@@ -21,7 +21,7 @@ internal static partial class AuthenticationEndpoints
     internal static void AddAccountAuthentication(this WebApplicationBuilder builder)
     {
         var services = builder.Services;
-        var tokens = new AccessTokens(builder.Configuration, builder.Environment);
+        var tokens = new AccessTokens();
         services.AddSingleton(tokens);
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<AccountStore>();

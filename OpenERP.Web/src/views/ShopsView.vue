@@ -932,7 +932,7 @@ onUnmounted(() => {
         <AppIcon name="i-warning" />
         <div>
           <p class="notice-title">尚未配置私有 ERP AccessToken</p>
-          <p class="notice-desc">请在服务端配置私有 ERP AccessToken 后重试。</p>
+          <p class="notice-desc">请前往系统设置 → 基础 → ERP 接入填写 Token 后重试。</p>
         </div>
       </div>
       <div v-else class="notice red" role="alert">
@@ -1081,7 +1081,7 @@ onUnmounted(() => {
             共 {{ totalCount }} 家店铺<span v-if="totalCount > 0">，共 {{ pageCount }} 页</span>
           </template>
           <template v-else-if="shopsStatus === 'loading'">正在加载店铺列表</template>
-          <template v-else-if="configStatus === 'unconfigured'">完成服务端配置后可查看店铺</template>
+          <template v-else-if="configStatus === 'unconfigured'">完成 ERP 接入设置后可查看店铺</template>
           <template v-else>店铺列表</template>
         </span>
         <span class="toolbar-status" aria-live="polite">

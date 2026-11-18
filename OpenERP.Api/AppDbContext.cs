@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using OpenERP.Api.Authentication;
+using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 
 namespace OpenERP.Api;
@@ -13,6 +14,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     internal DbSet<OrderRecord> Orders => Set<OrderRecord>();
 
     internal DbSet<OrderSyncSettings> OrderSyncSettings => Set<OrderSyncSettings>();
+    internal DbSet<ErpSettings> ErpSettings => Set<ErpSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -46,6 +48,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             settings.HasKey(x => x.Id);
             settings.Property(x => x.Id).ValueGeneratedNever();
             settings.Property(x => x.ShopSids).HasColumnType("integer[]").IsRequired();
+        });
+
+        modelBuilder.Entity<ErpSettings>(settings =>
+        {
+            settings.ToTable("ErpSettings", table => table.HasCheckConstraint("CK_ErpSettings_Singleton", "\"Id\" = 1"));
+            settings.Property(x => x.Id).ValueGeneratedNever();
         });
 
         modelBuilder.Entity<PlatformOrderRecord>(platformOrder =>

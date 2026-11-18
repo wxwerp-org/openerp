@@ -67,7 +67,6 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
         var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.OpenERP_AppHost>(
             [
                 "--NO_PROXY=localhost,127.0.0.1,::1",
-                "--Parameters:wxw-erp-access-token=",
                 $"--Parameters:postgres-password={Convert.ToHexString(RandomNumberGenerator.GetBytes(24))}",
                 $"--Parameters:seaweedfs-secretKey={Convert.ToHexString(RandomNumberGenerator.GetBytes(24))}",
                 $"--ASPIRE_USER_SECRETS_ID={_volumeName}",

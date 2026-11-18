@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Configuration;
 using System.Data.Common;
 using Npgsql;
 using OpenERP.Api.Erp;
@@ -33,11 +32,8 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
-        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Erp:AccessToken"] = Environment.GetEnvironmentVariable("OPENERP_TEST_ERP_TOKEN")
-        }).Build();
-        var read = await new WxwErpClient(http, config).ReadOrdersAsync(30, null, timeout.Token);
+        var tokens = new TestErpTokenStore(Environment.GetEnvironmentVariable("OPENERP_TEST_ERP_TOKEN") ?? "");
+        var read = await new WxwErpClient(http, tokens).ReadOrdersAsync(30, null, timeout.Token);
         if (read.IsErr) throw new XunitException(read.Error.Message);
         var source = read.Value.Orders;
         Assert.NotEmpty(source);

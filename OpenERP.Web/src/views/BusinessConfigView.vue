@@ -2,13 +2,14 @@
 import { computed, ref } from 'vue'
 import AppIcon from '../components/navigation/AppIcon.vue'
 import BaseConfig from '../settings/BaseConfig.vue'
+import ErpConfig from '../settings/ErpConfig.vue'
 import GenericConfig from '../settings/GenericConfig.vue'
 import { useToast } from '../composables/useToast'
 
 type SettingsGroup = { title: string; items: string[] }
 
 const groups: Record<string, SettingsGroup> = {
-  base: { title: '基础', items: ['基础', '箱规信息', '飞书授权', '代理商', '制造商', '公司主体', '备货主体'] },
+  base: { title: '基础', items: ['基础', 'ERP 接入', '箱规信息', '飞书授权', '代理商', '制造商', '公司主体', '备货主体'] },
   approval: { title: '审批', items: ['审批设置', '审批流程', '审批模板'] },
   product: { title: '产品', items: ['产品设置', '分类属性', '品牌管理', '产品标签'] },
   sales: { title: '销售', items: ['订单设置', 'Listing设置', '客服邮箱'] },
@@ -81,6 +82,7 @@ function showEditToast(): void {
       <div class="settings-content" id="settingsContent">
         <div class="settings-content-inner config-fade">
           <BaseConfig v-if="showBase" @edit="showEditToast" />
+          <ErpConfig v-else-if="activeGroup === 'base' && activeItem === 'ERP 接入'" />
           <GenericConfig v-else :group-title="group.title" :item="activeItem" @edit="showEditToast" />
         </div>
       </div>
