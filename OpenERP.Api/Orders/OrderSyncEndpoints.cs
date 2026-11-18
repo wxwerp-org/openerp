@@ -67,11 +67,12 @@ public static class OrderSyncEndpoints
         app.MapGet($"{SettingsRoute}/shops", async Task<Results<Ok<OrderSyncShopSelection>, ProblemHttpResult>>
             (IErpClient erp, CancellationToken cancellationToken) =>
         {
-            var (shops, status) = await erp.GetAllShopsAsync(cancellationToken);
-            if (status == 503)
+            if (!(await erp.GetConfigurationAsync(cancellationToken)).Configured)
                 return TypedResults.Problem(statusCode: 503, title: "尚未配置私有 ERP AccessToken");
+
+            var shops = await erp.GetAllShopsAsync("TemuPop", cancellationToken);
             if (shops.IsErr)
-                return TypedResults.Problem(statusCode: status, title: "获取店铺失败", detail: shops.Error.Message);
+                return TypedResults.Problem(statusCode: 502, title: "获取店铺失败", detail: shops.Error.Message);
 
             return TypedResults.Ok(new OrderSyncShopSelection(
                 shops.Value.Select(shop => new OrderSyncShopOption(shop.Sid, shop.Name)).ToArray()));

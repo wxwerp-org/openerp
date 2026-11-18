@@ -8,9 +8,23 @@ public interface IErpClient
 {
     Task<ErpConfiguration> GetConfigurationAsync(CancellationToken cancellationToken);
 
-    Task<(OpResult<ShopPage> Result, int Status)> GetShopsAsync(int page, int pageSize, CancellationToken cancellationToken);
+    Task<(OpResult<ShopPage> Result, int Status)> GetShopsAsync(
+        int page, int pageSize, string? platform, CancellationToken cancellationToken);
 
-    Task<(OpResult<IReadOnlyList<ErpShop>> Result, int Status)> GetAllShopsAsync(CancellationToken cancellationToken);
+    Task<(OpResult<IReadOnlyList<ErpPlatform>> Result, int Status)> GetPlatformsAsync(
+        CancellationToken cancellationToken);
+
+    Task<(OpResult<IReadOnlyList<ErpPlatform>> Result, int Status)> GetPlatformsAsync(
+        string accessToken, CancellationToken cancellationToken);
+
+    Task<OpResult<IReadOnlyList<ErpShop>>> GetAllShopsAsync(
+        string? platform, CancellationToken cancellationToken);
+
+    Task<OpResult<IReadOnlyList<ErpShop>>> GetAllShopsAsync(
+        string? platform, string accessToken, CancellationToken cancellationToken);
+
+    Task<OpResult<ErpShopStatus>> GetShopStatusAsync(
+        string sid, string accessToken, CancellationToken cancellationToken);
 
     Task<OpResult<OrderImportBatch>> ReadOrdersAsync(
         int sid, Action<OrderReadProgress>? report, CancellationToken cancellationToken);

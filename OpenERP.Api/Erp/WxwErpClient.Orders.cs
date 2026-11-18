@@ -17,7 +17,7 @@ public sealed partial class WxwErpClient
         var accessToken = await tokens.GetAsync(ct);
         for (var page = 1; ; page++)
         {
-            var (shops, _) = await GetShopListAsync(accessToken, page, shopPageSize, ct);
+            var (shops, _) = await GetShopListAsync(accessToken, page, shopPageSize, TemuPop, ct);
             if (shops.IsErr)
                 return shops.Error;
 

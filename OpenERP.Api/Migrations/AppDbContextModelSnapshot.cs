@@ -115,6 +115,104 @@ namespace OpenERP.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("OpenERP.Api.Erp.Shop", b =>
+                {
+                    b.Property<int>("Sid")
+                        .HasColumnType("integer");
+
+                    b.Property<bool?>("IsTokenOk")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("MemberId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Region")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("SyncedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Sid");
+
+                    b.HasIndex("Platform", "IsTokenOk");
+
+                    b.ToTable("Shops", (string)null);
+                });
+
+            modelBuilder.Entity("OpenERP.Api.Erp.ShopPlatform", b =>
+                {
+                    b.Property<string>("Name")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("IsProduction")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Name");
+
+                    b.ToTable("ShopPlatforms", (string)null);
+                });
+
+            modelBuilder.Entity("OpenERP.Api.Erp.ShopSyncState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Invalid")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("LastCompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("LastStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Total")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Unknown")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Valid")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ShopSyncStates", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ShopSyncStates_Singleton", "\"Id\" = 1");
+                        });
+                });
+
             modelBuilder.Entity("OpenERP.Api.Orders.OrderLineRecord", b =>
                 {
                     b.Property<string>("ErpId")

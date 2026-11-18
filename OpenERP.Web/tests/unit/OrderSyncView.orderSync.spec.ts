@@ -1,7 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { adminAccount } from './adminAccount'
-import ShopsView from '../../src/views/ShopsView.vue'
+import OrderSyncView from '../../src/views/OrderSyncView.vue'
 
 const shop = {
   sid: '42',
@@ -119,7 +119,7 @@ function configureFetch(
 async function mountShops(): Promise<VueWrapper> {
   const { login } = await import('../../src/account/session')
   await login('admin', 'test-password')
-  const wrapper = mount(ShopsView)
+  const wrapper = mount(OrderSyncView)
   await flushPromises()
   return wrapper
 }
@@ -136,7 +136,7 @@ function findRefreshButton(wrapper: VueWrapper) {
   return wrapper.get('button[aria-label="刷新"]')
 }
 
-describe('店铺历史订单同步', () => {
+describe('订单同步页历史订单同步', () => {
   let wrapper: VueWrapper | undefined
 
   afterEach(() => {
@@ -152,11 +152,16 @@ describe('店铺历史订单同步', () => {
     { tokenStatus: null, tokenLabel: '未知' },
   ])(
     'Given 店铺授权$tokenLabel When 点击同步历史订单 Then 使用 Bearer 访问令牌发起无请求体的任务并显示进度',
-    async ({ tokenStatus, tokenLabel }) => {
+    async ({ tokenStatus }) => {
       const fetchMock = configureFetch({ tokenStatus })
       wrapper = await mountShops()
 
-      expect(wrapper.text()).toContain(tokenLabel)
+      const shopsCall = fetchMock.mock.calls.find(([input]) =>
+        String(input).startsWith('/api/erp/shops?'),
+      )
+      const shopsUrl = new URL(String(shopsCall?.[0]), 'https://local.test')
+      expect(shopsUrl.searchParams.get('platform')).toBe('TemuPop')
+
       const button = syncButton(wrapper)
       expect(button).toBeDefined()
       expect(button!.attributes('disabled')).toBeUndefined()

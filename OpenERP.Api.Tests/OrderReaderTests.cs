@@ -394,10 +394,9 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 一次性读取全部可见店铺。
-        var (result, status) = await CreateClient(http).GetAllShopsAsync(TestContext.Current.CancellationToken);
+        var result = await CreateClient(http).GetAllShopsAsync("TemuPop", TestContext.Current.CancellationToken);
 
         // Then 合并所有分页，且没有额外的授权状态请求。
-        Assert.Equal(200, status);
         if (result.IsErr)
             throw new XunitException(result.Error.Message);
         Assert.Equal(["30", "31"], result.Value.Select(shop => shop.Sid));
@@ -444,6 +443,8 @@ public sealed class OrderReaderTests
             Assert.Equal("fake-token", Assert.Single(request.Headers.GetValues("AccessToken")));
             using var json = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
             var body = json.RootElement;
+            if (path == "/open-api/shop/get_shops")
+                Assert.Equal("TemuPop", body.GetProperty("platform").GetString());
             if (path.StartsWith("/open-api/order/", StringComparison.Ordinal))
             {
                 var filters = body.GetProperty("filters");

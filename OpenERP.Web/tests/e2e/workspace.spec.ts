@@ -3,12 +3,43 @@ import { enterWorkspace } from './authentication'
 
 test.beforeEach(async ({ page }) => {
   await enterWorkspace(page)
+  await mockHub(page)
 })
 
 async function mockShops(page: Page, count = 1): Promise<void> {
   await page.route('**/api/erp/config', (route) =>
     route.fulfill({
       json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+    }),
+  )
+  await page.route('**/api/erp/platforms', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            name: 'Temu',
+            displayName: 'Temu半托管',
+            icon: 'icon-temupop',
+            isProduction: true,
+            shopCount: count,
+          },
+        ],
+      },
+    }),
+  )
+  await page.route('**/api/erp/shop-sync', (route) =>
+    route.fulfill({
+      json: {
+        running: false,
+        startedAt: null,
+        completedAt: new Date(Date.now() - 15 * 60_000).toISOString(),
+        total: count,
+        checked: count,
+        valid: count,
+        invalid: 0,
+        unknown: 0,
+        error: null,
+      },
     }),
   )
   await page.route('**/api/erp/shops?**', (route) =>
@@ -19,13 +50,21 @@ async function mockShops(page: Page, count = 1): Promise<void> {
           name: `测试店铺 ${index + 1}`,
           platform: 'Temu',
           region: 'US',
+          memberId: `member-${index + 1}`,
           isTokenOk: true,
-          statusError: null,
+          tokenError: null,
+          syncedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
         })),
         page: 1,
         pageSize: 20,
         totalCount: count,
-        pageCount: 1,
+        pageCount: count > 0 ? 1 : 0,
+        summary: {
+          valid: count,
+          invalid: 0,
+          unknown: 0,
+          lastSyncedAt: new Date(Date.now() - 15 * 60_000).toISOString(),
+        },
       },
     }),
   )
@@ -35,6 +74,36 @@ async function mockPagedShops(page: Page, totalCount = 45): Promise<void> {
   await page.route('**/api/erp/config', (route) =>
     route.fulfill({
       json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+    }),
+  )
+  await page.route('**/api/erp/platforms', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            name: 'Temu',
+            displayName: 'Temu半托管',
+            icon: 'icon-temupop',
+            isProduction: true,
+            shopCount: totalCount,
+          },
+        ],
+      },
+    }),
+  )
+  await page.route('**/api/erp/shop-sync', (route) =>
+    route.fulfill({
+      json: {
+        running: false,
+        startedAt: null,
+        completedAt: new Date(Date.now() - 15 * 60_000).toISOString(),
+        total: totalCount,
+        checked: totalCount,
+        valid: totalCount,
+        invalid: 0,
+        unknown: 0,
+        error: null,
+      },
     }),
   )
   await page.route('**/api/erp/shops?**', (route) => {
@@ -51,16 +120,28 @@ async function mockPagedShops(page: Page, totalCount = 45): Promise<void> {
           name: `分页店铺 ${start + index + 1}`,
           platform: 'Temu',
           region: 'US',
+          memberId: null,
           isTokenOk: true,
-          statusError: null,
+          tokenError: null,
+          syncedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
         })),
         page: currentPage,
         pageSize,
         totalCount,
         pageCount,
+        summary: {
+          valid: totalCount,
+          invalid: 0,
+          unknown: 0,
+          lastSyncedAt: new Date(Date.now() - 15 * 60_000).toISOString(),
+        },
       },
     })
   })
+}
+
+async function mockHub(page: Page): Promise<void> {
+  await page.route('**/api/hubs/erp/**', (route) => route.abort())
 }
 
 test('Given 原型工作台 When 打开首页并进入用户管理 Then 全部卡片和四条用户数据可见', async ({
@@ -146,16 +227,16 @@ test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标
   await page.goto('/shops')
 
   const shopsHeader = page.locator('.shops-head')
-  await expect(shopsHeader).toHaveCSS('display', 'block')
+  await expect(shopsHeader).toHaveCSS('display', 'flex')
   await expect(shopsHeader).toHaveCSS('height', '62px')
   await expect(shopsHeader).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(shopsHeader).toHaveCSS('box-shadow', 'none')
 
-  const shopsCard = page.locator('.page-shops .list-toolbar')
+  const shopsCard = page.locator('.page-shops .shops-card')
   await expect(shopsCard).toBeVisible()
-  await expect(shopsCard).toHaveCSS('border-top-width', '0px')
+  await expect(shopsCard).toHaveCSS('border-top-width', '1px')
   await expect(shopsCard).toHaveCSS('border-top-left-radius', '6px')
-  await expect(page.locator('.page-shops .table-box')).toHaveCSS('border-bottom-left-radius', '6px')
+  await expect(shopsCard).toHaveCSS('border-bottom-left-radius', '6px')
   await expect(page.locator('.page-shops .grid-table th').first()).toHaveCSS(
     'background-color',
     'rgb(242, 245, 250)',
@@ -165,7 +246,8 @@ test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标
   await expect(shopsTitle).toHaveCSS('font-size', '20px')
   await expect(shopsTitle).toHaveCSS('font-weight', '600')
   await expect(page.locator('.page-shops .tag').first()).toHaveCSS('height', '18px')
-  await expect(page.getByRole('button', { name: '刷新' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '刷新本地数据' })).toBeVisible()
+  await expect(page.locator('.shop-summary-card')).toHaveCount(4)
   await expect(page.locator('[class^="el-"], [class*=" el-"]')).toHaveCount(0)
 
   await page.route('**/api/ping', (route) => route.fulfill({ json: { message: '连接正常' } }))
@@ -231,6 +313,11 @@ test('Given 独立服务路由 When 从设置侧栏导航 Then 授权店铺和�
   await expect(page.locator('.page-shops .grid-table')).toBeVisible()
   await expect(page.locator('[data-nav-page="shops"]').first()).toHaveClass(/active/)
 
+  await page.locator('[data-nav-page="orders-sync"]').click()
+  await expect(page).toHaveURL(/\/orders\/sync$/)
+  await expect(page.locator('.page-shops h1')).toHaveText('订单同步（临时）')
+  await expect(page.locator('[data-nav-page="orders-sync"]').first()).toHaveClass(/active/)
+
   await page.locator('[data-nav-page="service-connection"]').click()
   await expect(page).toHaveURL(/\/service-connection$/)
   await expect(page.locator('.page-service .service-panel')).toBeVisible()
@@ -259,68 +346,6 @@ test('Given 一页 20 家店铺 When 视口高度不足 Then 分页栏固定可�
   await page.mouse.wheel(0, 4000)
   await expect(page.locator('.page-shops tbody tr').last()).toBeInViewport()
   await expect(pagination).toBeInViewport()
-})
-
-test('Given 开启定时同步 When 视口高度不足 Then 页面可滚动访问表格与分页', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 600 })
-  await page.route('**/api/erp/config', (route) =>
-    route.fulfill({
-      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: true },
-    }),
-  )
-  await page.route('**/api/erp/order-sync-settings', (route) =>
-    route.fulfill({
-      json: { enabled: true, shopSids: [1], intervalMinutes: 30 },
-    }),
-  )
-  await page.route('**/api/erp/order-sync-settings/shops', (route) =>
-    route.fulfill({
-      json: { items: [{ sid: '1', name: '测试店铺 1' }] },
-    }),
-  )
-  await page.route('**/api/erp/shops?**', (route) =>
-    route.fulfill({
-      json: {
-        items: [
-          {
-            sid: '1',
-            name: '测试店铺 1',
-            platform: 'Temu',
-            region: 'US',
-            isTokenOk: true,
-            statusError: null,
-          },
-        ],
-        page: 1,
-        pageSize: 20,
-        totalCount: 1,
-        pageCount: 1,
-      },
-    }),
-  )
-  await page.route('**/api/erp/shops/1/order-sync', (route) => route.fulfill({ status: 204 }))
-  await page.goto('/shops')
-
-  const syncSwitch = page.getByRole('checkbox', { name: '启用定时同步' })
-  await syncSwitch.focus()
-  await expect(syncSwitch).toBeFocused()
-  await expect(syncSwitch).toHaveCSS('outline-color', 'rgb(0, 91, 245)')
-  await expect(syncSwitch).toHaveCSS('outline-style', 'solid')
-  await expect(syncSwitch).toHaveCSS('outline-width', '2px')
-
-  const syncCard = page.locator('.sync-settings-card')
-  await expect(syncCard).toBeVisible()
-  await expect(syncCard).toHaveCSS('border-top-width', '0px')
-  await expect(syncCard).toHaveCSS('border-top-left-radius', '6px')
-  const syncRows = syncCard.locator('.sync-settings-card__row')
-  await expect(syncRows.first()).toHaveCSS('display', 'grid')
-  await expect(syncRows.first()).toHaveCSS('grid-template-columns', '240px 912px')
-  await expect(syncRows.last()).toHaveCSS('grid-template-columns', '240px 912px')
-  await expect(syncCard.locator('.sync-settings-card__footer')).toHaveCSS('margin-left', '264px')
-
-  await page.locator('.page-shops').evaluate((element) => element.scrollTo(0, element.scrollHeight))
-  await expect(page.locator('.page-shops tbody tr').last()).toBeInViewport()
-  await expect(page.locator('.table-pagination')).toBeInViewport()
 })
 
 test('Given 多页店铺 When 使用完整分页器 Then 页码、每页条数与跳页按新参数请求', async ({

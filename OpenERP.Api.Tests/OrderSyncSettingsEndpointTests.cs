@@ -96,9 +96,9 @@ public sealed class OrderSyncSettingsEndpointTests
         // Given 当前 Token 可见两家店。
         var erp = new TestErpClient
         {
-            GetAllShops = _ => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
-                new("30", "店铺三十", "TemuPop", "US", null, null),
-                new("644928", "店铺六四四九二八", "TemuPop", null, null, null)
+            GetAllShops = (_, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
+                new("30", "店铺三十", "TemuPop", "US"),
+                new("644928", "店铺六四四九二八", "TemuPop")
             ]))
         };
         await using var app = await StartAppAsync(erp);
@@ -134,7 +134,7 @@ public sealed class OrderSyncSettingsEndpointTests
         // Given 上游店铺列表读取失败。
         var erp = new TestErpClient
         {
-            GetAllShops = _ => Task.FromResult<OpResult<IReadOnlyList<ErpShop>>>(OpResults.Err("ERP 请求超时，请重试。"))
+            GetAllShops = (_, _) => Task.FromResult<OpResult<IReadOnlyList<ErpShop>>>(OpResults.Err("ERP 请求超时，请重试。"))
         };
         await using var app = await StartAppAsync(erp);
 

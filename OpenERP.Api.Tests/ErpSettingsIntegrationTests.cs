@@ -95,7 +95,7 @@ public sealed class ErpSettingsIntegrationTests
         var tokens = new ErpTokenStore(scope.ServiceProvider.GetRequiredService<AppDbContext>(),
             provider.GetRequiredService<IDataProtectionProvider>());
         var erp = new WxwErpClient(http, tokens);
-        var shops = await erp.GetShopsAsync(1, 20, ct);
+        var shops = await erp.GetShopsAsync(1, 20, null, ct);
         Assert.Equal(200, shops.Status);
         var orders = await erp.ReadOrdersAsync(30, null, ct);
         if (orders.IsErr)

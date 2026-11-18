@@ -30,15 +30,7 @@ public static class ErpEndpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
-        app.MapGet("/api/erp/shops", async Task<Results<Ok<ShopPage>, ProblemHttpResult>>
-            (IErpClient erp, int? page, int? pageSize, CancellationToken cancellationToken) =>
-        {
-            var (result, status) = await erp.GetShopsAsync(page ?? 1, pageSize ?? 20, cancellationToken);
-            if (result.IsErr)
-                return TypedResults.Problem(statusCode: status, title: "获取店铺失败", detail: result.Error.Message);
-
-            return TypedResults.Ok(result.Value);
-        }).WithSummary("分页获取 Temu 半托管跨境店铺及授权状态");
+        app.MapShopDirectory();
 
         if (orderSyncEnabled)
             app.MapOrderSync();
@@ -53,8 +45,28 @@ public static class ErpEndpoints
 /// <summary>接入配置状态，绝不包含凭证。</summary>
 public sealed record ErpConfiguration(bool Configured, string BaseUrl);
 
-/// <summary>店铺列表；授权状态查询失败时为未知，不隐藏店铺。</summary>
-public sealed record ShopPage(IReadOnlyList<ErpShop> Items, int Page, int PageSize, int TotalCount, int PageCount);
+/// <summary>上游店铺分页；仅用于 ERP 客户端读取全量目录。</summary>
+public sealed record ShopPage(
+    IReadOnlyList<ErpShop> Items,
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int PageCount);
 
-/// <summary>当前 Token 可见的 Temu 半托管跨境店铺。</summary>
-public sealed record ErpShop(string Sid, string Name, string Platform, string? Region, bool? IsTokenOk, string? StatusError);
+/// <summary>上游店铺基础信息；授权状态由本地同步任务落库。</summary>
+public sealed record ErpShop(
+    string Sid,
+    string Name,
+    string Platform,
+    string? Region = null,
+    string? MemberId = null);
+
+/// <summary>上游单店授权状态；只包含上游实际返回的字段。</summary>
+public sealed record ErpShopStatus(bool? IsTokenOk, string? Region, bool? IsSupportUpdateNumber);
+
+/// <summary>平台目录项；平台集合与展示名来自上游 ERP，不在本地写死。</summary>
+public sealed record ErpPlatform(
+    string Name, string DisplayName, string? Icon, bool IsProduction, int ShopCount);
+
+/// <summary>当前 Token 可见店铺涉及的平台目录。</summary>
+public sealed record PlatformCatalog(IReadOnlyList<ErpPlatform> Items);

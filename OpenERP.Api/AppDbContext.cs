@@ -16,6 +16,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     internal DbSet<OrderSyncSettings> OrderSyncSettings => Set<OrderSyncSettings>();
     internal DbSet<ErpSettings> ErpSettings => Set<ErpSettings>();
 
+    internal DbSet<Shop> Shops => Set<Shop>();
+
+    internal DbSet<ShopPlatform> ShopPlatforms => Set<ShopPlatform>();
+
+    internal DbSet<ShopSyncState> ShopSyncStates => Set<ShopSyncState>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AdminAccount>(admin =>
@@ -60,6 +66,37 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             platformOrder.ToTable("PlatformOrders");
             platformOrder.HasKey(x => new { x.ErpId, x.PoNumber });
+        });
+
+        modelBuilder.Entity<Shop>(shop =>
+        {
+            shop.ToTable("Shops");
+            shop.HasKey(x => x.Sid);
+            shop.Property(x => x.Sid).ValueGeneratedNever();
+            shop.Property(x => x.Name).HasMaxLength(200);
+            shop.Property(x => x.Platform).HasMaxLength(64);
+            shop.Property(x => x.Region).HasMaxLength(64);
+            shop.Property(x => x.MemberId).HasMaxLength(128);
+            shop.Property(x => x.TokenError).HasMaxLength(500);
+            shop.HasIndex(x => new { x.Platform, x.IsTokenOk });
+        });
+
+        modelBuilder.Entity<ShopPlatform>(platform =>
+        {
+            platform.ToTable("ShopPlatforms");
+            platform.HasKey(x => x.Name);
+            platform.Property(x => x.Name).HasMaxLength(64);
+            platform.Property(x => x.DisplayName).HasMaxLength(100);
+            platform.Property(x => x.Icon).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<ShopSyncState>(state =>
+        {
+            state.ToTable("ShopSyncStates",
+                table => table.HasCheckConstraint("CK_ShopSyncStates_Singleton", "\"Id\" = 1"));
+            state.HasKey(x => x.Id);
+            state.Property(x => x.Id).ValueGeneratedNever();
+            state.Property(x => x.LastError).HasMaxLength(500);
         });
 
         modelBuilder.Entity<OrderLineRecord>(line =>
