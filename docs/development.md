@@ -96,6 +96,8 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 [前端检查](../.github/workflows/ci-web.yml)在 PR 与 `main` 推送时自动执行 lint、类型检查、单元测试与构建，四项互相独立：某项失败后其余仍会执行，一次运行即可看到全部结论。浏览器 job 只在 `workflow_dispatch` 时执行，手动运行失败仍会传递到结果汇总；失败时在运行页下载 `playwright-report-<attempt>` 产物，用 `pnpm --dir OpenERP.Web exec playwright show-report <下载的 zip>` 查看失败用例的截图与 trace。产物只在测试步骤失败时上传，运行被取消或超时会跳过该步骤，此时没有可下载的报告。
 
+`web-hosting` job 在 PR 与 `main` 推送时验证发布形态的 Web 宿主：按发布流水线执行 `aspire publish`，断言生成的 Compose 中 `web` 仍是无 YARP 变量、保留 `PORT`/`API_HTTP`/service discovery 与 `WEB_PORT` 回环映射的计算容器；再用 `aspire do build-web` 构建镜像，并只启动这一个容器验证宿主行为矩阵（深链接回退、缺失静态资源/非 GET 导航/保留路径 404、API 不可用 502）。失败时输出容器日志。该 job 是对已构建发布产物的契约测试，不替代 Aspire 编排；应用与依赖容器仍由既有 Aspire 测试夹具启动和清理，YAML 不编排这些容器。
+
 ## 管理员账户与会话
 
 系统只有一个管理员，用户名固定为 `admin`，不提供注册、员工权限或邮箱找回密码。姓名必填（最多 20 个字符），手机号可选（最多 20 个字符），邮箱可选并校验格式；手机号、邮箱仅作为个人资料。菜单中的资料与最近登录时间来自数据库，保存资料不会改变最近登录时间。
