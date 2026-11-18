@@ -43,9 +43,17 @@ jobs:
         run: aspire do push --non-interactive
 
       - name: 生成 Compose 和配置模板
+        run: aspire publish --non-interactive
+
+      - name: 改写 Release 附件的镜像地址
         run: |
-          aspire publish --non-interactive
-          docker compose -f OpenERP.AppHost/aspire-output/docker-compose.yaml config --no-interpolate --quiet
+          compose_file=OpenERP.AppHost/aspire-output/docker-compose.yaml
+          sed -E \
+            -e "s~^(    image:[[:blank:]]+[\"']?)docker\.io/~\1m.daocloud.io/docker.io/~" \
+            -e "s~^(    image:[[:blank:]]+[\"']?)ghcr\.io/~\1ghcr.nju.edu.cn/~" \
+            "$compose_file" > "$compose_file.tmp"
+          mv "$compose_file.tmp" "$compose_file"
+          docker compose -f "$compose_file" config --no-interpolate --quiet
 
       - name: 上传同一 Release 的部署附件
         env:

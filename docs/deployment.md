@@ -4,9 +4,7 @@ OpenERP 的部署目标为单台 Linux amd64 服务器。服务器需要 Docker 
 
 ## 获取产物
 
-发布 [GitHub Release](https://github.com/wxwerp-org/openerp/releases) 会触发发布工作流。等工作流成功后，从同一 Release 下载 `openerp-compose.tar.gz` 并解压到该版本的独立目录。附件中的 Compose 已引用该 Release 标签对应的 API、Web 和迁移镜像。部署时只需拉取镜像。
-
-若 GHCR 包为私有，用有包读取权限的 GitHub 账号登录。将具备 `read:packages` 权限的 classic PAT 通过标准输入传给 `docker login ghcr.io -u 用户名 --password-stdin`。组织要求 SSO 时，给该 PAT 授权。
+发布 [GitHub Release](https://github.com/wxwerp-org/openerp/releases) 会触发发布工作流。等工作流成功后，从同一 Release 下载 `openerp-compose.tar.gz` 并解压到该版本的独立目录。
 
 ## 运行配置
 
