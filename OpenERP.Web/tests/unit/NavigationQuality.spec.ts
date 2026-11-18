@@ -24,7 +24,10 @@ describe('导航与临时状态质量', () => {
   })
 
   it('Given 账户按钮 When 按方向下键和 Escape Then 打开菜单并聚焦首项后关闭归还焦点', async () => {
-    const wrapper = mount(AccountMenu, { props: { account: adminAccount }, attachTo: document.body })
+    const wrapper = mount(AccountMenu, {
+      props: { account: adminAccount },
+      attachTo: document.body,
+    })
     const button = wrapper.get('.account-button')
 
     await button.trigger('keydown', { key: 'ArrowDown' })
@@ -82,7 +85,10 @@ describe('导航与临时状态质量', () => {
     })
     await router.push('/shops')
     await router.isReady()
-    const wrapper = mount(AppShell, { props: { account: adminAccount }, global: { plugins: [router] } })
+    const wrapper = mount(AppShell, {
+      props: { account: adminAccount },
+      global: { plugins: [router] },
+    })
     await flushPromises()
 
     expect(wrapper.find('.nav-link.active').exists()).toBe(false)
@@ -99,7 +105,10 @@ describe('导航与临时状态质量', () => {
     })
     await router.push('/')
     await router.isReady()
-    const wrapper = mount(AppShell, { props: { account: adminAccount }, global: { plugins: [router] } })
+    const wrapper = mount(AppShell, {
+      props: { account: adminAccount },
+      global: { plugins: [router] },
+    })
     await flushPromises()
 
     expect(wrapper.get('.skip-link').attributes('href')).toBe('#main')

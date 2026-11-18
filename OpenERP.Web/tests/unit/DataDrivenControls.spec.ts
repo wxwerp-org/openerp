@@ -10,12 +10,16 @@ import UsersView from '../../src/views/UsersView.vue'
 describe('数据驱动控件与文档结构', () => {
   it('Given 实时销量 When 切换到昨日 Then 选中态真实更新', async () => {
     const wrapper = mount(RealtimeSalesCard)
-    const yesterday = wrapper.findAll('.mini-seg button').find((button) => button.text() === '昨日')!
+    const yesterday = wrapper
+      .findAll('.mini-seg button')
+      .find((button) => button.text() === '昨日')!
 
     await yesterday.trigger('click')
 
     expect(yesterday.classes()).toContain('active')
-    expect(wrapper.findAll('.mini-seg button').filter((button) => button.classes().includes('active'))).toHaveLength(1)
+    expect(
+      wrapper.findAll('.mini-seg button').filter((button) => button.classes().includes('active')),
+    ).toHaveLength(1)
   })
 
   it('Given 产品和订单分段控件 When 选择其他视图 Then 当前选项随状态变化', async () => {

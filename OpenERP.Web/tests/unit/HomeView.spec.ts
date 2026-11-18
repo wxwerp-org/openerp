@@ -67,7 +67,10 @@ describe('服务连接页', () => {
   })
 
   it('Given 后端返回消息 When 请求完成 Then 显示连接成功与响应内容', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ message: 'pong' })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ message: 'pong' })),
+    )
     wrapper = mountHome()
     await flushPromises()
 
@@ -115,9 +118,7 @@ describe('服务连接页', () => {
     let calls = 0
     const fetchMock = vi.fn(() => {
       calls += 1
-      return calls === 1
-        ? Promise.reject(new TypeError('offline'))
-        : retryResponse.promise
+      return calls === 1 ? Promise.reject(new TypeError('offline')) : retryResponse.promise
     })
     vi.stubGlobal('fetch', fetchMock)
     wrapper = mountHome()
@@ -144,11 +145,14 @@ describe('服务连接页', () => {
     const first = deferred<Response>()
     const second = deferred<Response>()
     let calls = 0
-    vi.stubGlobal('fetch', vi.fn(() => {
-      calls += 1
-      if (calls === 1) return Promise.reject(new TypeError('offline'))
-      return calls === 2 ? first.promise : second.promise
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        calls += 1
+        if (calls === 1) return Promise.reject(new TypeError('offline'))
+        return calls === 2 ? first.promise : second.promise
+      }),
+    )
     wrapper = mountHome()
     await flushPromises()
 

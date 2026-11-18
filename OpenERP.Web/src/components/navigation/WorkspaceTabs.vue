@@ -55,12 +55,33 @@ onUnmounted(() => document.removeEventListener('click', closeOnOutsideClick))
         </button>
       </div>
     </div>
-    <button id="tabAdd" ref="tabAdd" class="tab-add" type="button" title="打开页面" aria-label="打开页面" :aria-expanded="menuOpen" @click="menuOpen = !menuOpen">
+    <button
+      id="tabAdd"
+      ref="tabAdd"
+      class="tab-add"
+      type="button"
+      title="打开页面"
+      aria-label="打开页面"
+      :aria-expanded="menuOpen"
+      @click="menuOpen = !menuOpen"
+    >
       <AppIcon name="i-plus" />
     </button>
-    <div v-show="menuOpen" id="tabMenu" ref="tabMenu" class="tab-menu" @keydown.esc="menuOpen = false">
-      <RouterLink v-for="page in openPages" :key="page.id" :to="page.path" @click="menuOpen = false">
-        <span>{{ page.label }}</span><AppIcon name="i-chev-right" icon-class="ic-12" />
+    <div
+      v-show="menuOpen"
+      id="tabMenu"
+      ref="tabMenu"
+      class="tab-menu"
+      @keydown.esc="menuOpen = false"
+    >
+      <RouterLink
+        v-for="page in openPages"
+        :key="page.id"
+        :to="page.path"
+        @click="menuOpen = false"
+      >
+        <span>{{ page.label }}</span
+        ><AppIcon name="i-chev-right" icon-class="ic-12" />
       </RouterLink>
     </div>
   </div>

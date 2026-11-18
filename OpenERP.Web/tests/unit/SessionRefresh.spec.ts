@@ -24,13 +24,20 @@ function credentials(accessToken = 'access-1') {
 }
 
 function deferred<T>() {
-  let resolve: (value: T) => void = () => { throw new Error('尚未设置响应') }
-  const promise = new Promise<T>((finish) => { resolve = finish })
+  let resolve: (value: T) => void = () => {
+    throw new Error('尚未设置响应')
+  }
+  const promise = new Promise<T>((finish) => {
+    resolve = finish
+  })
   return { promise, resolve }
 }
 
 function requestsFrom(fetch: ReturnType<typeof vi.fn>) {
-  return fetch.mock.calls.map(([url, init]) => ({ url: String(url), init: init as RequestInit | undefined }))
+  return fetch.mock.calls.map(([url, init]) => ({
+    url: String(url),
+    init: init as RequestInit | undefined,
+  }))
 }
 
 describe('短期访问令牌与持久刷新会话', () => {
@@ -94,7 +101,10 @@ describe('短期访问令牌与持久刷新会话', () => {
     const login = requests.find(({ url }) => url === '/api/auth/login')
     const csrf = requests.find(({ url }) => url === '/api/auth/csrf')
     const business = requests.find(({ url }) => url === '/api/ping')
-    expect(JSON.parse(String(login?.init?.body))).toEqual({ username: 'admin', password: ' secret ' })
+    expect(JSON.parse(String(login?.init?.body))).toEqual({
+      username: 'admin',
+      password: ' secret ',
+    })
     expect(new Headers(login?.init?.headers).get('X-CSRF-TOKEN')).toBe('csrf-login')
     expect(new Headers(login?.init?.headers).has('Authorization')).toBe(false)
     expect(new Headers(csrf?.init?.headers).has('Authorization')).toBe(false)
@@ -129,7 +139,9 @@ describe('短期访问令牌与持久刷新会话', () => {
     expect(initialize?.init?.method).toBe('POST')
     expect(new Headers(initialize?.init?.headers).get('X-CSRF-TOKEN')).toBe('csrf-write')
     expect(new Headers(initialize?.init?.headers).has('Authorization')).toBe(false)
-    expect(new Headers(changePassword?.init?.headers).get('Authorization')).toBe('Bearer change-access')
+    expect(new Headers(changePassword?.init?.headers).get('Authorization')).toBe(
+      'Bearer change-access',
+    )
     expect(new Headers(changePassword?.init?.headers).has('X-CSRF-TOKEN')).toBe(false)
     expect(session.sessionState.value).toBe('anonymous')
   })
@@ -365,11 +377,13 @@ describe('短期访问令牌与持久刷新会话', () => {
         const identity = await session.apiRequest('/api/identity')
         identityResponse = await identity.json()
       }
-      expect(identityResponse).toEqual(completion === 'new-login'
-        ? { authorization: 'Bearer new-login-access' }
-        : null)
+      expect(identityResponse).toEqual(
+        completion === 'new-login' ? { authorization: 'Bearer new-login-access' } : null,
+      )
       expect(session.account.value === null).toBe(completion !== 'new-login')
-      expect(session.sessionState.value).toBe(completion === 'new-login' ? 'authenticated' : 'anonymous')
+      expect(session.sessionState.value).toBe(
+        completion === 'new-login' ? 'authenticated' : 'anonymous',
+      )
     },
   )
 
@@ -448,7 +462,10 @@ describe('短期访问令牌与持久刷新会话', () => {
     const requests = requestsFrom(fetch)
     expect(requests.filter(({ url }) => url === '/api/auth/refresh')).toHaveLength(1)
     expect(requests.filter(({ url }) => url === '/api/ping')).toHaveLength(1)
-    expect(new Headers(requests.find(({ url }) => url === '/api/ping')?.init?.headers).get('Authorization'))
-      .toBe('Bearer access-after-background')
+    expect(
+      new Headers(requests.find(({ url }) => url === '/api/ping')?.init?.headers).get(
+        'Authorization',
+      ),
+    ).toBe('Bearer access-after-background')
   })
 })

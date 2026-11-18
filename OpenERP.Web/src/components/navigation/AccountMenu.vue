@@ -21,7 +21,8 @@ function choose(action: 'profile' | 'password' | 'settings' | 'logout'): void {
 
 function closeOnOutsideClick(event: MouseEvent): void {
   const target = event.target as Node
-  if (!accountButton.value?.contains(target) && !accountMenu.value?.contains(target)) open.value = false
+  if (!accountButton.value?.contains(target) && !accountMenu.value?.contains(target))
+    open.value = false
 }
 
 function openAndFocusFirst(): void {
@@ -83,16 +84,50 @@ onUnmounted(() => document.removeEventListener('click', closeOnOutsideClick))
     </button>
   </div>
 
-  <div v-show="open" id="accountMenu" ref="accountMenu" class="account-menu" role="menu" @keydown="handleMenuKeydown">
+  <div
+    v-show="open"
+    id="accountMenu"
+    ref="accountMenu"
+    class="account-menu"
+    role="menu"
+    @keydown="handleMenuKeydown"
+  >
     <div class="account-menu-head">
       <span class="avatar"><AppIcon name="i-avatar" /></span>
-      <div class="account-menu-user"><b>{{ account.name }}</b><span>{{ account.email || account.username }}</span></div>
+      <div class="account-menu-user">
+        <b>{{ account.name }}</b
+        ><span>{{ account.email || account.username }}</span>
+      </div>
     </div>
-    <hr class="account-menu-sep">
-    <button type="button" role="menuitem" data-account-action="profile" @click="choose('profile')"><AppIcon name="i-user" />修改个人信息</button>
-    <button type="button" role="menuitem" data-account-action="password" @click="choose('password')"><AppIcon name="i-lock" />修改密码</button>
-    <button type="button" role="menuitem" data-account-action="settings" @click="choose('settings')"><AppIcon name="i-settings" />系统设置</button>
-    <hr class="account-menu-sep">
-    <button type="button" role="menuitem" class="danger" data-account-action="logout" @click="choose('logout')"><AppIcon name="i-logout" />退出登录</button>
+    <hr class="account-menu-sep" />
+    <button type="button" role="menuitem" data-account-action="profile" @click="choose('profile')">
+      <AppIcon name="i-user" />修改个人信息
+    </button>
+    <button
+      type="button"
+      role="menuitem"
+      data-account-action="password"
+      @click="choose('password')"
+    >
+      <AppIcon name="i-lock" />修改密码
+    </button>
+    <button
+      type="button"
+      role="menuitem"
+      data-account-action="settings"
+      @click="choose('settings')"
+    >
+      <AppIcon name="i-settings" />系统设置
+    </button>
+    <hr class="account-menu-sep" />
+    <button
+      type="button"
+      role="menuitem"
+      class="danger"
+      data-account-action="logout"
+      @click="choose('logout')"
+    >
+      <AppIcon name="i-logout" />退出登录
+    </button>
   </div>
 </template>

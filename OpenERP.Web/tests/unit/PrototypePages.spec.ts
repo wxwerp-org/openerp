@@ -56,7 +56,9 @@ describe('原型列表与配置组件', () => {
     const wrapper = mount(BusinessConfigView)
 
     await wrapper.get('[data-settings-group="multiplatform"]').trigger('click')
-    const shopButton = wrapper.findAll('[data-settings-item]').find((button) => button.text() === '店铺设置')
+    const shopButton = wrapper
+      .findAll('[data-settings-item]')
+      .find((button) => button.text() === '店铺设置')
     expect(shopButton).toBeDefined()
     await shopButton!.trigger('click')
 

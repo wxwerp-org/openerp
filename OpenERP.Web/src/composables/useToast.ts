@@ -7,7 +7,9 @@ export function useToast(): { toast: Ref<string>; showToast: (message: string) =
   function showToast(message: string): void {
     toast.value = message
     if (timer) clearTimeout(timer)
-    timer = setTimeout(() => { toast.value = '' }, 2200)
+    timer = setTimeout(() => {
+      toast.value = ''
+    }, 2200)
   }
 
   onUnmounted(() => {

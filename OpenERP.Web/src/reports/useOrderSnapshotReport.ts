@@ -1,6 +1,10 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { apiRequest } from '../account/session'
-import { parseOrderSnapshotReport, type OrderSnapshotReport, type ReportShop } from './orderSnapshot'
+import {
+  parseOrderSnapshotReport,
+  type OrderSnapshotReport,
+  type ReportShop,
+} from './orderSnapshot'
 
 export type ReportStatus = 'loading' | 'success' | 'error'
 
@@ -67,9 +71,8 @@ export function useOrderSnapshotReport() {
     } catch (cause) {
       if (!isCurrentRequest(requestId) || controller.signal.aborted) return
       status.value = 'error'
-      errorMessage.value = cause instanceof Error
-        ? cause.message
-        : '无法加载商品量报表，请稍后重试。'
+      errorMessage.value =
+        cause instanceof Error ? cause.message : '无法加载商品量报表，请稍后重试。'
     } finally {
       if (isCurrentRequest(requestId)) activeController = null
     }

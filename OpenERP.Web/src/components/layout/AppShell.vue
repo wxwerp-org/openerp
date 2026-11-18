@@ -27,11 +27,15 @@ const activePage = computed<string | null>(() => {
   return navigationPages.find((page) => page.path === route.path)?.id ?? null
 })
 
-watch(activePage, (page) => {
-  if (!page || openTabs.value.some((tab) => tab.id === page)) return
-  const current = workspacePages.find((item) => item.id === page)
-  if (current) openTabs.value.push(current)
-}, { immediate: true })
+watch(
+  activePage,
+  (page) => {
+    if (!page || openTabs.value.some((tab) => tab.id === page)) return
+    const current = workspacePages.find((item) => item.id === page)
+    if (current) openTabs.value.push(current)
+  },
+  { immediate: true },
+)
 
 function navigate(page: string): void {
   const target = navigationPages.find((item) => item.id === page)
@@ -49,7 +53,9 @@ function closeTab(page: string): void {
   }
 }
 
-async function handleAccountAction(action: 'profile' | 'password' | 'settings' | 'logout'): Promise<void> {
+async function handleAccountAction(
+  action: 'profile' | 'password' | 'settings' | 'logout',
+): Promise<void> {
   if (action === 'settings') {
     navigate('business')
     return
@@ -61,7 +67,11 @@ async function handleAccountAction(action: 'profile' | 'password' | 'settings' |
     try {
       await logout()
     } catch (error) {
-      showToast(error instanceof Error && !(error instanceof TypeError) ? error.message : '退出登录失败，请稍后重试。')
+      showToast(
+        error instanceof Error && !(error instanceof TypeError)
+          ? error.message
+          : '退出登录失败，请稍后重试。',
+      )
       accountMenu.value?.focusTrigger()
     } finally {
       logoutPending.value = false
@@ -85,12 +95,27 @@ async function handleAccountAction(action: 'profile' | 'password' | 'settings' |
     <div class="app-main">
       <header class="topbar">
         <WorkspaceTabs :items="openTabs" :active-page="activePage ?? ''" @close="closeTab" />
-        <AccountMenu ref="accountMenu" :account="account" @action="handleAccountAction" @notice="showToast('原型演示：通知')" />
+        <AccountMenu
+          ref="accountMenu"
+          :account="account"
+          @action="handleAccountAction"
+          @notice="showToast('原型演示：通知')"
+        />
       </header>
       <main id="main" class="main" tabindex="-1">
         <RouterView />
-        <ProfileDialog :open="profileOpen" :account="account" @close="profileOpen = false" @closed="accountMenu?.focusTrigger()" @feedback="showToast" />
-        <PasswordDialog :open="passwordOpen" @close="passwordOpen = false" @closed="accountMenu?.focusTrigger()" />
+        <ProfileDialog
+          :open="profileOpen"
+          :account="account"
+          @close="profileOpen = false"
+          @closed="accountMenu?.focusTrigger()"
+          @feedback="showToast"
+        />
+        <PasswordDialog
+          :open="passwordOpen"
+          @close="passwordOpen = false"
+          @closed="accountMenu?.focusTrigger()"
+        />
       </main>
     </div>
   </div>

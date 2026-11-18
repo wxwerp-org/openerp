@@ -9,7 +9,10 @@ import { useToast } from '../composables/useToast'
 type SettingsGroup = { title: string; items: string[] }
 
 const groups: Record<string, SettingsGroup> = {
-  base: { title: '基础', items: ['基础', 'ERP 接入', '箱规信息', '飞书授权', '代理商', '制造商', '公司主体', '备货主体'] },
+  base: {
+    title: '基础',
+    items: ['基础', 'ERP 接入', '箱规信息', '飞书授权', '代理商', '制造商', '公司主体', '备货主体'],
+  },
   approval: { title: '审批', items: ['审批设置', '审批流程', '审批模板'] },
   product: { title: '产品', items: ['产品设置', '分类属性', '品牌管理', '产品标签'] },
   sales: { title: '销售', items: ['订单设置', 'Listing设置', '客服邮箱'] },
@@ -43,9 +46,9 @@ function showEditToast(): void {
 </script>
 
 <template>
-  <section class="page page-business active" id="page-business">
+  <section id="page-business" class="page page-business active">
     <div class="business-wrap">
-      <div class="settings-first" id="settingsFirst">
+      <div id="settingsFirst" class="settings-first">
         <button
           v-for="(item, key) in groups"
           :key="key"
@@ -58,14 +61,22 @@ function showEditToast(): void {
           {{ item.title }}
         </button>
         <div class="settings-first-divider"></div>
-        <button class="settings-first-item user-entry" type="button" @click="$router.push('/users')"><AppIcon name="i-user" />用户管理</button>
+        <button
+          class="settings-first-item user-entry"
+          type="button"
+          @click="$router.push('/users')"
+        >
+          <AppIcon name="i-user" />用户管理
+        </button>
       </div>
       <div class="settings-second">
         <div class="settings-second-head">
           <h1 id="settingsSecondTitle">{{ group.title }}</h1>
-          <button class="settings-help" type="button" title="帮助" aria-label="帮助"><AppIcon name="i-help" /></button>
+          <button class="settings-help" type="button" title="帮助" aria-label="帮助">
+            <AppIcon name="i-help" />
+          </button>
         </div>
-        <div class="settings-second-menu" id="settingsSecondMenu">
+        <div id="settingsSecondMenu" class="settings-second-menu">
           <button
             v-for="item in group.items"
             :key="item"
@@ -79,11 +90,16 @@ function showEditToast(): void {
           </button>
         </div>
       </div>
-      <div class="settings-content" id="settingsContent">
+      <div id="settingsContent" class="settings-content">
         <div class="settings-content-inner config-fade">
           <BaseConfig v-if="showBase" @edit="showEditToast" />
           <ErpConfig v-else-if="activeGroup === 'base' && activeItem === 'ERP 接入'" />
-          <GenericConfig v-else :group-title="group.title" :item="activeItem" @edit="showEditToast" />
+          <GenericConfig
+            v-else
+            :group-title="group.title"
+            :item="activeItem"
+            @edit="showEditToast"
+          />
         </div>
       </div>
     </div>

@@ -42,7 +42,8 @@ const localGeneratedAt = computed(() => {
   return generatedAt ? new Date(generatedAt).toLocaleString('zh-CN') : ''
 })
 
-const scopeText = '按本地来源订单计数；件数为当前商品行数量合计，包含禁用/追加行。不判断付款或另行扣退款；同步未返回的旧记录可能仍保留。'
+const scopeText =
+  '按本地来源订单计数；件数为当前商品行数量合计，包含禁用/追加行。不判断付款或另行扣退款；同步未返回的旧记录可能仍保留。'
 
 const pageCount = computed(() => Math.max(report.value?.pageCount ?? 1, 1))
 const paginationDisabled = computed(() => status.value === 'loading')
@@ -50,7 +51,12 @@ const pagerItems = computed<PagerItem[]>(() =>
   buildPageList(currentPage.value, pageCount.value).map((item, index) =>
     item === 'ellipsis'
       ? { key: `ellipsis-${index}`, label: '…', page: null, current: false }
-      : { key: `page-${item}`, label: String(item), page: item, current: item === currentPage.value },
+      : {
+          key: `page-${item}`,
+          label: String(item),
+          page: item,
+          current: item === currentPage.value,
+        },
   ),
 )
 
@@ -97,14 +103,19 @@ function submitJumpPage(): void {
 </script>
 
 <template>
-  <section class="page page-order-snapshot-report active" aria-labelledby="order-snapshot-report-title">
+  <section
+    class="page page-order-snapshot-report active"
+    aria-labelledby="order-snapshot-report-title"
+  >
     <h1 id="order-snapshot-report-title" class="visually-hidden">商品量报表</h1>
 
     <div class="list-searchbar report-searchbar">
       <span class="field-box report-select">
         <select v-model="platform" aria-label="平台筛选" @change="updateFilters">
           <option value="">全部平台</option>
-          <option v-for="item in availablePlatforms" :key="item" :value="item">{{ platformLabel(item) }}</option>
+          <option v-for="item in availablePlatforms" :key="item" :value="item">
+            {{ platformLabel(item) }}
+          </option>
         </select>
         <AppIcon name="i-chev-down" />
       </span>
@@ -123,17 +134,21 @@ function submitJumpPage(): void {
               :value="shop.key"
               :disabled="!selectedShopKeys.includes(shop.key) && selectedShopKeys.length >= 100"
               @change="updateFilters"
-            >
+            />
             <span>{{ platformLabel(shop.platform) }} · {{ shop.label }}</span>
           </label>
           <p v-if="availableShops.length === 0" class="report-shop-empty">暂无可选店铺</p>
         </div>
       </details>
 
-      <button class="btn soft" type="button" :disabled="status === 'loading'" @click="resetFilters">清除筛选</button>
+      <button class="btn soft" type="button" :disabled="status === 'loading'" @click="resetFilters">
+        清除筛选
+      </button>
 
       <span class="report-generated-at">
-        <template v-if="report">查询时间：<time :datetime="report.generatedAtUtc">{{ localGeneratedAt }}</time></template>
+        <template v-if="report"
+          >查询时间：<time :datetime="report.generatedAtUtc">{{ localGeneratedAt }}</time></template
+        >
         <template v-else>查询本地来源订单的当前商品行快照</template>
       </span>
     </div>
@@ -142,13 +157,22 @@ function submitJumpPage(): void {
       <div class="report-toolbar-left">
         <div class="report-metric">
           <span class="report-metric-label">本地订单数</span>
-          <strong class="report-metric-value" aria-label="订单总数">{{ report ? formatQuantity(report.summary.orderCount) : '—' }}</strong>
+          <strong class="report-metric-value" aria-label="订单总数">{{
+            report ? formatQuantity(report.summary.orderCount) : '—'
+          }}</strong>
         </div>
         <div class="report-metric">
           <span class="report-metric-label">商品件数</span>
-          <strong class="report-metric-value" aria-label="商品件数">{{ report ? formatQuantity(report.summary.itemQuantity) : '—' }}</strong>
+          <strong class="report-metric-value" aria-label="商品件数">{{
+            report ? formatQuantity(report.summary.itemQuantity) : '—'
+          }}</strong>
         </div>
-        <p class="notice report-scope" role="note" aria-label="报表统计口径" :title="`统计口径：${scopeText}`">
+        <p
+          class="notice report-scope"
+          role="note"
+          aria-label="报表统计口径"
+          :title="`统计口径：${scopeText}`"
+        >
           <AppIcon name="i-info" icon-class="ic-12" />
           <span><strong class="report-scope-title">统计口径</strong> {{ scopeText }}</span>
         </p>
@@ -176,7 +200,9 @@ function submitJumpPage(): void {
           <strong class="notice-title">{{ errorMessage }}</strong>
           <p class="notice-desc">请检查连接后重试。</p>
         </div>
-        <button class="btn" type="button" aria-label="重试" @click="load(currentPage, pageSize)">重试</button>
+        <button class="btn" type="button" aria-label="重试" @click="load(currentPage, pageSize)">
+          重试
+        </button>
       </div>
 
       <div class="table-box report-panel report-groups-panel">
@@ -187,12 +213,14 @@ function submitJumpPage(): void {
         <div class="table-area">
           <div class="table-scroll is-y" role="region" tabindex="0" aria-label="分店汇总表格">
             <table class="grid-table report-groups-table">
-              <caption class="visually-hidden">分店订单与商品件数汇总</caption>
+              <caption class="visually-hidden">
+                分店订单与商品件数汇总
+              </caption>
               <colgroup>
-                <col style="width:16%">
-                <col style="width:28%">
-                <col style="width:28%">
-                <col style="width:28%">
+                <col style="width: 16%" />
+                <col style="width: 28%" />
+                <col style="width: 28%" />
+                <col style="width: 28%" />
               </colgroup>
               <thead>
                 <tr>
@@ -226,16 +254,18 @@ function submitJumpPage(): void {
         <div class="table-area">
           <div class="table-scroll is-y" role="region" tabindex="0" aria-label="订单明细表格">
             <table class="grid-table is-wrap report-orders-table">
-              <caption class="visually-hidden">本地来源订单分页明细</caption>
+              <caption class="visually-hidden">
+                本地来源订单分页明细
+              </caption>
               <colgroup>
-                <col style="width:10%">
-                <col style="width:14%">
-                <col style="width:16%">
-                <col style="width:22%">
-                <col style="width:10%">
-                <col style="width:8%">
-                <col style="width:9%">
-                <col style="width:11%">
+                <col style="width: 10%" />
+                <col style="width: 14%" />
+                <col style="width: 16%" />
+                <col style="width: 22%" />
+                <col style="width: 10%" />
+                <col style="width: 8%" />
+                <col style="width: 9%" />
+                <col style="width: 11%" />
               </colgroup>
               <thead>
                 <tr>
@@ -257,7 +287,11 @@ function submitJumpPage(): void {
                     <td>{{ order.number }}</td>
                     <td>
                       <span v-if="order.platformOrders.length">
-                        {{ order.platformOrders.map((platformOrder) => platformOrder.number).join('、') }}
+                        {{
+                          order.platformOrders
+                            .map((platformOrder) => platformOrder.number)
+                            .join('、')
+                        }}
                       </span>
                       <span v-else>—</span>
                     </td>
@@ -276,16 +310,26 @@ function submitJumpPage(): void {
                       </button>
                     </td>
                   </tr>
-                  <tr v-if="expandedOrderIds.has(orderIdentity(order))" class="report-order-details">
+                  <tr
+                    v-if="expandedOrderIds.has(orderIdentity(order))"
+                    class="report-order-details"
+                  >
                     <td colspan="8">
                       <div class="report-detail-sections">
                         <section>
                           <h3>平台订单参考号（不分配商品行）</h3>
                           <ul v-if="order.platformOrders.length">
-                            <li v-for="platformOrder in order.platformOrders" :key="platformOrder.number">
+                            <li
+                              v-for="platformOrder in order.platformOrders"
+                              :key="platformOrder.number"
+                            >
                               <strong>{{ platformOrder.number }}</strong>
-                              <span v-if="platformOrder.statusCode">状态码：{{ platformOrder.statusCode }}</span>
-                              <span v-if="platformOrder.statusText">状态：{{ platformOrder.statusText }}</span>
+                              <span v-if="platformOrder.statusCode"
+                                >状态码：{{ platformOrder.statusCode }}</span
+                              >
+                              <span v-if="platformOrder.statusText"
+                                >状态：{{ platformOrder.statusText }}</span
+                              >
                             </li>
                           </ul>
                           <p v-else>无平台订单参考号</p>
@@ -294,19 +338,51 @@ function submitJumpPage(): void {
                           <h3>当前商品行</h3>
                           <ul v-if="order.items.length">
                             <li v-for="item in order.items" :key="item.lineId">
-                              <span>{{ item.skuCode || item.skuId || item.productId || '未提供商品编码' }}</span>
+                              <span>{{
+                                item.skuCode || item.skuId || item.productId || '未提供商品编码'
+                              }}</span>
                               <strong>{{ formatQuantity(item.quantity) }} 件</strong>
-                              <span :class="item.disabled === true ? 'tag gray' : item.disabled === false ? 'tag green' : 'tag amber'">
-                                {{ item.disabled === true ? '禁用' : item.disabled === false ? '未禁用' : '禁用状态未知' }}
+                              <span
+                                :class="
+                                  item.disabled === true
+                                    ? 'tag gray'
+                                    : item.disabled === false
+                                      ? 'tag green'
+                                      : 'tag amber'
+                                "
+                              >
+                                {{
+                                  item.disabled === true
+                                    ? '禁用'
+                                    : item.disabled === false
+                                      ? '未禁用'
+                                      : '禁用状态未知'
+                                }}
                               </span>
-                              <span :class="item.appended === true ? 'tag amber' : item.appended === false ? 'tag gray' : 'tag amber'">
-                                {{ item.appended === true ? '追加' : item.appended === false ? '未追加' : '追加状态未知' }}
+                              <span
+                                :class="
+                                  item.appended === true
+                                    ? 'tag amber'
+                                    : item.appended === false
+                                      ? 'tag gray'
+                                      : 'tag amber'
+                                "
+                              >
+                                {{
+                                  item.appended === true
+                                    ? '追加'
+                                    : item.appended === false
+                                      ? '未追加'
+                                      : '追加状态未知'
+                                }}
                               </span>
                             </li>
                           </ul>
                           <p v-else>无商品行</p>
                         </section>
-                        <p class="report-order-total">本地订单件数 {{ formatQuantity(order.itemQuantity) }}</p>
+                        <p class="report-order-total">
+                          本地订单件数 {{ formatQuantity(order.itemQuantity) }}
+                        </p>
                       </div>
                     </td>
                   </tr>
@@ -316,7 +392,13 @@ function submitJumpPage(): void {
           </div>
           <div v-if="!report?.orders.length" class="empty-overlay">
             <span>
-              {{ status === 'loading' ? '正在加载…' : status === 'error' ? '报表加载失败' : '暂无符合条件的本地订单' }}
+              {{
+                status === 'loading'
+                  ? '正在加载…'
+                  : status === 'error'
+                    ? '报表加载失败'
+                    : '暂无符合条件的本地订单'
+              }}
             </span>
           </div>
         </div>
@@ -333,7 +415,9 @@ function submitJumpPage(): void {
           </button>
           <template v-for="item in pagerItems" :key="item.key">
             <span v-if="item.page === null" class="page-ellipsis">{{ item.label }}</span>
-            <span v-else-if="item.current" class="page-num" aria-current="page">{{ item.label }}</span>
+            <span v-else-if="item.current" class="page-num" aria-current="page">{{
+              item.label
+            }}</span>
             <button
               v-else
               class="page-btn"
@@ -361,7 +445,9 @@ function submitJumpPage(): void {
               aria-label="每页条数"
               @change="changePageSize"
             >
-              <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
+              <option v-for="size in pageSizeOptions" :key="size" :value="size">
+                {{ size }}条/页
+              </option>
             </select>
             <AppIcon name="i-chev-down" />
           </label>
@@ -373,7 +459,7 @@ function submitJumpPage(): void {
               inputmode="numeric"
               @keyup.enter="submitJumpPage"
               @blur="submitJumpPage"
-            >页
+            />页
           </span>
         </footer>
       </div>

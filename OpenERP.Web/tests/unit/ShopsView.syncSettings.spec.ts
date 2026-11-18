@@ -78,11 +78,14 @@ function configureFetch(options: FetchOptions = {}) {
       return jsonResponse({ initialized: true })
     }
     if (url === '/api/auth/refresh') {
-      return options.refresh?.() ?? jsonResponse({
-        accessToken: 'schedule-access',
-        accessTokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-        account: adminAccount,
-      })
+      return (
+        options.refresh?.() ??
+        jsonResponse({
+          accessToken: 'schedule-access',
+          accessTokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+          account: adminAccount,
+        })
+      )
     }
     if (url === '/api/auth/csrf') {
       return jsonResponse({ requestToken: 'schedule-token' })
@@ -102,7 +105,10 @@ function configureFetch(options: FetchOptions = {}) {
     }
     if (url === '/api/erp/order-sync-settings' && init?.method === 'PUT') {
       const headers = new Headers(init.headers)
-      if (headers.get('Authorization') !== 'Bearer schedule-access' || headers.has('X-CSRF-TOKEN')) {
+      if (
+        headers.get('Authorization') !== 'Bearer schedule-access' ||
+        headers.has('X-CSRF-TOKEN')
+      ) {
         return jsonResponse({ title: '认证请求头不符合约定' }, 400)
       }
       const body = JSON.parse(String(init.body)) as PutBody
@@ -133,7 +139,9 @@ async function mountShops(): Promise<VueWrapper> {
 }
 
 function findButton(wrapper: VueWrapper, text: string) {
-  return wrapper.findAll('.sync-settings-card button').find((button) => button.text().includes(text))
+  return wrapper
+    .findAll('.sync-settings-card button')
+    .find((button) => button.text().includes(text))
 }
 
 async function setScheduleEnabled(wrapper: VueWrapper, enabled: boolean): Promise<void> {
@@ -166,12 +174,12 @@ describe('店铺定时同步设置', () => {
     expect(wrapper.text()).toContain('定时同步')
     expect(wrapper.text()).toContain('每 30 分钟尝试一轮')
     expect(wrapper.text()).toContain('未启用')
-    const settingsCalls = fetchMock.mock.calls.filter(([input]) =>
-      String(input) === '/api/erp/order-sync-settings',
+    const settingsCalls = fetchMock.mock.calls.filter(
+      ([input]) => String(input) === '/api/erp/order-sync-settings',
     )
     expect(settingsCalls).toHaveLength(1)
-    const shopCalls = fetchMock.mock.calls.filter(([input]) =>
-      String(input) === '/api/erp/order-sync-settings/shops',
+    const shopCalls = fetchMock.mock.calls.filter(
+      ([input]) => String(input) === '/api/erp/order-sync-settings/shops',
     )
     expect(shopCalls).toHaveLength(1)
   })
@@ -239,32 +247,35 @@ describe('店铺定时同步设置', () => {
         return new Response(null, { status: 401 })
       },
       refresh: () => {
-        const response = refreshStatuses.length === 0
-          ? jsonResponse({
-            accessToken: 'schedule-access',
-            accessTokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
-            account: adminAccount,
-          })
-          : new Response(null, { status: 401 })
+        const response =
+          refreshStatuses.length === 0
+            ? jsonResponse({
+                accessToken: 'schedule-access',
+                accessTokenExpiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+                account: adminAccount,
+              })
+            : new Response(null, { status: 401 })
         refreshStatuses.push(response.status)
         return response
       },
     })
     wrapper = await mountShops()
 
-    const settingsRequests = fetchMock.mock.calls.filter(([input]) =>
-      String(input) === '/api/erp/order-sync-settings',
+    const settingsRequests = fetchMock.mock.calls.filter(
+      ([input]) => String(input) === '/api/erp/order-sync-settings',
     )
-    const requestIndexes = fetchMock.mock.calls.map(([input], index) =>
-      String(input) === '/api/auth/refresh' ? index : -1,
-    ).filter((index) => index >= 0)
-    const settingsRequestIndex = fetchMock.mock.calls.findIndex(([input]) =>
-      String(input) === '/api/erp/order-sync-settings',
+    const requestIndexes = fetchMock.mock.calls
+      .map(([input], index) => (String(input) === '/api/auth/refresh' ? index : -1))
+      .filter((index) => index >= 0)
+    const settingsRequestIndex = fetchMock.mock.calls.findIndex(
+      ([input]) => String(input) === '/api/erp/order-sync-settings',
     )
     expect(sessionStateWhenSettingsRequested).toBe('authenticated')
     expect(refreshStatuses).toEqual([200, 401])
     expect(settingsRequests).toHaveLength(1)
-    expect(new Headers(settingsRequests[0]?.[1]?.headers).get('Authorization')).toBe('Bearer schedule-access')
+    expect(new Headers(settingsRequests[0]?.[1]?.headers).get('Authorization')).toBe(
+      'Bearer schedule-access',
+    )
     expect(requestIndexes).toHaveLength(2)
     expect(requestIndexes[0]).toBeLessThan(settingsRequestIndex)
     expect(requestIndexes[1]).toBeGreaterThan(settingsRequestIndex)
@@ -377,7 +388,10 @@ describe('店铺定时同步设置', () => {
     expect(shopCalls).toBe(2)
     expect(wrapper.text()).toContain('表格店铺')
     expect(
-      (wrapper.get('.sync-settings-card input[aria-label="启用定时同步"]').element as HTMLInputElement).checked,
+      (
+        wrapper.get('.sync-settings-card input[aria-label="启用定时同步"]')
+          .element as HTMLInputElement
+      ).checked,
     ).toBe(true)
   })
 
@@ -412,9 +426,7 @@ describe('店铺定时同步设置', () => {
       settings: { enabled: true, shopSids: [42], intervalMinutes: 30 },
       getTask: () => {
         statusReads += 1
-        return statusReads === 1
-          ? new Response(null, { status: 204 })
-          : jsonResponse(runningTask)
+        return statusReads === 1 ? new Response(null, { status: 204 }) : jsonResponse(runningTask)
       },
     })
     wrapper = await mountShops()
@@ -441,9 +453,7 @@ describe('店铺定时同步设置', () => {
       settings: { enabled: false, shopSids: [], intervalMinutes: 30 },
       getTask: () => {
         statusReads += 1
-        return statusReads === 1
-          ? new Response(null, { status: 204 })
-          : jsonResponse(runningTask)
+        return statusReads === 1 ? new Response(null, { status: 204 }) : jsonResponse(runningTask)
       },
       putSettings: (body) => jsonResponse({ ...body, intervalMinutes: 30 }),
     })
@@ -529,7 +539,9 @@ describe('店铺定时同步设置', () => {
 
     // Then 设置可读取，但选店、开关和保存都要求先配置 Token。
     expect(wrapper.text()).toContain('配置私有 ERP AccessToken 后可选择店铺。')
-    expect(wrapper.get('.sync-settings-card input[aria-label="启用定时同步"]').attributes('disabled')).toBeDefined()
+    expect(
+      wrapper.get('.sync-settings-card input[aria-label="启用定时同步"]').attributes('disabled'),
+    ).toBeDefined()
     expect(findButton(wrapper, '保存')?.attributes('disabled')).toBeDefined()
   })
 })

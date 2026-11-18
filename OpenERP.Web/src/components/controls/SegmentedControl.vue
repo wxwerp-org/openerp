@@ -1,15 +1,18 @@
 <script setup lang="ts">
-const props = withDefaults(defineProps<{
-  options: string[]
-  modelValue: string
-  groupClass?: string
-  buttonClass?: string
-  ariaLabel?: string
-}>(), {
-  groupClass: 'mini-seg',
-  buttonClass: '',
-  ariaLabel: '视图切换',
-})
+const props = withDefaults(
+  defineProps<{
+    options: string[]
+    modelValue: string
+    groupClass?: string
+    buttonClass?: string
+    ariaLabel?: string
+  }>(),
+  {
+    groupClass: 'mini-seg',
+    buttonClass: '',
+    ariaLabel: '视图切换',
+  },
+)
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]

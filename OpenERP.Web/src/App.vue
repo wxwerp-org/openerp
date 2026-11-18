@@ -37,8 +37,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <RouterView v-if="(route.name === 'login' && sessionState === 'anonymous') || (route.name === 'initialize' && sessionState === 'uninitialized')" />
-  <AppShell v-else-if="account && routeReady && route.name !== 'login' && route.name !== 'initialize'" :account="account" />
+  <RouterView
+    v-if="
+      (route.name === 'login' && sessionState === 'anonymous') ||
+      (route.name === 'initialize' && sessionState === 'uninitialized')
+    "
+  />
+  <AppShell
+    v-else-if="account && routeReady && route.name !== 'login' && route.name !== 'initialize'"
+    :account="account"
+  />
   <AuthLayout v-else>
     <template v-if="sessionState === 'unavailable'">
       <p role="alert">无法验证登录状态，请稍后重试。</p>

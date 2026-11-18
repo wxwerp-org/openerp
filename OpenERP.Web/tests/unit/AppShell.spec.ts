@@ -51,7 +51,20 @@ describe('原型应用公共框架', () => {
       '用户管理',
     ])
     expect(wrapper.get('.page-tab.active .tab-label').text()).toBe('用户管理')
-    for (const label of ['产品', '销售', 'FBA', '采购', '仓库', '物流', '广告', '客服', '财务', '统计', '工具', '设置']) {
+    for (const label of [
+      '产品',
+      '销售',
+      'FBA',
+      '采购',
+      '仓库',
+      '物流',
+      '广告',
+      '客服',
+      '财务',
+      '统计',
+      '工具',
+      '设置',
+    ]) {
       expect(wrapper.get('.side-nav').text()).toContain(label)
     }
     expect(wrapper.get('.account-button').text()).toContain(adminAccount.name)

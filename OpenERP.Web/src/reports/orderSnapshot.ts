@@ -65,63 +65,87 @@ function isFiniteNumber(value: unknown): value is number {
 
 function isShop(value: unknown): value is ReportShop {
   if (!isRecord(value)) return false
-  return typeof value.source === 'string' &&
+  return (
+    typeof value.source === 'string' &&
     typeof value.platform === 'string' &&
     typeof value.shopId === 'string' &&
     typeof value.key === 'string' &&
     typeof value.label === 'string'
+  )
 }
 
 function isPlatformOrder(value: unknown): value is ReportPlatformOrder {
   if (!isRecord(value)) return false
-  return typeof value.number === 'string' &&
+  return (
+    typeof value.number === 'string' &&
     isNullableString(value.statusCode) &&
     isNullableString(value.statusText)
+  )
 }
 
 function isItem(value: unknown): value is ReportItem {
   if (!isRecord(value)) return false
-  return typeof value.lineId === 'string' &&
+  return (
+    typeof value.lineId === 'string' &&
     isNullableString(value.productId) &&
     isNullableString(value.skuId) &&
     isNullableString(value.skuCode) &&
     isFiniteNumber(value.quantity) &&
     (typeof value.disabled === 'boolean' || value.disabled === null) &&
     (typeof value.appended === 'boolean' || value.appended === null)
+  )
 }
 
 function isOrder(value: unknown): value is ReportOrder {
   if (!isRecord(value)) return false
-  return typeof value.id === 'string' &&
+  return (
+    typeof value.id === 'string' &&
     typeof value.number === 'string' &&
     isShop(value.shop) &&
     typeof value.status === 'string' &&
-    Array.isArray(value.platformOrders) && value.platformOrders.every(isPlatformOrder) &&
-    Array.isArray(value.items) && value.items.every(isItem) &&
+    Array.isArray(value.platformOrders) &&
+    value.platformOrders.every(isPlatformOrder) &&
+    Array.isArray(value.items) &&
+    value.items.every(isItem) &&
     isFiniteNumber(value.itemQuantity)
+  )
 }
 
 function isGroup(value: unknown): value is OrderSnapshotReport['groups'][number] {
   if (!isRecord(value)) return false
-  return isShop(value.shop) &&
-    Number.isInteger(value.orderCount) &&
-    isFiniteNumber(value.itemQuantity)
+  return (
+    isShop(value.shop) && Number.isInteger(value.orderCount) && isFiniteNumber(value.itemQuantity)
+  )
 }
 
 export function parseOrderSnapshotReport(value: unknown): OrderSnapshotReport {
-  if (!isRecord(value) || !isRecord(value.summary) ||
-    typeof value.generatedAtUtc !== 'string' || !value.generatedAtUtc.endsWith('Z') ||
+  if (
+    !isRecord(value) ||
+    !isRecord(value.summary) ||
+    typeof value.generatedAtUtc !== 'string' ||
+    !value.generatedAtUtc.endsWith('Z') ||
     !Number.isFinite(Date.parse(value.generatedAtUtc)) ||
     !Number.isInteger(value.summary.orderCount) ||
     !isFiniteNumber(value.summary.itemQuantity) ||
-    !Array.isArray(value.platforms) || !value.platforms.every((item) => typeof item === 'string') ||
-    !Array.isArray(value.shops) || !value.shops.every(isShop) ||
-    !Array.isArray(value.groups) || !value.groups.every(isGroup) ||
-    !Array.isArray(value.orders) || !value.orders.every(isOrder) ||
-    typeof value.page !== 'number' || !Number.isInteger(value.page) ||
-    typeof value.pageSize !== 'number' || !Number.isInteger(value.pageSize) ||
-    value.page < 1 || value.pageSize < 1 || value.pageSize > 100 ||
-    typeof value.pageCount !== 'number' || !Number.isInteger(value.pageCount) || value.pageCount < 1) {
+    !Array.isArray(value.platforms) ||
+    !value.platforms.every((item) => typeof item === 'string') ||
+    !Array.isArray(value.shops) ||
+    !value.shops.every(isShop) ||
+    !Array.isArray(value.groups) ||
+    !value.groups.every(isGroup) ||
+    !Array.isArray(value.orders) ||
+    !value.orders.every(isOrder) ||
+    typeof value.page !== 'number' ||
+    !Number.isInteger(value.page) ||
+    typeof value.pageSize !== 'number' ||
+    !Number.isInteger(value.pageSize) ||
+    value.page < 1 ||
+    value.pageSize < 1 ||
+    value.pageSize > 100 ||
+    typeof value.pageCount !== 'number' ||
+    !Number.isInteger(value.pageCount) ||
+    value.pageCount < 1
+  ) {
     throw new Error('报表数据格式无效，请刷新后重试。')
   }
 
