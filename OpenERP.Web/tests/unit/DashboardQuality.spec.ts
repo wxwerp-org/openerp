@@ -27,17 +27,20 @@ describe('工作台数据控件与无障碍质量', () => {
     [InventoryOverviewCard, '库存指标', '货值'],
     [ProfitCard, '利润类型', '订单利润'],
     [ProfitCard, '利润周期', '前30天'],
-  ])('Given 分段控件 %s When 选择 %s 中的 %s Then 选中态和 aria-pressed 同步', (component, label, option) => {
-    const wrapper = mount(component)
-    const group = wrapper.get(`[role="group"][aria-label="${label}"]`)
-    const target = group.findAll('button').find((button) => button.text() === option)!
+  ])(
+    'Given 分段控件 %s When 选择 %s 中的 %s Then 选中态和 aria-pressed 同步',
+    (component, label, option) => {
+      const wrapper = mount(component)
+      const group = wrapper.get(`[role="group"][aria-label="${label}"]`)
+      const target = group.findAll('button').find((button) => button.text() === option)!
 
-    return target.trigger('click').then(() => {
-      expect(target.classes()).toContain('active')
-      expect(target.attributes('aria-pressed')).toBe('true')
-      expect(group.findAll('button.active')).toHaveLength(1)
-    })
-  })
+      return target.trigger('click').then(() => {
+        expect(target.classes()).toContain('active')
+        expect(target.attributes('aria-pressed')).toBe('true')
+        expect(group.findAll('button.active')).toHaveLength(1)
+      })
+    },
+  )
 
   it('Given 产品和订单空表 When 展示排序图标 Then 排序按钮明确禁用', () => {
     for (const component of [ProductListView, OrdersView]) {
@@ -65,10 +68,17 @@ describe('工作台数据控件与无障碍质量', () => {
       PasswordDialog,
     ]
 
-    const dialogComponents: unknown[] = [ProductFormDialog, OrderNoticeDialog, ProfileDialog, PasswordDialog]
+    const dialogComponents: unknown[] = [
+      ProductFormDialog,
+      OrderNoticeDialog,
+      ProfileDialog,
+      PasswordDialog,
+    ]
 
     for (const component of components) {
-      const wrapper = mount(component, { props: dialogComponents.includes(component) ? { open: false, account: adminAccount } : {} })
+      const wrapper = mount(component, {
+        props: dialogComponents.includes(component) ? { open: false, account: adminAccount } : {},
+      })
       for (const button of wrapper.findAll('button').filter((item) => !item.text().trim())) {
         expect(button.attributes('aria-label'), `${component.name} 存在无名称图标按钮`).toBeTruthy()
       }

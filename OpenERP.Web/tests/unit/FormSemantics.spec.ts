@@ -12,7 +12,10 @@ beforeAll(installNativeDialogShim)
 
 describe('表单与配置语义', () => {
   it('Given 个人信息表单 When 空姓名提交 Then 标签关联、错误关联和首错焦点完整', async () => {
-    const wrapper = mount(ProfileDialog, { props: { open: true, account: adminAccount }, attachTo: document.body })
+    const wrapper = mount(ProfileDialog, {
+      props: { open: true, account: adminAccount },
+      attachTo: document.body,
+    })
     await nextTick()
     await wrapper.get('#profileName').setValue('  ')
     await wrapper.get('#saveProfile').trigger('click')

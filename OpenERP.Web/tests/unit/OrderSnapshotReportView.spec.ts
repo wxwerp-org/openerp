@@ -48,12 +48,22 @@ function order(overrides: Partial<Order> = {}): Order {
     platformOrders: [{ number: 'PO-001', statusCode: 'SHIPPED', statusText: '已发货' }],
     items: [
       {
-        lineId: 'line-1', productId: 'product-1', skuId: 'sku-1', skuCode: 'SKU-A',
-        quantity: 2, disabled: false, appended: false,
+        lineId: 'line-1',
+        productId: 'product-1',
+        skuId: 'sku-1',
+        skuCode: 'SKU-A',
+        quantity: 2,
+        disabled: false,
+        appended: false,
       },
       {
-        lineId: 'line-2', productId: null, skuId: null, skuCode: 'SKU-B',
-        quantity: 3, disabled: true, appended: true,
+        lineId: 'line-2',
+        productId: null,
+        skuId: null,
+        skuCode: 'SKU-B',
+        quantity: 3,
+        disabled: true,
+        appended: true,
       },
     ],
     itemQuantity: 5,
@@ -114,7 +124,9 @@ function deferred<T>() {
 }
 
 function reportCalls(fetchMock: ReturnType<typeof stubFetch>) {
-  return fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/reports/order-snapshot?'))
+  return fetchMock.mock.calls.filter(([input]) =>
+    String(input).startsWith('/api/reports/order-snapshot?'),
+  )
 }
 
 async function mountReport(): Promise<VueWrapper> {
@@ -183,7 +195,9 @@ describe('本地订单商品量快照报表', () => {
     expect(wrapper.get('.report-select').classes()).toContain('field-box')
     expect(wrapper.get('.report-select use').attributes('href')).toBe('#i-chev-down')
     expect(wrapper.get('summary[aria-label="店铺筛选"]').classes()).toContain('control')
-    expect(wrapper.get('summary[aria-label="店铺筛选"] use').attributes('href')).toBe('#i-chev-down')
+    expect(wrapper.get('summary[aria-label="店铺筛选"] use').attributes('href')).toBe(
+      '#i-chev-down',
+    )
     expect(wrapper.get('.report-scope').classes()).toContain('notice')
     expect(wrapper.get('.report-scope use').attributes('href')).toBe('#i-info')
     // 页签列表页骨架：共享筛选条与工具栏，汇总与口径在工具栏内，表格区复用 table-box 外壳。
@@ -292,12 +306,14 @@ describe('本地订单商品量快照报表', () => {
     const fetchMock = stubFetch((url) => {
       const query = new URL(url, 'https://local.test').searchParams
       if (query.get('platform') === 'AliExpress') return oldResponse.promise
-      return jsonResponse(reportBody({
-        platforms: ['TemuPop', 'AliExpress'],
-        summary: { orderCount: 7, itemQuantity: 19 },
-        groups: [{ shop: shop(), orderCount: 7, itemQuantity: 19 }],
-        orders: [order({ number: 'LATEST-ORDER', itemQuantity: 19 })],
-      }))
+      return jsonResponse(
+        reportBody({
+          platforms: ['TemuPop', 'AliExpress'],
+          summary: { orderCount: 7, itemQuantity: 19 },
+          groups: [{ shop: shop(), orderCount: 7, itemQuantity: 19 }],
+          orders: [order({ number: 'LATEST-ORDER', itemQuantity: 19 })],
+        }),
+      )
     })
     wrapper = mount(OrderSnapshotReportView)
     await wrapper.get('select[aria-label="平台筛选"]').setValue('AliExpress')
@@ -305,10 +321,14 @@ describe('本地订单商品量快照报表', () => {
     expect(wrapper.get('.report-orders-panel .empty-overlay').text()).toContain('正在加载')
     await wrapper.get('select[aria-label="平台筛选"]').setValue('TemuPop')
     await flushPromises()
-    oldResponse.resolve(jsonResponse(reportBody({
-      summary: { orderCount: 99, itemQuantity: 999 },
-      orders: [order({ number: 'STALE-ORDER', itemQuantity: 999 })],
-    })))
+    oldResponse.resolve(
+      jsonResponse(
+        reportBody({
+          summary: { orderCount: 99, itemQuantity: 999 },
+          orders: [order({ number: 'STALE-ORDER', itemQuantity: 999 })],
+        }),
+      ),
+    )
     await flushPromises()
 
     expect(reportCalls(fetchMock)).toHaveLength(3)
@@ -320,16 +340,22 @@ describe('本地订单商品量快照报表', () => {
   })
 
   it('Given 报表接口返回空结果 When 查询完成 Then 显示零汇总和空态且仍保留第一页', async () => {
-    stubFetch(() => jsonResponse(reportBody({
-      summary: { orderCount: 0, itemQuantity: 0 },
-      groups: [],
-      orders: [],
-      page: 1,
-      pageCount: 1,
-    })))
+    stubFetch(() =>
+      jsonResponse(
+        reportBody({
+          summary: { orderCount: 0, itemQuantity: 0 },
+          groups: [],
+          orders: [],
+          page: 1,
+          pageCount: 1,
+        }),
+      ),
+    )
     wrapper = await mountReport()
 
-    expect(wrapper.get('.report-orders-panel .empty-overlay').text()).toContain('暂无符合条件的本地订单')
+    expect(wrapper.get('.report-orders-panel .empty-overlay').text()).toContain(
+      '暂无符合条件的本地订单',
+    )
     expect(wrapper.get('.report-groups-panel .empty-overlay').text()).toContain('暂无分店汇总')
     expect(wrapper.get('[aria-label="订单总数"]').text()).toBe('0')
     expect(wrapper.get('[aria-label="商品件数"]').text()).toBe('0')

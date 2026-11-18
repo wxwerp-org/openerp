@@ -169,7 +169,12 @@ const pagerItems = computed<PagerItem[]>(() =>
   buildPageList(currentPage.value, pageCount.value).map((item, index) =>
     item === 'ellipsis'
       ? { key: `ellipsis-${index}`, label: '…', page: null, current: false }
-      : { key: `page-${item}`, label: String(item), page: item, current: item === currentPage.value },
+      : {
+          key: `page-${item}`,
+          label: String(item),
+          page: item,
+          current: item === currentPage.value,
+        },
   ),
 )
 
@@ -185,9 +190,13 @@ const orderSyncPollInterval = 2000
 const orderSyncDiscoveryInterval = 15000
 const orderSyncRequestVersions = new Map<string, number>()
 
-watch(currentPage, (page) => {
-  jumpPage.value = String(page)
-}, { immediate: true })
+watch(
+  currentPage,
+  (page) => {
+    jumpPage.value = String(page)
+  },
+  { immediate: true },
+)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -202,7 +211,11 @@ function parseConfig(value: unknown): {
   baseUrl: string
   orderSyncEnabled: boolean
 } {
-  if (!isRecord(value) || typeof value.configured !== 'boolean' || typeof value.baseUrl !== 'string') {
+  if (
+    !isRecord(value) ||
+    typeof value.configured !== 'boolean' ||
+    typeof value.baseUrl !== 'string'
+  ) {
     throw new Error('服务器配置响应格式无效。')
   }
 
@@ -296,7 +309,15 @@ function parseShopsResponse(value: unknown): ShopsResponse {
 }
 
 function parseOrderSyncTask(value: unknown): OrderSyncTask {
-  const countKeys = ['total', 'read', 'processed', 'added', 'updated', 'unchanged', 'skipped'] as const
+  const countKeys = [
+    'total',
+    'read',
+    'processed',
+    'added',
+    'updated',
+    'unchanged',
+    'skipped',
+  ] as const
   const statuses: OrderSyncStatus[] = ['running', 'succeeded', 'partial', 'failed']
   const stages: OrderSyncStage[] = ['shop', 'pages', 'details', 'saving', 'done']
 
@@ -424,9 +445,10 @@ async function loadSyncScheduleShops(version: number): Promise<void> {
   if (configStatus.value !== 'configured') {
     syncScheduleShops.value = []
     syncScheduleShopsStatus.value = 'error'
-    syncScheduleShopsError.value = configStatus.value === 'unconfigured'
-      ? '配置私有 ERP AccessToken 后可选择店铺。'
-      : '服务端配置读取失败，暂时无法选择店铺。'
+    syncScheduleShopsError.value =
+      configStatus.value === 'unconfigured'
+        ? '配置私有 ERP AccessToken 后可选择店铺。'
+        : '服务端配置读取失败，暂时无法选择店铺。'
     return
   }
 
@@ -542,7 +564,11 @@ async function refreshOrderSyncStatus(sid: string): Promise<OrderSyncTask | null
 
   try {
     const response = await apiRequest(`/api/erp/shops/${encodeURIComponent(sid)}/order-sync`)
-    if (!isMounted || lifecycle !== orderSyncLifecycle || orderSyncRequestVersions.get(sid) !== version) {
+    if (
+      !isMounted ||
+      lifecycle !== orderSyncLifecycle ||
+      orderSyncRequestVersions.get(sid) !== version
+    ) {
       return null
     }
 
@@ -558,7 +584,11 @@ async function refreshOrderSyncStatus(sid: string): Promise<OrderSyncTask | null
 
     if (!response.ok) {
       const message = await httpErrorMessage(response, '无法读取订单同步状态')
-      if (!isMounted || lifecycle !== orderSyncLifecycle || orderSyncRequestVersions.get(sid) !== version) {
+      if (
+        !isMounted ||
+        lifecycle !== orderSyncLifecycle ||
+        orderSyncRequestVersions.get(sid) !== version
+      ) {
         return null
       }
       setOrderSyncError(sid, message)
@@ -566,7 +596,11 @@ async function refreshOrderSyncStatus(sid: string): Promise<OrderSyncTask | null
     }
 
     const task = parseOrderSyncTask(await response.json())
-    if (!isMounted || lifecycle !== orderSyncLifecycle || orderSyncRequestVersions.get(sid) !== version) {
+    if (
+      !isMounted ||
+      lifecycle !== orderSyncLifecycle ||
+      orderSyncRequestVersions.get(sid) !== version
+    ) {
       return null
     }
     if (task.sid !== Number(sid)) {
@@ -575,7 +609,11 @@ async function refreshOrderSyncStatus(sid: string): Promise<OrderSyncTask | null
     setOrderSyncTask(sid, task)
     return task
   } catch (error) {
-    if (isMounted && lifecycle === orderSyncLifecycle && orderSyncRequestVersions.get(sid) === version) {
+    if (
+      isMounted &&
+      lifecycle === orderSyncLifecycle &&
+      orderSyncRequestVersions.get(sid) === version
+    ) {
       setOrderSyncError(
         sid,
         error instanceof Error ? error.message : '读取订单同步状态失败，请稍后重试。',
@@ -715,10 +753,14 @@ async function startOrderSync(shop: Shop): Promise<void> {
 
 function orderSyncStatusLabel(status: OrderSyncStatus): string {
   switch (status) {
-    case 'running': return '正在同步'
-    case 'succeeded': return '同步完成'
-    case 'partial': return '部分成功'
-    case 'failed': return '同步失败'
+    case 'running':
+      return '正在同步'
+    case 'succeeded':
+      return '同步完成'
+    case 'partial':
+      return '部分成功'
+    case 'failed':
+      return '同步失败'
   }
 }
 
@@ -731,11 +773,16 @@ function orderSyncStatusClass(status: OrderSyncStatus): TagClass {
 
 function orderSyncStageLabel(stage: OrderSyncStage): string {
   switch (stage) {
-    case 'shop': return '店铺信息'
-    case 'pages': return '订单列表'
-    case 'details': return '商品详情'
-    case 'saving': return '保存结果'
-    case 'done': return '已完成'
+    case 'shop':
+      return '店铺信息'
+    case 'pages':
+      return '订单列表'
+    case 'details':
+      return '商品详情'
+    case 'saving':
+      return '保存结果'
+    case 'done':
+      return '已完成'
   }
 }
 
@@ -744,11 +791,12 @@ function orderSyncProgress(task: OrderSyncTask): number {
   if (task.stage === 'saving' || task.stage === 'done') return 99
   if (task.total <= 0) return task.stage === 'details' ? 50 : 0
 
-  const progress = task.stage === 'pages'
-    ? Math.min(1, task.read / task.total) * 50
-    : task.stage === 'details'
-      ? 50 + Math.min(1, task.processed / task.total) * 49
-      : 0
+  const progress =
+    task.stage === 'pages'
+      ? Math.min(1, task.read / task.total) * 50
+      : task.stage === 'details'
+        ? 50 + Math.min(1, task.processed / task.total) * 49
+        : 0
 
   return Math.min(99, Math.round(progress))
 }
@@ -845,8 +893,7 @@ async function loadPage(
     if (configStatus.value === 'loading') configStatus.value = 'error'
     clearShops()
     shopsStatus.value = 'error'
-    errorMessage.value =
-      error instanceof Error ? error.message : '请求失败，请稍后重试。'
+    errorMessage.value = error instanceof Error ? error.message : '请求失败，请稍后重试。'
   } finally {
     if (isCurrentRequest()) activeController = null
   }
@@ -967,7 +1014,11 @@ onUnmounted(() => {
         <div class="sync-settings-card__row">
           <div class="sync-settings-card__label">
             <span>启用定时同步</span>
-            <small>每 {{ syncScheduleIntervalMinutes }} 分钟尝试一轮；首次执行会等待一个周期，与运行中的批次冲突时本轮跳过。</small>
+            <small
+              >每
+              {{ syncScheduleIntervalMinutes }}
+              分钟尝试一轮；首次执行会等待一个周期，与运行中的批次冲突时本轮跳过。</small
+            >
           </div>
           <label class="sync-settings-card__switch">
             <input
@@ -977,7 +1028,7 @@ onUnmounted(() => {
               aria-label="启用定时同步"
               :disabled="syncSettingsSaving || configStatus !== 'configured'"
               @change="clearSyncSettingsMessage"
-            >
+            />
           </label>
         </div>
 
@@ -1000,7 +1051,7 @@ onUnmounted(() => {
                   :value="shop.sid"
                   :disabled="syncSettingsSaving || syncScheduleShopsStatus !== 'ready'"
                   @change="clearSyncSettingsMessage"
-                >
+                />
                 <span>{{ shop.name }}（{{ shop.sid }}）</span>
               </label>
               <p v-if="syncScheduleShopsStatus === 'loading'" class="sync-settings-card__hint">
@@ -1081,7 +1132,9 @@ onUnmounted(() => {
             共 {{ totalCount }} 家店铺<span v-if="totalCount > 0">，共 {{ pageCount }} 页</span>
           </template>
           <template v-else-if="shopsStatus === 'loading'">正在加载店铺列表</template>
-          <template v-else-if="configStatus === 'unconfigured'">完成 ERP 接入设置后可查看店铺</template>
+          <template v-else-if="configStatus === 'unconfigured'"
+            >完成 ERP 接入设置后可查看店铺</template
+          >
           <template v-else>店铺列表</template>
         </span>
         <span class="toolbar-status" aria-live="polite">
@@ -1107,28 +1160,25 @@ onUnmounted(() => {
     <div class="table-region">
       <div class="table-box">
         <div class="table-area">
-          <div
-            class="table-scroll is-y"
-            role="region"
-            aria-label="授权店铺表格"
-            tabindex="0"
-          >
+          <div class="table-scroll is-y" role="region" aria-label="授权店铺表格" tabindex="0">
             <table class="grid-table shops-table is-wrap">
-              <caption class="visually-hidden">授权店铺列表</caption>
+              <caption class="visually-hidden">
+                授权店铺列表
+              </caption>
               <colgroup v-if="orderSyncEnabled">
-                <col style="width:10%">
-                <col style="width:18%">
-                <col style="width:10%">
-                <col style="width:8%">
-                <col style="width:24%">
-                <col style="width:30%">
+                <col style="width: 10%" />
+                <col style="width: 18%" />
+                <col style="width: 10%" />
+                <col style="width: 8%" />
+                <col style="width: 24%" />
+                <col style="width: 30%" />
               </colgroup>
               <colgroup v-else>
-                <col style="width:10%">
-                <col style="width:26%">
-                <col style="width:12%">
-                <col style="width:10%">
-                <col style="width:42%">
+                <col style="width: 10%" />
+                <col style="width: 26%" />
+                <col style="width: 12%" />
+                <col style="width: 10%" />
+                <col style="width: 42%" />
               </colgroup>
               <thead>
                 <tr>
@@ -1151,7 +1201,9 @@ onUnmounted(() => {
                       <span class="tag" :class="tokenStatusClass(shop.isTokenOk)">
                         {{ tokenStatusLabel(shop.isTokenOk) }}
                       </span>
-                      <p v-if="shop.statusError" class="shop-status-error">{{ shop.statusError }}</p>
+                      <p v-if="shop.statusError" class="shop-status-error">
+                        {{ shop.statusError }}
+                      </p>
                     </div>
                   </td>
                   <td v-if="orderSyncEnabled">
@@ -1168,7 +1220,10 @@ onUnmounted(() => {
                       </button>
                       <div v-if="orderSyncTasks[shop.sid]" class="shop-order-sync__task">
                         <div class="shop-order-sync__heading">
-                          <span class="tag" :class="orderSyncStatusClass(orderSyncTasks[shop.sid].status)">
+                          <span
+                            class="tag"
+                            :class="orderSyncStatusClass(orderSyncTasks[shop.sid].status)"
+                          >
                             {{ orderSyncStatusLabel(orderSyncTasks[shop.sid].status) }}
                           </span>
                           <span>{{ orderSyncStageLabel(orderSyncTasks[shop.sid].stage) }}</span>
@@ -1189,15 +1244,18 @@ onUnmounted(() => {
                           ></span>
                         </div>
                         <p class="shop-order-sync__counts">
-                          读取 {{ orderSyncTasks[shop.sid].read }} / {{ orderSyncTasks[shop.sid].total }}
-                          · 已处理 {{ orderSyncTasks[shop.sid].processed }}
-                          · 新增 {{ orderSyncTasks[shop.sid].added }}
-                          · 更新 {{ orderSyncTasks[shop.sid].updated }}
-                          · 未变 {{ orderSyncTasks[shop.sid].unchanged }}
-                          · 跳过 {{ orderSyncTasks[shop.sid].skipped }}
+                          读取 {{ orderSyncTasks[shop.sid].read }} /
+                          {{ orderSyncTasks[shop.sid].total }} · 已处理
+                          {{ orderSyncTasks[shop.sid].processed }} · 新增
+                          {{ orderSyncTasks[shop.sid].added }} · 更新
+                          {{ orderSyncTasks[shop.sid].updated }} · 未变
+                          {{ orderSyncTasks[shop.sid].unchanged }} · 跳过
+                          {{ orderSyncTasks[shop.sid].skipped }}
                         </p>
                         <p
-                          v-for="([reason, count]) in Object.entries(orderSyncTasks[shop.sid].skipReasons)"
+                          v-for="[reason, count] in Object.entries(
+                            orderSyncTasks[shop.sid].skipReasons,
+                          )"
                           :key="reason"
                           class="shop-order-sync__reason"
                         >
@@ -1207,7 +1265,11 @@ onUnmounted(() => {
                           {{ orderSyncTasks[shop.sid].error }}
                         </p>
                       </div>
-                      <p v-if="orderSyncErrors[shop.sid]" class="shop-order-sync__error" role="alert">
+                      <p
+                        v-if="orderSyncErrors[shop.sid]"
+                        class="shop-order-sync__error"
+                        role="alert"
+                      >
                         {{ orderSyncErrors[shop.sid] }}
                       </p>
                     </div>
@@ -1238,7 +1300,9 @@ onUnmounted(() => {
           </button>
           <template v-for="item in pagerItems" :key="item.key">
             <span v-if="item.page === null" class="page-ellipsis">{{ item.label }}</span>
-            <span v-else-if="item.current" class="page-num" aria-current="page">{{ item.label }}</span>
+            <span v-else-if="item.current" class="page-num" aria-current="page">{{
+              item.label
+            }}</span>
             <button
               v-else
               class="page-btn"
@@ -1266,7 +1330,9 @@ onUnmounted(() => {
               aria-label="每页条数"
               @change="handlePageSizeSelect"
             >
-              <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}条/页</option>
+              <option v-for="size in pageSizeOptions" :key="size" :value="size">
+                {{ size }}条/页
+              </option>
             </select>
             <AppIcon name="i-chev-down" />
           </label>
@@ -1278,7 +1344,7 @@ onUnmounted(() => {
               inputmode="numeric"
               @keyup.enter="submitJumpPage"
               @blur="submitJumpPage"
-            >页
+            />页
           </span>
         </div>
       </div>

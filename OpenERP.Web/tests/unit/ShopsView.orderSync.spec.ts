@@ -62,12 +62,14 @@ function jsonResponse(value: unknown, status = 200): Response {
   })
 }
 
-function configureFetch(options: {
-  tokenStatus?: boolean | null
-  getConfig?: () => unknown
-  getTask?: () => Promise<Response> | Response
-  postTask?: () => Promise<Response> | Response
-} = {}) {
+function configureFetch(
+  options: {
+    tokenStatus?: boolean | null
+    getConfig?: () => unknown
+    getTask?: () => Promise<Response> | Response
+    postTask?: () => Promise<Response> | Response
+  } = {},
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     if (url === '/api/auth/csrf') {
@@ -81,16 +83,17 @@ function configureFetch(options: {
       })
     }
     if (url === '/api/erp/config') {
-      return jsonResponse(options.getConfig?.() ?? {
-        configured: true,
-        baseUrl: 'https://erp.test',
-        orderSyncEnabled: true,
-      })
+      return jsonResponse(
+        options.getConfig?.() ?? {
+          configured: true,
+          baseUrl: 'https://erp.test',
+          orderSyncEnabled: true,
+        },
+      )
     }
     if (url.startsWith('/api/erp/shops?')) {
-      const visibleShop = options.tokenStatus === undefined
-        ? shop
-        : { ...shop, isTokenOk: options.tokenStatus }
+      const visibleShop =
+        options.tokenStatus === undefined ? shop : { ...shop, isTokenOk: options.tokenStatus }
       return jsonResponse({ ...shopList, items: [visibleShop] })
     }
     if (url === '/api/erp/order-sync-settings') {
@@ -147,28 +150,32 @@ describe('店铺历史订单同步', () => {
     { tokenStatus: true, tokenLabel: '有效' },
     { tokenStatus: false, tokenLabel: '无效' },
     { tokenStatus: null, tokenLabel: '未知' },
-  ])('Given 店铺授权$tokenLabel When 点击同步历史订单 Then 使用 Bearer 访问令牌发起无请求体的任务并显示进度', async ({ tokenStatus, tokenLabel }) => {
-    const fetchMock = configureFetch({ tokenStatus })
-    wrapper = await mountShops()
+  ])(
+    'Given 店铺授权$tokenLabel When 点击同步历史订单 Then 使用 Bearer 访问令牌发起无请求体的任务并显示进度',
+    async ({ tokenStatus, tokenLabel }) => {
+      const fetchMock = configureFetch({ tokenStatus })
+      wrapper = await mountShops()
 
-    expect(wrapper.text()).toContain(tokenLabel)
-    const button = syncButton(wrapper)
-    expect(button).toBeDefined()
-    expect(button!.attributes('disabled')).toBeUndefined()
+      expect(wrapper.text()).toContain(tokenLabel)
+      const button = syncButton(wrapper)
+      expect(button).toBeDefined()
+      expect(button!.attributes('disabled')).toBeUndefined()
 
-    await button!.trigger('click')
-    await flushPromises()
+      await button!.trigger('click')
+      await flushPromises()
 
-    const postCall = fetchMock.mock.calls.find(([input, init]) =>
-      String(input) === '/api/erp/shops/42/order-sync' && init?.method === 'POST',
-    )
-    expect(new Headers(postCall?.[1]?.headers).get('Authorization')).toBe('Bearer shop-access')
-    expect(new Headers(postCall?.[1]?.headers).has('X-CSRF-TOKEN')).toBe(false)
-    expect(postCall?.[1]?.body).toBeUndefined()
-    expect(postCall?.[1]?.signal).toBeUndefined()
-    expect(wrapper.text()).toContain('读取 4 / 10')
-    expect(wrapper.text()).toContain('已处理 3')
-  })
+      const postCall = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input) === '/api/erp/shops/42/order-sync' && init?.method === 'POST',
+      )
+      expect(new Headers(postCall?.[1]?.headers).get('Authorization')).toBe('Bearer shop-access')
+      expect(new Headers(postCall?.[1]?.headers).has('X-CSRF-TOKEN')).toBe(false)
+      expect(postCall?.[1]?.body).toBeUndefined()
+      expect(postCall?.[1]?.signal).toBeUndefined()
+      expect(wrapper.text()).toContain('读取 4 / 10')
+      expect(wrapper.text()).toContain('已处理 3')
+    },
+  )
 
   it.each([
     {
@@ -211,8 +218,9 @@ describe('店铺历史订单同步', () => {
     })
     wrapper = await mountShops()
 
-    const initialStatusCalls = fetchMock.mock.calls.filter(([input, init]) =>
-      String(input) === '/api/erp/shops/42/order-sync' && init?.method !== 'POST',
+    const initialStatusCalls = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        String(input) === '/api/erp/shops/42/order-sync' && init?.method !== 'POST',
     )
     expect(initialStatusCalls).toHaveLength(1)
     const pollTimerIndex = setTimeoutSpy.mock.calls.findIndex(([, delay]) => delay === 2000)
@@ -228,14 +236,17 @@ describe('店铺历史订单同步', () => {
     expect(clearTimeoutSpy).toHaveBeenCalledWith(pollTimer)
     await vi.advanceTimersByTimeAsync(2000)
     await flushPromises()
-    const finalStatusCalls = fetchMock.mock.calls.filter(([input, init]) =>
-      String(input) === '/api/erp/shops/42/order-sync' && init?.method !== 'POST',
+    const finalStatusCalls = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        String(input) === '/api/erp/shops/42/order-sync' && init?.method !== 'POST',
     )
     expect(finalStatusCalls).toHaveLength(1)
   })
 
   it('Given 有运行中的任务 When 页面载入 Then 展示阶段、计数和进度', async () => {
-    configureFetch({ getTask: () => jsonResponse(task({ stage: 'details', read: 6, processed: 5 })) })
+    configureFetch({
+      getTask: () => jsonResponse(task({ stage: 'details', read: 6, processed: 5 })),
+    })
     wrapper = await mountShops()
 
     expect(wrapper.text()).toContain('正在同步')
@@ -271,12 +282,14 @@ describe('店铺历史订单同步', () => {
     configureFetch({
       getTask: () => {
         taskReadCount += 1
-        return jsonResponse(task({
-          stage: 'details',
-          total: 10,
-          read: 10,
-          processed: taskReadCount === 1 ? 2 : 5,
-        }))
+        return jsonResponse(
+          task({
+            stage: 'details',
+            total: 10,
+            read: 10,
+            processed: taskReadCount === 1 ? 2 : 5,
+          }),
+        )
       },
     })
     wrapper = await mountShops()
@@ -293,14 +306,17 @@ describe('店铺历史订单同步', () => {
 
   it('Given 列表读取阶段提前失败 When 展示失败任务 Then 保留失败时进度且不显示完成', async () => {
     configureFetch({
-      getTask: () => jsonResponse(task({
-        status: 'failed',
-        stage: 'pages',
-        total: 10,
-        read: 3,
-        processed: 0,
-        error: '订单列表读取失败',
-      })),
+      getTask: () =>
+        jsonResponse(
+          task({
+            status: 'failed',
+            stage: 'pages',
+            total: 10,
+            read: 3,
+            processed: 0,
+            error: '订单列表读取失败',
+          }),
+        ),
     })
     wrapper = await mountShops()
 
@@ -324,14 +340,16 @@ describe('店铺历史订单同步', () => {
     configureFetch({
       getTask: () => {
         taskReadCount += 1
-        return jsonResponse(task({
-          status: 'failed',
-          stage: 'details',
-          total: 10,
-          read: 10,
-          processed: taskReadCount === 1 ? 5 : 10,
-          error: '商品详情读取失败',
-        }))
+        return jsonResponse(
+          task({
+            status: 'failed',
+            stage: 'details',
+            total: 10,
+            read: 10,
+            processed: taskReadCount === 1 ? 5 : 10,
+            error: '商品详情读取失败',
+          }),
+        )
       },
     })
     wrapper = await mountShops()
@@ -350,13 +368,16 @@ describe('店铺历史订单同步', () => {
     'Given 任务以%s结束 When 显示结果 Then 进度为100%%',
     async (status) => {
       configureFetch({
-        getTask: () => jsonResponse(task({
-          status,
-          stage: 'done',
-          total: 10,
-          read: 10,
-          processed: 10,
-        })),
+        getTask: () =>
+          jsonResponse(
+            task({
+              status,
+              stage: 'done',
+              total: 10,
+              read: 10,
+              processed: 10,
+            }),
+          ),
       })
       wrapper = await mountShops()
 
@@ -376,8 +397,9 @@ describe('店铺历史订单同步', () => {
     await button.trigger('click')
     await button.trigger('click')
 
-    const postCalls = fetchMock.mock.calls.filter(([input, init]) =>
-      String(input) === '/api/erp/shops/42/order-sync' && init?.method === 'POST',
+    const postCalls = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        String(input) === '/api/erp/shops/42/order-sync' && init?.method === 'POST',
     )
     expect(postCalls).toHaveLength(1)
     expect(syncButton(wrapper)?.attributes('disabled')).toBeDefined()
@@ -405,8 +427,9 @@ describe('店铺历史订单同步', () => {
     expect(wrapper.text()).toContain('正在同步')
     expect(wrapper.text()).toContain('读取 5 / 10')
     expect(syncButton(wrapper)?.attributes('disabled')).toBeDefined()
-    const postCalls = fetchMock.mock.calls.filter(([input, init]) =>
-      String(input) === '/api/erp/shops/42/order-sync' && init?.method === 'POST',
+    const postCalls = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        String(input) === '/api/erp/shops/42/order-sync' && init?.method === 'POST',
     )
     expect(postCalls).toHaveLength(1)
   })
@@ -414,7 +437,8 @@ describe('店铺历史订单同步', () => {
   it('Given 另一家店正在同步 When 本店返回冲突且没有任务 Then 提示稍后重试且本店可再次提交', async () => {
     let posts = 0
     configureFetch({
-      postTask: () => ++posts === 1 ? new Response(null, { status: 409 }) : jsonResponse(task(), 202),
+      postTask: () =>
+        ++posts === 1 ? new Response(null, { status: 409 }) : jsonResponse(task(), 202),
     })
     wrapper = await mountShops()
 
@@ -431,16 +455,19 @@ describe('店铺历史订单同步', () => {
 
   it('Given 最近任务部分成功且有跳过原因 When 页面载入 Then 显示部分成功、错误和原因计数', async () => {
     configureFetch({
-      getTask: () => jsonResponse(task({
-        status: 'partial',
-        stage: 'done',
-        total: 10,
-        read: 10,
-        processed: 8,
-        skipped: 2,
-        skipReasons: { missingSku: 2 },
-        error: '两个商品缺少 SKU',
-      })),
+      getTask: () =>
+        jsonResponse(
+          task({
+            status: 'partial',
+            stage: 'done',
+            total: 10,
+            read: 10,
+            processed: 8,
+            skipped: 2,
+            skipReasons: { missingSku: 2 },
+            error: '两个商品缺少 SKU',
+          }),
+        ),
     })
     wrapper = await mountShops()
 
@@ -466,8 +493,9 @@ describe('店铺历史订单同步', () => {
     await refreshButton.trigger('click')
     await flushPromises()
 
-    const statusCalls = fetchMock.mock.calls.filter(([input, init]) =>
-      String(input) === '/api/erp/shops/42/order-sync' && init?.method !== 'POST',
+    const statusCalls = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        String(input) === '/api/erp/shops/42/order-sync' && init?.method !== 'POST',
     )
     expect(statusCalls).toHaveLength(2)
     expect(wrapper.text()).toContain('正在同步')
@@ -489,13 +517,15 @@ describe('店铺历史订单同步', () => {
         })
       }
       if (url === '/api/erp/config') {
-        return jsonResponse({ configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: true })
+        return jsonResponse({
+          configured: true,
+          baseUrl: 'https://erp.test',
+          orderSyncEnabled: true,
+        })
       }
       if (url.startsWith('/api/erp/shops?')) {
         const page = new URL(url, 'https://local.test').searchParams.get('page')
-        const visibleShop = page === '2'
-          ? { ...shop, sid: '43', name: '第二页店铺' }
-          : shop
+        const visibleShop = page === '2' ? { ...shop, sid: '43', name: '第二页店铺' } : shop
         return jsonResponse({
           items: [visibleShop],
           page: Number(page),

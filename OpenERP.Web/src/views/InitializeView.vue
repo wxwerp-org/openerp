@@ -38,23 +38,62 @@ async function submit(): Promise<void> {
     <form class="initialize-form" novalidate @submit.prevent="submit">
       <div class="initialize-field">
         <label for="initializeUsername">用户名</label>
-        <input id="initializeUsername" value="admin" autocomplete="username" readonly>
+        <input id="initializeUsername" value="admin" autocomplete="username" readonly />
       </div>
 
       <div class="initialize-field">
         <label for="newPassword">新密码</label>
-        <input id="newPassword" ref="newPasswordInput" v-model="newPassword" type="password" autocomplete="new-password" placeholder="6-20 位字符" required :disabled="initializationPending" :aria-invalid="invalidPassword" :aria-describedby="invalidPassword ? 'initializePasswordError' : undefined" @input="invalidPassword = false">
-        <p v-if="invalidPassword" id="initializePasswordError" class="initialize-error" role="alert">密码长度需为 6-20 位</p>
+        <input
+          id="newPassword"
+          ref="newPasswordInput"
+          v-model="newPassword"
+          type="password"
+          autocomplete="new-password"
+          placeholder="6-20 位字符"
+          required
+          :disabled="initializationPending"
+          :aria-invalid="invalidPassword"
+          :aria-describedby="invalidPassword ? 'initializePasswordError' : undefined"
+          @input="invalidPassword = false"
+        />
+        <p
+          v-if="invalidPassword"
+          id="initializePasswordError"
+          class="initialize-error"
+          role="alert"
+        >
+          密码长度需为 6-20 位
+        </p>
       </div>
 
       <div class="initialize-field">
         <label for="confirmPassword">确认新密码</label>
-        <input id="confirmPassword" ref="confirmPasswordInput" v-model="confirmPassword" type="password" autocomplete="new-password" required :disabled="initializationPending" :aria-invalid="invalidConfirmation" :aria-describedby="invalidConfirmation ? 'initializeConfirmationError' : undefined" @input="invalidConfirmation = false">
-        <p v-if="invalidConfirmation" id="initializeConfirmationError" class="initialize-error" role="alert">两次输入的密码不一致</p>
+        <input
+          id="confirmPassword"
+          ref="confirmPasswordInput"
+          v-model="confirmPassword"
+          type="password"
+          autocomplete="new-password"
+          required
+          :disabled="initializationPending"
+          :aria-invalid="invalidConfirmation"
+          :aria-describedby="invalidConfirmation ? 'initializeConfirmationError' : undefined"
+          @input="invalidConfirmation = false"
+        />
+        <p
+          v-if="invalidConfirmation"
+          id="initializeConfirmationError"
+          class="initialize-error"
+          role="alert"
+        >
+          两次输入的密码不一致
+        </p>
       </div>
 
       <p v-if="error" class="initialize-error" role="alert">{{ error }}</p>
-      <button class="btn primary" type="submit" :disabled="initializationPending">{{ initializationPending ? '正在初始化…' : '设置管理员密码' }}</button>
+      <button class="btn primary" type="submit" :disabled="initializationPending">
+        {{ initializationPending ? '正在初始化…' : '设置管理员密码' }}
+      </button>
     </form>
   </AuthLayout>
 </template>
@@ -88,9 +127,13 @@ async function submit(): Promise<void> {
   font: inherit;
   font-size: 14px;
   line-height: 20px;
-  transition: border-color .15s, box-shadow .15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
-.initialize-form input:hover:not(:disabled):not([aria-invalid='true']) { border-color: #AEB9C9; }
+.initialize-form input:hover:not(:disabled):not([aria-invalid='true']) {
+  border-color: #aeb9c9;
+}
 .initialize-form input:focus-visible {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
@@ -114,17 +157,19 @@ async function submit(): Promise<void> {
 }
 .initialize-form button:disabled {
   cursor: not-allowed;
-  opacity: .65;
+  opacity: 0.65;
 }
 .initialize-error {
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid #FFD4D4;
+  border: 1px solid #ffd4d4;
   border-radius: var(--radius);
-  background: #FFF2F2;
+  background: #fff2f2;
   color: var(--danger);
   font-size: 13px;
   line-height: 20px;
 }
-.initialize-form input[aria-invalid='true'] { border-color: var(--danger); }
+.initialize-form input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
 </style>

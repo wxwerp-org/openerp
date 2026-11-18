@@ -17,9 +17,10 @@ async function submit(): Promise<void> {
   try {
     await login(username.value.trim(), password.value)
   } catch (cause) {
-    error.value = cause instanceof Error && !(cause instanceof TypeError)
-      ? cause.message
-      : '无法连接登录服务，请稍后重试。'
+    error.value =
+      cause instanceof Error && !(cause instanceof TypeError)
+        ? cause.message
+        : '无法连接登录服务，请稍后重试。'
   } finally {
     submitting.value = false
   }
@@ -34,16 +35,31 @@ async function submit(): Promise<void> {
     <form class="login-form" @submit.prevent="submit">
       <div class="login-field">
         <label for="loginUsername">用户名</label>
-        <input id="loginUsername" v-model="username" autocomplete="username" required :disabled="submitting">
+        <input
+          id="loginUsername"
+          v-model="username"
+          autocomplete="username"
+          required
+          :disabled="submitting"
+        />
       </div>
 
       <div class="login-field">
         <label for="loginPassword">密码</label>
-        <input id="loginPassword" v-model="password" type="password" autocomplete="current-password" required :disabled="submitting">
+        <input
+          id="loginPassword"
+          v-model="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          :disabled="submitting"
+        />
       </div>
 
       <p v-if="error" class="login-error" role="alert">{{ error }}</p>
-      <button class="btn primary" type="submit" :disabled="submitting">{{ submitting ? '正在登录…' : '登录' }}</button>
+      <button class="btn primary" type="submit" :disabled="submitting">
+        {{ submitting ? '正在登录…' : '登录' }}
+      </button>
     </form>
   </AuthLayout>
 </template>
@@ -77,9 +93,13 @@ async function submit(): Promise<void> {
   font: inherit;
   font-size: 14px;
   line-height: 20px;
-  transition: border-color .15s, box-shadow .15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
-.login-form input:hover:not(:disabled) { border-color: #AEB9C9; }
+.login-form input:hover:not(:disabled) {
+  border-color: #aeb9c9;
+}
 .login-form input:focus-visible {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-soft);
@@ -103,14 +123,14 @@ async function submit(): Promise<void> {
 }
 .login-form button:disabled {
   cursor: not-allowed;
-  opacity: .65;
+  opacity: 0.65;
 }
 .login-error {
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid #FFD4D4;
+  border: 1px solid #ffd4d4;
   border-radius: var(--radius);
-  background: #FFF2F2;
+  background: #fff2f2;
   color: var(--danger);
   font-size: 13px;
   line-height: 20px;

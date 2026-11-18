@@ -6,31 +6,37 @@ test.beforeEach(async ({ page }) => {
 })
 
 async function mockShops(page: Page, count = 1): Promise<void> {
-  await page.route('**/api/erp/config', (route) => route.fulfill({
-    json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
-  }))
-  await page.route('**/api/erp/shops?**', (route) => route.fulfill({
-    json: {
-      items: Array.from({ length: count }, (_, index) => ({
-        sid: String(index + 1),
-        name: `测试店铺 ${index + 1}`,
-        platform: 'Temu',
-        region: 'US',
-        isTokenOk: true,
-        statusError: null,
-      })),
-      page: 1,
-      pageSize: 20,
-      totalCount: count,
-      pageCount: 1,
-    },
-  }))
+  await page.route('**/api/erp/config', (route) =>
+    route.fulfill({
+      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+    }),
+  )
+  await page.route('**/api/erp/shops?**', (route) =>
+    route.fulfill({
+      json: {
+        items: Array.from({ length: count }, (_, index) => ({
+          sid: String(index + 1),
+          name: `测试店铺 ${index + 1}`,
+          platform: 'Temu',
+          region: 'US',
+          isTokenOk: true,
+          statusError: null,
+        })),
+        page: 1,
+        pageSize: 20,
+        totalCount: count,
+        pageCount: 1,
+      },
+    }),
+  )
 }
 
 async function mockPagedShops(page: Page, totalCount = 45): Promise<void> {
-  await page.route('**/api/erp/config', (route) => route.fulfill({
-    json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
-  }))
+  await page.route('**/api/erp/config', (route) =>
+    route.fulfill({
+      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+    }),
+  )
   await page.route('**/api/erp/shops?**', (route) => {
     const url = new URL(route.request().url())
     const currentPage = Number(url.searchParams.get('page'))
@@ -57,7 +63,9 @@ async function mockPagedShops(page: Page, totalCount = 45): Promise<void> {
   })
 }
 
-test('Given 原型工作台 When 打开首页并进入用户管理 Then 全部卡片和四条用户数据可见', async ({ page }) => {
+test('Given 原型工作台 When 打开首页并进入用户管理 Then 全部卡片和四条用户数据可见', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.goto('/')
 
@@ -73,7 +81,9 @@ test('Given 原型工作台 When 打开首页并进入用户管理 Then 全部�
   await expect(page.locator('.page-tab.active .tab-label')).toHaveText('用户管理')
 })
 
-test('Given 多平台配置 When 选择店铺设置并打开账户弹窗 Then 配置内容和焦点行为与原型一致', async ({ page }) => {
+test('Given 多平台配置 When 选择店铺设置并打开账户弹窗 Then 配置内容和焦点行为与原型一致', async ({
+  page,
+}) => {
   await page.goto('/settings')
   await page.locator('[data-settings-group="multiplatform"]').click()
   await page.locator('[data-settings-item="店铺设置"]').click()
@@ -102,7 +112,9 @@ test('Given 多平台配置 When 选择店铺设置并打开账户弹窗 Then �
   await expect(page.locator('.account-button')).toBeFocused()
 })
 
-test('Given 产品和订单原型 When 打开表单与公告 Then 弹窗可见且桌面页面无横向溢出', async ({ page }) => {
+test('Given 产品和订单原型 When 打开表单与公告 Then 弹窗可见且桌面页面无横向溢出', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.goto('/products')
   await page.locator('#openProductForm').click()
@@ -120,11 +132,15 @@ test('Given 产品和订单原型 When 打开表单与公告 Then 弹窗可见�
   await page.locator('#closeNotice').click()
 
   await page.setViewportSize({ width: 1440, height: 900 })
-  const hasPageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+  const hasPageOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  )
   expect(hasPageOverflow).toBe(false)
 })
 
-test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标题清晰且卡片字阶统一', async ({ page }) => {
+test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标题清晰且卡片字阶统一', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await mockShops(page)
   await page.goto('/shops')
@@ -140,7 +156,10 @@ test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标
   await expect(shopsCard).toHaveCSS('border-top-width', '0px')
   await expect(shopsCard).toHaveCSS('border-top-left-radius', '6px')
   await expect(page.locator('.page-shops .table-box')).toHaveCSS('border-bottom-left-radius', '6px')
-  await expect(page.locator('.page-shops .grid-table th').first()).toHaveCSS('background-color', 'rgb(242, 245, 250)')
+  await expect(page.locator('.page-shops .grid-table th').first()).toHaveCSS(
+    'background-color',
+    'rgb(242, 245, 250)',
+  )
 
   const shopsTitle = page.locator('.page-shops h1')
   await expect(shopsTitle).toHaveCSS('font-size', '20px')
@@ -164,30 +183,44 @@ test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标
   await expect(panel).toHaveCSS('border-top-left-radius', '6px')
   await expect(page.locator('.page-service .service-label')).toHaveCSS('font-size', '14px')
   await expect(page.locator('.page-service .service-label')).toHaveCSS('font-weight', '700')
-  await expect(page.locator('.page-service .service-panel__head')).toHaveCSS('border-bottom-width', '0px')
+  await expect(page.locator('.page-service .service-panel__head')).toHaveCSS(
+    'border-bottom-width',
+    '0px',
+  )
   await expect(page.locator('.page-service .service-panel__head')).toHaveCSS('min-height', '54px')
-  await expect(page.locator('.page-service .service-panel__body')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+  await expect(page.locator('.page-service .service-panel__body')).toHaveCSS(
+    'background-color',
+    'rgb(255, 255, 255)',
+  )
   await expect(page.locator('.page-service h1')).toHaveCSS('font-size', '20px')
   await expect(page.locator('.page-service .btn.primary')).toHaveCSS('height', '30px')
   await expect(page.locator('.page-service .tag')).toHaveCSS('height', '18px')
   await expect(page.locator('[class^="el-"], [class*=" el-"]')).toHaveCount(0)
 
-  const hasPageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+  const hasPageOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  )
   expect(hasPageOverflow).toBe(false)
 
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.reload()
   await expect(page.locator('.page-service .service-panel')).toBeVisible()
-  const hasWideOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+  const hasWideOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  )
   expect(hasWideOverflow).toBe(false)
 
   await page.goto('/shops')
   await expect(page.locator('.page-shops .grid-table')).toBeVisible()
-  const hasWideShopsOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+  const hasWideShopsOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  )
   expect(hasWideShopsOverflow).toBe(false)
 })
 
-test('Given 独立服务路由 When 从设置侧栏导航 Then 授权店铺和服务连接均可达并已渲染', async ({ page }) => {
+test('Given 独立服务路由 When 从设置侧栏导航 Then 授权店铺和服务连接均可达并已渲染', async ({
+  page,
+}) => {
   await mockShops(page)
   await page.route('**/api/ping', (route) => route.fulfill({ json: { message: '连接正常' } }))
   await page.goto('/')
@@ -204,7 +237,9 @@ test('Given 独立服务路由 When 从设置侧栏导航 Then 授权店铺和�
   await expect(page.locator('[data-nav-page="service-connection"]').first()).toHaveClass(/active/)
 })
 
-test('Given 一页 20 家店铺 When 视口高度不足 Then 分页栏固定可见且表格体可滚动到最后一行', async ({ page }) => {
+test('Given 一页 20 家店铺 When 视口高度不足 Then 分页栏固定可见且表格体可滚动到最后一行', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 700 })
   await mockShops(page, 20)
   await page.goto('/shops')
@@ -228,24 +263,41 @@ test('Given 一页 20 家店铺 When 视口高度不足 Then 分页栏固定可�
 
 test('Given 开启定时同步 When 视口高度不足 Then 页面可滚动访问表格与分页', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 600 })
-  await page.route('**/api/erp/config', (route) => route.fulfill({
-    json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: true },
-  }))
-  await page.route('**/api/erp/order-sync-settings', (route) => route.fulfill({
-    json: { enabled: true, shopSids: [1], intervalMinutes: 30 },
-  }))
-  await page.route('**/api/erp/order-sync-settings/shops', (route) => route.fulfill({
-    json: { items: [{ sid: '1', name: '测试店铺 1' }] },
-  }))
-  await page.route('**/api/erp/shops?**', (route) => route.fulfill({
-    json: {
-      items: [{ sid: '1', name: '测试店铺 1', platform: 'Temu', region: 'US', isTokenOk: true, statusError: null }],
-      page: 1,
-      pageSize: 20,
-      totalCount: 1,
-      pageCount: 1,
-    },
-  }))
+  await page.route('**/api/erp/config', (route) =>
+    route.fulfill({
+      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: true },
+    }),
+  )
+  await page.route('**/api/erp/order-sync-settings', (route) =>
+    route.fulfill({
+      json: { enabled: true, shopSids: [1], intervalMinutes: 30 },
+    }),
+  )
+  await page.route('**/api/erp/order-sync-settings/shops', (route) =>
+    route.fulfill({
+      json: { items: [{ sid: '1', name: '测试店铺 1' }] },
+    }),
+  )
+  await page.route('**/api/erp/shops?**', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            sid: '1',
+            name: '测试店铺 1',
+            platform: 'Temu',
+            region: 'US',
+            isTokenOk: true,
+            statusError: null,
+          },
+        ],
+        page: 1,
+        pageSize: 20,
+        totalCount: 1,
+        pageCount: 1,
+      },
+    }),
+  )
   await page.route('**/api/erp/shops/1/order-sync', (route) => route.fulfill({ status: 204 }))
   await page.goto('/shops')
 
@@ -271,7 +323,9 @@ test('Given 开启定时同步 When 视口高度不足 Then 页面可滚动访�
   await expect(page.locator('.table-pagination')).toBeInViewport()
 })
 
-test('Given 多页店铺 When 使用完整分页器 Then 页码、每页条数与跳页按新参数请求', async ({ page }) => {
+test('Given 多页店铺 When 使用完整分页器 Then 页码、每页条数与跳页按新参数请求', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await mockPagedShops(page, 45)
   await page.goto('/shops')
@@ -307,16 +361,22 @@ test('Given 多页店铺 When 使用完整分页器 Then 页码、每页条数�
   await expect(page.locator('.page-num')).toHaveText('3')
 })
 
-test('Given 店铺列表返回长错误详情 When 加载失败 Then 提示条完整换行且页面无横向溢出', async ({ page }) => {
+test('Given 店铺列表返回长错误详情 When 加载失败 Then 提示条完整换行且页面无横向溢出', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.route('**/api/erp/config', (route) => route.fulfill({
-    json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
-  }))
+  await page.route('**/api/erp/config', (route) =>
+    route.fulfill({
+      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+    }),
+  )
   const longDetail = 'problemdetail'.repeat(60)
-  await page.route('**/api/erp/shops?**', (route) => route.fulfill({
-    status: 503,
-    json: { title: 'ERP 服务不可用', detail: longDetail },
-  }))
+  await page.route('**/api/erp/shops?**', (route) =>
+    route.fulfill({
+      status: 503,
+      json: { title: 'ERP 服务不可用', detail: longDetail },
+    }),
+  )
   await page.goto('/shops')
 
   const notice = page.locator('.page-shops .notice.red')
@@ -329,15 +389,19 @@ test('Given 店铺列表返回长错误详情 When 加载失败 Then 提示条�
     clientWidth: element.clientWidth,
   }))
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth)
-  const hasPageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+  const hasPageOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  )
   expect(hasPageOverflow).toBe(false)
 })
 
 test('Given 服务连接 When 检测成功或失败 Then 显示对应状态与既有文案', async ({ page }) => {
   let fail = false
-  await page.route('**/api/ping', (route) => fail
-    ? route.fulfill({ status: 500, body: 'boom' })
-    : route.fulfill({ json: { message: 'pong' } }))
+  await page.route('**/api/ping', (route) =>
+    fail
+      ? route.fulfill({ status: 500, body: 'boom' })
+      : route.fulfill({ json: { message: 'pong' } }),
+  )
 
   await page.goto('/service-connection')
   await expect(page.locator('.page-service .tag')).toHaveText('连接成功')
@@ -346,6 +410,8 @@ test('Given 服务连接 When 检测成功或失败 Then 显示对应状态与�
   fail = true
   await page.getByRole('button', { name: '重试' }).click()
   await expect(page.locator('.page-service .tag')).toHaveText('连接失败')
-  await expect(page.locator('.page-service .service-message.is-error')).toContainText('服务器返回 HTTP 500')
+  await expect(page.locator('.page-service .service-message.is-error')).toContainText(
+    '服务器返回 HTTP 500',
+  )
   await expect(page.getByRole('button', { name: '重试' })).toBeEnabled()
 })

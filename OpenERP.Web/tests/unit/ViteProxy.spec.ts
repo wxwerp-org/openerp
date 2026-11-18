@@ -25,17 +25,22 @@ function serverUrl(server: Server | null, protocol = 'http') {
 async function startUpstream(server: Server, protocol = 'http') {
   server.listen(0, host)
   await once(server, 'listening')
-  onTestFinished(() => new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve())
-  }))
+  onTestFinished(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()))
+      }),
+  )
   return serverUrl(server, protocol)
 }
 
 function startHttpUpstream(name: string) {
-  return startUpstream(createHttpServer((request, response) => {
-    response.setHeader('Content-Type', 'application/json')
-    response.end(JSON.stringify({ name, path: request.url, host: request.headers.host }))
-  }))
+  return startUpstream(
+    createHttpServer((request, response) => {
+      response.setHeader('Content-Type', 'application/json')
+      response.end(JSON.stringify({ name, path: request.url, host: request.headers.host }))
+    }),
+  )
 }
 
 async function requestApi(apiHttps?: string, apiBaseUrl?: string) {
@@ -63,10 +68,27 @@ function createSelfSignedCertificate() {
   const keyFile = join(directory, 'key.pem')
   const certFile = join(directory, 'cert.pem')
   try {
-    execFileSync('openssl', [
-      'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', `/CN=${host}`,
-      '-addext', `subjectAltName=IP:${host}`, '-keyout', keyFile, '-out', certFile,
-    ], { stdio: 'pipe', timeout: 5_000 })
+    execFileSync(
+      'openssl',
+      [
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-days',
+        '1',
+        '-subj',
+        `/CN=${host}`,
+        '-addext',
+        `subjectAltName=IP:${host}`,
+        '-keyout',
+        keyFile,
+        '-out',
+        certFile,
+      ],
+      { stdio: 'pipe', timeout: 5_000 },
+    )
     return { key: readFileSync(keyFile), cert: readFileSync(certFile) }
   } finally {
     rmSync(directory, { recursive: true, force: true })
@@ -116,10 +138,13 @@ describe('Vite 开发代理', () => {
 
   it('Given HTTPS 上游使用不受信任的自签证书 When 请求 /api Then 代理拒绝连接', async () => {
     let receivedRequests = 0
-    const upstream = await startUpstream(createHttpsServer(createSelfSignedCertificate(), (_request, response) => {
-      receivedRequests++
-      response.end('上游受理了请求')
-    }), 'https')
+    const upstream = await startUpstream(
+      createHttpsServer(createSelfSignedCertificate(), (_request, response) => {
+        receivedRequests++
+        response.end('上游受理了请求')
+      }),
+      'https',
+    )
 
     const response = await requestApi(undefined, upstream)
 

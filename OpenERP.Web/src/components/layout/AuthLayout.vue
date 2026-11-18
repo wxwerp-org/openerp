@@ -3,9 +3,29 @@
     <div class="auth-shell">
       <div class="auth-brand">
         <svg viewBox="0 0 32 32" aria-hidden="true">
-          <path d="M4.7 25.9 12.9 6.2c1.2-2.9 5.1-2.9 6.4 0l2.1 5" fill="none" stroke="#0968FF" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M8.7 26 19.3 6.3c1-1.8 3.7-1.6 4.6.3 1 2.1 2.2 4.9 3.1 7.5.7 1.8.5 3.9-.5 5.5l-2.3 3.3" fill="none" stroke="#0968FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M9.7 19.3h8.1" fill="none" stroke="#0968FF" stroke-width="3.6" stroke-linecap="round" />
+          <path
+            d="M4.7 25.9 12.9 6.2c1.2-2.9 5.1-2.9 6.4 0l2.1 5"
+            fill="none"
+            stroke="#0968FF"
+            stroke-width="4.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M8.7 26 19.3 6.3c1-1.8 3.7-1.6 4.6.3 1 2.1 2.2 4.9 3.1 7.5.7 1.8.5 3.9-.5 5.5l-2.3 3.3"
+            fill="none"
+            stroke="#0968FF"
+            stroke-width="4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M9.7 19.3h8.1"
+            fill="none"
+            stroke="#0968FF"
+            stroke-width="3.6"
+            stroke-linecap="round"
+          />
         </svg>
         <span>Open ERP</span>
       </div>
@@ -15,7 +35,10 @@
 </template>
 
 <style scoped>
-:global(body:has(.auth-layout)) { min-width: 0; overflow: auto; }
+:global(body:has(.auth-layout)) {
+  min-width: 0;
+  overflow: auto;
+}
 
 .auth-layout {
   display: grid;
@@ -45,7 +68,7 @@
   font-size: 18px;
   font-weight: 600;
   line-height: 28px;
-  letter-spacing: .3px;
+  letter-spacing: 0.3px;
 }
 .auth-card {
   width: 100%;
@@ -53,7 +76,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
   background: var(--surface);
-  box-shadow: 0 4px 14px rgba(177, 199, 226, .20);
+  box-shadow: 0 4px 14px rgba(177, 199, 226, 0.2);
 }
 .auth-card :deep(h1) {
   margin: 0;

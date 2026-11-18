@@ -24,10 +24,14 @@ async function mountAt(path: string) {
   return { app: wrapper, router }
 }
 
-function mockInitializedFetch(fetch: (url: string, request?: RequestInit) => Promise<Response>): void {
-  vi.stubGlobal('fetch', (url: string, request?: RequestInit) => url === '/api/auth/status'
-    ? Promise.resolve(Response.json({ initialized: true }))
-    : fetch(url, request))
+function mockInitializedFetch(
+  fetch: (url: string, request?: RequestInit) => Promise<Response>,
+): void {
+  vi.stubGlobal('fetch', (url: string, request?: RequestInit) =>
+    url === '/api/auth/status'
+      ? Promise.resolve(Response.json({ initialized: true }))
+      : fetch(url, request),
+  )
 }
 
 function sessionResponse(value = admin, accessToken = 'unit-access'): Response {
@@ -40,10 +44,16 @@ function sessionResponse(value = admin, accessToken = 'unit-access'): Response {
 
 describe('真实会话路由', () => {
   it('Given 首次直达受保护页且会话仍在验证 When 会话确认无效 Then 始终隐藏业务界面并保留目标地址', async () => {
-    let resolve: (response: Response) => void = () => { throw new Error('未发起会话请求') }
-    mockInitializedFetch((url: string) => url === '/api/auth/csrf'
-      ? Promise.resolve(Response.json({ requestToken: 'route-token' }))
-      : new Promise<Response>((finish) => { resolve = finish }))
+    let resolve: (response: Response) => void = () => {
+      throw new Error('未发起会话请求')
+    }
+    mockInitializedFetch((url: string) =>
+      url === '/api/auth/csrf'
+        ? Promise.resolve(Response.json({ requestToken: 'route-token' }))
+        : new Promise<Response>((finish) => {
+            resolve = finish
+          }),
+    )
     const { app, router } = await mountAt('/users?from=notice#main')
 
     expect(app.find('.sidebar').exists()).toBe(false)
@@ -59,12 +69,13 @@ describe('真实会话路由', () => {
   it('Given 会话服务暂时不可用 When 检查返回 503 后重试成功 Then 保留当前地址并进入工作台', async () => {
     let refreshAttempts = 0
     const fetch = vi.fn((url: string) => {
-      if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'retry-token' }))
+      if (url === '/api/auth/csrf')
+        return Promise.resolve(Response.json({ requestToken: 'retry-token' }))
       if (url === '/api/auth/refresh') {
         refreshAttempts++
-        return Promise.resolve(refreshAttempts === 1
-          ? new Response(null, { status: 503 })
-          : sessionResponse())
+        return Promise.resolve(
+          refreshAttempts === 1 ? new Response(null, { status: 503 }) : sessionResponse(),
+        )
       }
       return Promise.resolve(new Response(null, { status: 404 }))
     })
@@ -83,7 +94,8 @@ describe('真实会话路由', () => {
   it('Given 登录页带外站返回地址 When 凭证错误后用正确凭证重试 Then 保留登录反馈并安全进入首页', async () => {
     let csrfCount = 0
     const fetch = vi.fn((url: string, request?: RequestInit) => {
-      if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: `csrf-${++csrfCount}` }))
+      if (url === '/api/auth/csrf')
+        return Promise.resolve(Response.json({ requestToken: `csrf-${++csrfCount}` }))
       if (url === '/api/auth/refresh') return Promise.resolve(new Response(null, { status: 401 }))
       const credentials = JSON.parse(String(request?.body))
       if (credentials.password !== ' valid ') {
@@ -115,11 +127,12 @@ describe('真实会话路由', () => {
   it('Given 已登录 When 刷新暂时失败后业务接口令牌明确失效 Then 保留工作台直至刷新确认会话失效', async () => {
     let refreshStatus = 200
     mockInitializedFetch((url: string) => {
-      if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'session-check-token' }))
+      if (url === '/api/auth/csrf')
+        return Promise.resolve(Response.json({ requestToken: 'session-check-token' }))
       if (url === '/api/auth/refresh') {
-        return Promise.resolve(refreshStatus === 200
-          ? sessionResponse()
-          : new Response(null, { status: refreshStatus }))
+        return Promise.resolve(
+          refreshStatus === 200 ? sessionResponse() : new Response(null, { status: refreshStatus }),
+        )
       }
       return Promise.resolve(new Response(null, { status: 401 }))
     })
@@ -143,10 +156,13 @@ describe('真实会话路由', () => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
     let refreshCount = 0
     mockInitializedFetch((url: string) => {
-      if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'expiry-token' }))
+      if (url === '/api/auth/csrf')
+        return Promise.resolve(Response.json({ requestToken: 'expiry-token' }))
       if (url === '/api/auth/refresh') {
         refreshCount++
-        return Promise.resolve(refreshCount === 1 ? sessionResponse() : new Response(null, { status: 401 }))
+        return Promise.resolve(
+          refreshCount === 1 ? sessionResponse() : new Response(null, { status: 401 }),
+        )
       }
       return Promise.resolve(new Response(null, { status: 404 }))
     })
@@ -170,7 +186,8 @@ describe('真实会话路由', () => {
       vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
       let refreshCount = 0
       mockInitializedFetch((url: string) => {
-        if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'activity-token' }))
+        if (url === '/api/auth/csrf')
+          return Promise.resolve(Response.json({ requestToken: 'activity-token' }))
         if (url === '/api/auth/refresh') {
           refreshCount++
           return Promise.resolve(sessionResponse())
@@ -205,17 +222,25 @@ describe('真实账号操作', () => {
   it('Given 从会话加载真实资料 When 取消编辑和保存失败后重试 Then 仅成功保存时关闭并刷新姓名', async () => {
     let saves = 0
     mockInitializedFetch((url: string, request?: RequestInit) => {
-      if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'account-token' }))
+      if (url === '/api/auth/csrf')
+        return Promise.resolve(Response.json({ requestToken: 'account-token' }))
       if (url === '/api/auth/refresh') return Promise.resolve(sessionResponse())
       const fields = JSON.parse(String(request?.body))
       const token = new Headers(request?.headers).get('Authorization')
-      if (url !== '/api/account/profile' || request?.method !== 'PUT' || token !== 'Bearer unit-access' || fields.name !== '仓库管理员') {
+      if (
+        url !== '/api/account/profile' ||
+        request?.method !== 'PUT' ||
+        token !== 'Bearer unit-access' ||
+        fields.name !== '仓库管理员'
+      ) {
         return Promise.resolve(new Response(null, { status: 400 }))
       }
       saves++
-      return Promise.resolve(saves === 1
-        ? Response.json({ detail: '暂时无法保存' }, { status: 503 })
-        : Response.json({ ...admin, ...fields }))
+      return Promise.resolve(
+        saves === 1
+          ? Response.json({ detail: '暂时无法保存' }, { status: 503 })
+          : Response.json({ ...admin, ...fields }),
+      )
     })
     const { app } = await mountAt('/')
 
@@ -246,7 +271,8 @@ describe('真实账号操作', () => {
   it('Given 资料弹窗 When 手机号超长或邮箱含空格 Then 标明首个无效字段且保留表单', async () => {
     let saves = 0
     mockInitializedFetch((url: string) => {
-      if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'account-token' }))
+      if (url === '/api/auth/csrf')
+        return Promise.resolve(Response.json({ requestToken: 'account-token' }))
       if (url === '/api/auth/refresh') return Promise.resolve(sessionResponse())
       saves++
       return Promise.resolve(Response.json(admin))
@@ -284,13 +310,20 @@ describe('真实账号操作', () => {
     let attempts = 0
     let savedName = admin.name
     mockInitializedFetch((url: string, request?: RequestInit) => {
-      const session = { ...admin, name: savedName, expiresAt: `2099-01-0${sessionNumber}T00:00:00Z` }
+      const session = {
+        ...admin,
+        name: savedName,
+        expiresAt: `2099-01-0${sessionNumber}T00:00:00Z`,
+      }
       const token = `session-${sessionNumber}`
       if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: token }))
-      if (url === '/api/auth/refresh') return Promise.resolve(sessionResponse(session, `access-${sessionNumber}`))
+      if (url === '/api/auth/refresh')
+        return Promise.resolve(sessionResponse(session, `access-${sessionNumber}`))
       if (url === '/api/account/profile') {
         attempts++
-        if (new Headers(request?.headers).get('Authorization') !== `Bearer access-${sessionNumber}`) {
+        if (
+          new Headers(request?.headers).get('Authorization') !== `Bearer access-${sessionNumber}`
+        ) {
           return Promise.resolve(new Response(null, { status: 401 }))
         }
         savedName = JSON.parse(String(request?.body)).name
@@ -329,11 +362,17 @@ describe('真实账号操作', () => {
 
   it('Given 已登录 When 原密码错误后用正确原密码提交 Then 先保留弹窗再回到登录页', async () => {
     mockInitializedFetch((url: string, request?: RequestInit) => {
-      if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'password-token' }))
+      if (url === '/api/auth/csrf')
+        return Promise.resolve(Response.json({ requestToken: 'password-token' }))
       if (url === '/api/auth/refresh') return Promise.resolve(sessionResponse())
       const { oldPassword, newPassword } = JSON.parse(String(request?.body))
       const token = new Headers(request?.headers).get('Authorization')
-      if (url === '/api/auth/change-password' && token === 'Bearer unit-access' && oldPassword === ' previous ' && newPassword === ' newpwd ') {
+      if (
+        url === '/api/auth/change-password' &&
+        token === 'Bearer unit-access' &&
+        oldPassword === ' previous ' &&
+        newPassword === ' newpwd '
+      ) {
         return Promise.resolve(new Response(null, { status: 204 }))
       }
       return Promise.resolve(Response.json({ detail: '原密码错误' }, { status: 400 }))
@@ -360,10 +399,21 @@ describe('真实账号操作', () => {
     let failed = true
     mockInitializedFetch((url: string, request?: RequestInit) => {
       if (url === '/api/auth/refresh') return Promise.resolve(sessionResponse())
-      if (url === '/api/auth/csrf') return Promise.resolve(Response.json({ requestToken: 'logout-token' }))
+      if (url === '/api/auth/csrf')
+        return Promise.resolve(Response.json({ requestToken: 'logout-token' }))
       const token = new Headers(request?.headers).get('X-CSRF-TOKEN')
-      if (url === '/api/auth/logout' && request?.method === 'POST' && request.body === undefined && token === 'logout-token' && !new Headers(request.headers).has('Authorization')) {
-        return Promise.resolve(failed ? Response.json({ detail: '暂时无法退出' }, { status: 503 }) : new Response(null, { status: 204 }))
+      if (
+        url === '/api/auth/logout' &&
+        request?.method === 'POST' &&
+        request.body === undefined &&
+        token === 'logout-token' &&
+        !new Headers(request.headers).has('Authorization')
+      ) {
+        return Promise.resolve(
+          failed
+            ? Response.json({ detail: '暂时无法退出' }, { status: 503 })
+            : new Response(null, { status: 204 }),
+        )
       }
       return Promise.resolve(new Response(null, { status: 400 }))
     })
@@ -401,9 +451,8 @@ function mockInitializationService(service: InitializationService) {
         ? new Response(null, { status: 503 })
         : Response.json({ initialized: service.initialized ?? false })
     }
-    if (url === '/api/auth/refresh') return service.signedIn
-      ? sessionResponse()
-      : new Response(null, { status: 401 })
+    if (url === '/api/auth/refresh')
+      return service.signedIn ? sessionResponse() : new Response(null, { status: 401 })
     if (url === '/api/auth/csrf') return Response.json({ requestToken: 'initialization-token' })
     if (url === '/api/auth/initialize' && request?.method === 'POST') {
       if (new Headers(request.headers).get('X-CSRF-TOKEN') !== 'initialization-token') {
@@ -420,14 +469,22 @@ function mockInitializationService(service: InitializationService) {
   return { submissions, statusRequests }
 }
 
-async function fillInitialization(app: VueWrapper, password: string, confirmation = password): Promise<void> {
+async function fillInitialization(
+  app: VueWrapper,
+  password: string,
+  confirmation = password,
+): Promise<void> {
   await app.get('#newPassword').setValue(password)
   await app.get('#confirmPassword').setValue(confirmation)
 }
 
 function deferResponse() {
-  let resolve: (response: Response) => void = () => { throw new Error('尚未设置响应') }
-  const promise = new Promise<Response>((finish) => { resolve = finish })
+  let resolve: (response: Response) => void = () => {
+    throw new Error('尚未设置响应')
+  }
+  const promise = new Promise<Response>((finish) => {
+    resolve = finish
+  })
   return { promise, resolve }
 }
 
@@ -437,7 +494,10 @@ describe('首次设置管理员密码', () => {
     const { submissions, statusRequests } = mockInitializationService(service)
     const { app, router } = await mountAt('/users?source=initialization#main')
     expect(router.currentRoute.value.path).toBe('/initialize')
-    expect(app.get('input[autocomplete="username"]').element).toMatchObject({ value: 'admin', readOnly: true })
+    expect(app.get('input[autocomplete="username"]').element).toMatchObject({
+      value: 'admin',
+      readOnly: true,
+    })
     expect(app.find('.sidebar').exists()).toBe(false)
     expect(statusRequests[0]?.cache).toBe('no-store')
 
@@ -488,32 +548,40 @@ describe('首次设置管理员密码', () => {
     expect(router.currentRoute.value.query.returnTo).toBe('/users')
   })
 
-  it.each(['focus', 'conflict', 'lost-response'] as const)('Given 另一处已完成初始化 When 收到 %s 事件 Then 提示已初始化并安全进入登录页', async (reason) => {
-    const service: InitializationService = {}
-    const { submissions } = mockInitializationService(service)
-    const { app, router } = await mountAt('/initialize?returnTo=%2F%2Fexample.test')
-    expect(app.find('#newPassword').exists()).toBe(true)
-    service.initialized = true
-    if (reason === 'focus') {
-      window.dispatchEvent(new Event('focus'))
-    } else {
-      service.submit = reason === 'conflict'
-        ? async () => Response.json({ code: 'already_initialized' }, { status: 409 })
-        : async () => { throw new TypeError('响应丢失') }
-      await fillInitialization(app, 'personal')
-      await app.get('form').trigger('submit')
-    }
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/login')
-    expect(router.currentRoute.value.query.returnTo).toBe('/')
-    expect(app.get('[role="status"]').text()).toContain('已初始化')
-    expect(app.get('[role="status"]').text()).not.toContain('初始化成功')
-    expect(submissions).toHaveLength(reason === 'focus' ? 0 : 1)
-    expect(app.find('.sidebar').exists()).toBe(false)
-  })
+  it.each(['focus', 'conflict', 'lost-response'] as const)(
+    'Given 另一处已完成初始化 When 收到 %s 事件 Then 提示已初始化并安全进入登录页',
+    async (reason) => {
+      const service: InitializationService = {}
+      const { submissions } = mockInitializationService(service)
+      const { app, router } = await mountAt('/initialize?returnTo=%2F%2Fexample.test')
+      expect(app.find('#newPassword').exists()).toBe(true)
+      service.initialized = true
+      if (reason === 'focus') {
+        window.dispatchEvent(new Event('focus'))
+      } else {
+        service.submit =
+          reason === 'conflict'
+            ? async () => Response.json({ code: 'already_initialized' }, { status: 409 })
+            : async () => {
+                throw new TypeError('响应丢失')
+              }
+        await fillInitialization(app, 'personal')
+        await app.get('form').trigger('submit')
+      }
+      await flushPromises()
+      expect(router.currentRoute.value.path).toBe('/login')
+      expect(router.currentRoute.value.query.returnTo).toBe('/')
+      expect(app.get('[role="status"]').text()).toContain('已初始化')
+      expect(app.get('[role="status"]').text()).not.toContain('初始化成功')
+      expect(submissions).toHaveLength(reason === 'focus' ? 0 : 1)
+      expect(app.find('.sidebar').exists()).toBe(false)
+    },
+  )
 
   it('Given 初始化请求失败且服务仍未初始化 When 检查与手动重试 Then 保留表单且不自动补发写入', async () => {
-    const service: InitializationService = { submit: async () => new Response(null, { status: 503 }) }
+    const service: InitializationService = {
+      submit: async () => new Response(null, { status: 503 }),
+    }
     const { submissions } = mockInitializationService(service)
     const { app, router } = await mountAt('/initialize')
     await fillInitialization(app, 'personal')
@@ -631,9 +699,12 @@ describe('首次设置管理员密码', () => {
     { initialized: false, signedIn: false, destination: '/initialize' },
     { initialized: true, signedIn: false, destination: '/login' },
     { initialized: true, signedIn: true, destination: '/users' },
-  ])('Given 旧改密链接 When 当前会话确认 Then 进入 $destination', async ({ initialized, signedIn, destination }) => {
-    mockInitializationService({ initialized, signedIn })
-    const { router } = await mountAt('/change-password?returnTo=%2Fusers')
-    expect(router.currentRoute.value.path).toBe(destination)
-  })
+  ])(
+    'Given 旧改密链接 When 当前会话确认 Then 进入 $destination',
+    async ({ initialized, signedIn, destination }) => {
+      mockInitializationService({ initialized, signedIn })
+      const { router } = await mountAt('/change-password?returnTo=%2Fusers')
+      expect(router.currentRoute.value.path).toBe(destination)
+    },
+  )
 })

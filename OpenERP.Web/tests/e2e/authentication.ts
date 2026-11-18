@@ -16,8 +16,10 @@ type SessionResponse = {
   }
 }
 
-export async function expectSessionResponse(response: { json(): Promise<unknown> }): Promise<SessionResponse> {
-  const session = await response.json() as SessionResponse
+export async function expectSessionResponse(response: {
+  json(): Promise<unknown>
+}): Promise<SessionResponse> {
+  const session = (await response.json()) as SessionResponse
   expect(session).toMatchObject({
     accessToken: expect.any(String),
     accessTokenExpiresAt: expect.any(String),
@@ -29,13 +31,16 @@ export async function expectSessionResponse(response: { json(): Promise<unknown>
   })
   expect(typeof session.account.phone === 'string' || session.account.phone === null).toBe(true)
   expect(typeof session.account.email === 'string' || session.account.email === null).toBe(true)
-  expect(typeof session.account.lastLoginAt === 'string' || session.account.lastLoginAt === null).toBe(true)
+  expect(
+    typeof session.account.lastLoginAt === 'string' || session.account.lastLoginAt === null,
+  ).toBe(true)
   expect(session.accessToken.length).toBeGreaterThan(0)
   expect(Number.isFinite(Date.parse(session.accessTokenExpiresAt))).toBe(true)
   expect(Number.isFinite(Date.parse(session.account.expiresAt))).toBe(true)
 
   if (session.account.lastLoginAt) {
-    const accountLifetime = Date.parse(session.account.expiresAt) - Date.parse(session.account.lastLoginAt)
+    const accountLifetime =
+      Date.parse(session.account.expiresAt) - Date.parse(session.account.lastLoginAt)
     expect(Math.abs(accountLifetime - 24 * 60 * 60 * 1000)).toBeLessThan(5_000)
   }
 
@@ -58,9 +63,7 @@ export async function enterWorkspace(page: Page): Promise<void> {
     lastLoginAt: new Date(now).toISOString(),
     expiresAt: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
   }
-  await page.route('**/api/auth/status', (route) =>
-    route.fulfill({ json: { initialized: true } }),
-  )
+  await page.route('**/api/auth/status', (route) => route.fulfill({ json: { initialized: true } }))
   await page.route('**/api/auth/refresh', (route) =>
     route.fulfill({
       json: {
@@ -99,7 +102,9 @@ export async function bearerHeaders(request: APIRequestContext): Promise<Record<
   return { Authorization: `Bearer ${accessToken}` }
 }
 
-export async function authenticatedHeaders(request: APIRequestContext): Promise<Record<string, string>> {
+export async function authenticatedHeaders(
+  request: APIRequestContext,
+): Promise<Record<string, string>> {
   return bearerHeaders(request)
 }
 

@@ -9,7 +9,8 @@ export type Account = {
   expiresAt: string
 }
 
-export type SessionState = 'pending' | 'unavailable' | 'uninitialized' | 'anonymous' | 'authenticated'
+export type SessionState =
+  'pending' | 'unavailable' | 'uninitialized' | 'anonymous' | 'authenticated'
 
 type SessionResponse = {
   accessToken: string
@@ -53,7 +54,10 @@ export const sessionState = readonly(state)
 export const initializationCompleted = readonly(initializedHere)
 export const initializationPending = readonly(initializing)
 
-function setAccount(value: Account | null, emptyState: 'anonymous' | 'uninitialized' = 'anonymous'): void {
+function setAccount(
+  value: Account | null,
+  emptyState: 'anonymous' | 'uninitialized' = 'anonymous',
+): void {
   currentAccount.value = value
   state.value = value ? 'authenticated' : emptyState
 }
@@ -99,7 +103,10 @@ function setUninitialized(): void {
 
 async function initializationRequired(response: Response): Promise<boolean> {
   if (response.status !== 409) return false
-  const problem = await response.clone().json().catch(() => null)
+  const problem = await response
+    .clone()
+    .json()
+    .catch(() => null)
   return problem?.code === 'initialization_required'
 }
 
@@ -111,19 +118,27 @@ async function responseError(response: Response, fallback: string): Promise<stri
 function isAccount(value: unknown): value is Account {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<Account>
-  return typeof candidate.username === 'string' &&
+  return (
+    typeof candidate.username === 'string' &&
     typeof candidate.name === 'string' &&
     (typeof candidate.phone === 'string' || candidate.phone === null) &&
     (typeof candidate.email === 'string' || candidate.email === null) &&
     (typeof candidate.lastLoginAt === 'string' || candidate.lastLoginAt === null) &&
-    typeof candidate.expiresAt === 'string' && Number.isFinite(Date.parse(candidate.expiresAt))
+    typeof candidate.expiresAt === 'string' &&
+    Number.isFinite(Date.parse(candidate.expiresAt))
+  )
 }
 
 async function readSessionResponse(response: Response): Promise<SessionResponse> {
   const payload = await response.json()
-  if (!payload || typeof payload.accessToken !== 'string' || !payload.accessToken ||
-    typeof payload.accessTokenExpiresAt !== 'string' || !Number.isFinite(Date.parse(payload.accessTokenExpiresAt)) ||
-    !isAccount(payload.account)) {
+  if (
+    !payload ||
+    typeof payload.accessToken !== 'string' ||
+    !payload.accessToken ||
+    typeof payload.accessTokenExpiresAt !== 'string' ||
+    !Number.isFinite(Date.parse(payload.accessTokenExpiresAt)) ||
+    !isAccount(payload.account)
+  ) {
     throw new Error('无法验证登录状态。')
   }
   return payload as SessionResponse
@@ -188,7 +203,8 @@ async function performRefresh(requestRevision: number): Promise<RefreshResult> {
     scheduleRefresh()
     return 'refreshed'
   } catch {
-    if (requestRevision === revision && tokenRequest && csrfToken === tokenRequest) csrfToken = undefined
+    if (requestRevision === revision && tokenRequest && csrfToken === tokenRequest)
+      csrfToken = undefined
     markRefreshFailed(requestRevision)
     return 'failed'
   }
@@ -198,9 +214,11 @@ function refreshAccessToken(requestRevision = revision): Promise<RefreshResult> 
   if (refreshing?.revision === requestRevision) return refreshing.promise
   const promise = performRefresh(requestRevision)
   refreshing = { revision: requestRevision, promise }
-  void promise.finally(() => {
-    if (refreshing?.promise === promise) refreshing = undefined
-  }).catch(() => undefined)
+  void promise
+    .finally(() => {
+      if (refreshing?.promise === promise) refreshing = undefined
+    })
+    .catch(() => undefined)
   return promise
 }
 
@@ -245,17 +263,29 @@ export async function apiRequest(path: string, init: RequestInit = {}): Promise<
   const response = await fetch(path, { ...init, headers })
   if (requestRevision !== revision) return response
   if (tokenRequest && response.status === 400 && csrfToken === tokenRequest) csrfToken = undefined
-  if (response.status === 409 && await initializationRequired(response) && requestRevision === revision) {
+  if (
+    response.status === 409 &&
+    (await initializationRequired(response)) &&
+    requestRevision === revision
+  ) {
     changeSession(null, 'uninitialized')
     return response
   }
 
-  if (response.status !== 401 || !protectedRequest || refreshAttempted || requestRevision !== revision) return response
+  if (
+    response.status !== 401 ||
+    !protectedRequest ||
+    refreshAttempted ||
+    requestRevision !== revision
+  )
+    return response
 
-  const refresh = accessToken && accessToken !== sentAccessToken
-    ? 'refreshed'
-    : await refreshAccessToken(requestRevision)
-  if (refresh !== 'refreshed' || requestRevision !== revision || !safeToRetry(method)) return response
+  const refresh =
+    accessToken && accessToken !== sentAccessToken
+      ? 'refreshed'
+      : await refreshAccessToken(requestRevision)
+  if (refresh !== 'refreshed' || requestRevision !== revision || !safeToRetry(method))
+    return response
 
   const retryHeaders = new Headers(init.headers)
   if (accessToken) retryHeaders.set('Authorization', `Bearer ${accessToken}`)
@@ -360,15 +390,27 @@ async function submitInitialization(newPassword: string): Promise<void> {
   if (requestRevision === revision && state.value === 'uninitialized') throw new Error(error)
 }
 
-async function accountRequest(path: string, init: RequestInit, fallback: string): Promise<Response> {
+async function accountRequest(
+  path: string,
+  init: RequestInit,
+  fallback: string,
+): Promise<Response> {
   const response = await apiRequest(path, init)
   if (!response.ok) throw new Error(await responseError(response, fallback))
   return response
 }
 
-export async function saveProfile(fields: { name: string; phone: string; email: string }): Promise<void> {
+export async function saveProfile(fields: {
+  name: string
+  phone: string
+  email: string
+}): Promise<void> {
   const requestRevision = revision
-  const response = await accountRequest('/api/account/profile', jsonRequest('PUT', fields), '无法保存个人信息，请稍后重试。')
+  const response = await accountRequest(
+    '/api/account/profile',
+    jsonRequest('PUT', fields),
+    '无法保存个人信息，请稍后重试。',
+  )
   const updated = await response.json()
   if (!isAccount(updated)) throw new Error('无法保存个人信息，请稍后重试。')
   if (requestRevision === revision) setAccount(updated)
@@ -391,7 +433,10 @@ export function logout(): Promise<void> {
   return endSession('/api/auth/logout', { method: 'POST' }, '退出登录失败，请稍后重试。')
 }
 
-export function changePassword(fields: { oldPassword: string; newPassword: string }): Promise<void> {
+export function changePassword(fields: {
+  oldPassword: string
+  newPassword: string
+}): Promise<void> {
   return endSession(
     '/api/auth/change-password',
     jsonRequest('POST', fields),

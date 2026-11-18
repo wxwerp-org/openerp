@@ -1,4 +1,5 @@
-export type WorkspacePageId = 'dashboard' | 'newdev' | 'product' | 'orders' | 'business' | 'users' | 'order-report'
+export type WorkspacePageId =
+  'dashboard' | 'newdev' | 'product' | 'orders' | 'business' | 'users' | 'order-report'
 
 export type WorkspacePage = {
   id: WorkspacePageId

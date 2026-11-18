@@ -66,7 +66,15 @@ onMounted(loadStatus)
       <div class="erp-config-status">
         <span>配置状态</span>
         <span class="config-value" role="status">{{ labels[status] }}</span>
-        <button v-if="status === 'error'" class="btn" type="button" :disabled="saving" @click="loadStatus">重试</button>
+        <button
+          v-if="status === 'error'"
+          class="btn"
+          type="button"
+          :disabled="saving"
+          @click="loadStatus"
+        >
+          重试
+        </button>
       </div>
       <div>
         <label class="config-label" for="erp-access-token">私有 ERP AccessToken</label>
@@ -78,11 +86,15 @@ onMounted(loadStatus)
             autocomplete="new-password"
             :disabled="saving"
             :placeholder="status === 'configured' ? '填写新的 Token' : '填写 Token'"
-          >
+          />
         </div>
       </div>
       <div class="erp-config-actions">
-        <button class="btn primary" type="submit" :disabled="saving || status === 'loading' || !token.trim()">
+        <button
+          class="btn primary"
+          type="submit"
+          :disabled="saving || status === 'loading' || !token.trim()"
+        >
           {{ saving ? '保存中…' : '保存' }}
         </button>
         <span aria-live="polite">{{ saveMessage }}</span>

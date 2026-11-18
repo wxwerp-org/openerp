@@ -57,14 +57,16 @@ function stubbedShopPage(pageCount: number, totalCount = 45) {
     const page = Number(params.get('page'))
     const pageSize = Number(params.get('pageSize'))
     requested.push(`page=${page}&pageSize=${pageSize}`)
-    return jsonResponse(shopsBody(
-      Array.from({ length: pageSize }, (_, index): Shop => ({
-        ...baseShop,
-        sid: String((page - 1) * pageSize + index + 1),
-        name: `测试店铺 ${(page - 1) * pageSize + index + 1}`,
-      })),
-      { page, pageSize, totalCount, pageCount },
-    ))
+    return jsonResponse(
+      shopsBody(
+        Array.from({ length: pageSize }, (_, index): Shop => ({
+          ...baseShop,
+          sid: String((page - 1) * pageSize + index + 1),
+          name: `测试店铺 ${(page - 1) * pageSize + index + 1}`,
+        })),
+        { page, pageSize, totalCount, pageCount },
+      ),
+    )
   })
   return { requested, fetchMock }
 }
@@ -190,18 +192,21 @@ describe('授权店铺页', () => {
     { isTokenOk: true, label: '有效', className: 'green' },
     { isTokenOk: false, label: '无效', className: 'red' },
     { isTokenOk: null, label: '未知', className: 'gray' },
-  ])('Given 授权状态 $label When 渲染 Then 使用对应状态标签并展示说明', async ({ isTokenOk, label, className }) => {
-    stubFetch((url) => {
-      if (url === '/api/erp/config') return jsonResponse(configBody())
-      return jsonResponse(shopsBody([{ ...baseShop, isTokenOk, statusError: '授权校验失败' }]))
-    })
-    wrapper = await mountShops()
+  ])(
+    'Given 授权状态 $label When 渲染 Then 使用对应状态标签并展示说明',
+    async ({ isTokenOk, label, className }) => {
+      stubFetch((url) => {
+        if (url === '/api/erp/config') return jsonResponse(configBody())
+        return jsonResponse(shopsBody([{ ...baseShop, isTokenOk, statusError: '授权校验失败' }]))
+      })
+      wrapper = await mountShops()
 
-    const tag = wrapper.findAll('.tag').find((candidate) => candidate.text() === label)
-    expect(tag).toBeDefined()
-    expect(tag!.classes()).toContain(className)
-    expect(wrapper.text()).toContain('授权校验失败')
-  })
+      const tag = wrapper.findAll('.tag').find((candidate) => candidate.text() === label)
+      expect(tag).toBeDefined()
+      expect(tag!.classes()).toContain(className)
+      expect(wrapper.text()).toContain('授权校验失败')
+    },
+  )
 
   it('Given 列表为空 When 加载成功 Then 显示暂无授权店铺且分页栏可见', async () => {
     stubFetch((url) => {
@@ -255,9 +260,7 @@ describe('授权店铺页', () => {
       const pageSize = Number(params.get('pageSize'))
       requested.push(`page=${page}&pageSize=${pageSize}`)
       if (shrunk) {
-        return jsonResponse(
-          shopsBody([baseShop], { page, pageSize, totalCount: 1, pageCount: 1 }),
-        )
+        return jsonResponse(shopsBody([baseShop], { page, pageSize, totalCount: 1, pageCount: 1 }))
       }
       return jsonResponse(
         shopsBody(
@@ -366,10 +369,12 @@ describe('授权店铺页', () => {
       if (url === '/api/erp/config') return jsonResponse(configBody())
       shopsCall += 1
       if (shopsCall === 1) {
-        return jsonResponse(shopsBody(
-          Array.from({ length: 20 }, (_, index) => ({ ...baseShop, sid: String(index + 1) })),
-          { totalCount: 45, pageCount: 3 },
-        ))
+        return jsonResponse(
+          shopsBody(
+            Array.from({ length: 20 }, (_, index) => ({ ...baseShop, sid: String(index + 1) })),
+            { totalCount: 45, pageCount: 3 },
+          ),
+        )
       }
       return secondPage.promise
     })
@@ -387,10 +392,14 @@ describe('授权店铺页', () => {
       expect(button.attributes('disabled')).toBeDefined()
     }
 
-    secondPage.resolve(jsonResponse(shopsBody(
-      Array.from({ length: 20 }, (_, index) => ({ ...baseShop, sid: String(index + 21) })),
-      { page: 2, totalCount: 45, pageCount: 3 },
-    )))
+    secondPage.resolve(
+      jsonResponse(
+        shopsBody(
+          Array.from({ length: 20 }, (_, index) => ({ ...baseShop, sid: String(index + 21) })),
+          { page: 2, totalCount: 45, pageCount: 3 },
+        ),
+      ),
+    )
     await flushPromises()
     expect(wrapper.get('.page-num').text()).toBe('2')
     expect(wrapper.findAll('tbody tr')).toHaveLength(20)
@@ -404,6 +413,8 @@ describe('授权店铺页', () => {
     wrapper = await mountShops()
 
     expect(wrapper.findAll('th').map((header) => header.text())).not.toContain('历史订单')
-    expect(wrapper.findAll('button').some((button) => button.text().includes('同步历史订单'))).toBe(false)
+    expect(wrapper.findAll('button').some((button) => button.text().includes('同步历史订单'))).toBe(
+      false,
+    )
   })
 })

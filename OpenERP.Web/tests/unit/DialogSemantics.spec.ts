@@ -16,15 +16,18 @@ describe('原生弹窗语义', () => {
     ['订单公告', OrderNoticeDialog, 'noticeLayer'],
     ['个人信息', ProfileDialog, 'profileLayer'],
     ['修改密码', PasswordDialog, 'passwordLayer'],
-  ])('Given %s弹窗 When 使用模态行为 Then 使用原生 dialog 且不重复声明 aria-modal', async (_, component, id) => {
-    const wrapper = mount(component, {
-      props: component === ProfileDialog ? { open: true, account: adminAccount } : { open: true },
-    })
-    await nextTick()
-    const dialog = wrapper.get(`#${id}`)
+  ])(
+    'Given %s弹窗 When 使用模态行为 Then 使用原生 dialog 且不重复声明 aria-modal',
+    async (_, component, id) => {
+      const wrapper = mount(component, {
+        props: component === ProfileDialog ? { open: true, account: adminAccount } : { open: true },
+      })
+      await nextTick()
+      const dialog = wrapper.get(`#${id}`)
 
-    expect(dialog.element.tagName).toBe('DIALOG')
-    expect(dialog.attributes('aria-modal')).toBeUndefined()
-    expect(dialog.attributes('open')).toBeDefined()
-  })
+      expect(dialog.element.tagName).toBe('DIALOG')
+      expect(dialog.attributes('aria-modal')).toBeUndefined()
+      expect(dialog.attributes('open')).toBeDefined()
+    },
+  )
 })
