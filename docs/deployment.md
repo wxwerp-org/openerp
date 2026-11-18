@@ -1,6 +1,6 @@
 # 部署说明
 
-OpenERP 的部署目标为单台 Linux amd64 服务器。服务器需要 Docker Engine 28 或更高版本、支持 `up --wait` 的 Docker Compose v2 或更高版本，以及负责 HTTPS 的反向代理。Web 端口依赖 Docker [回环绑定的隔离保证](https://docs.docker.com/engine/network/port-publishing/#publishing-ports)。开发启动见 [README](../README.md#快速开始)。
+OpenERP 的部署目标为单台 Linux amd64 服务器。服务器需要 Docker Engine 28 或更高版本、支持 `up --wait` 的 Docker Compose v2 或更高版本，以及负责 HTTPS 的反向代理。Web 端口依赖 Docker [回环绑定的隔离保证](https://docs.docker.com/engine/network/port-publishing/#publishing-ports)。本地开发启动见[开发说明](development.md#本地开发)。
 
 ## 获取产物
 
