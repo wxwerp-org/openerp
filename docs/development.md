@@ -1,6 +1,45 @@
 # 开发说明
 
-本页提供代码导航、构建测试、接口行为和本地排障说明。环境准备、依赖安装及启动见 [README](../README.md#快速开始)；贡献要求与协作规则见[贡献指南](../CONTRIBUTING.md)。
+贡献要求与协作规则见[贡献指南](../CONTRIBUTING.md)。
+
+## 本地开发
+
+### 环境准备
+
+- 正式版 .NET **10** SDK，[global.json](../global.json) 选择已安装的最高 .NET 10 SDK。
+- Node.js **26.13.0**，见 [.node-version](../.node-version)。
+- pnpm **11.16.0**，见 [package.json](../OpenERP.Web/package.json)。
+- PATH 中可直接调用的 Aspire CLI，版本与项目的 **13.6.5** 对齐；安装方式见 [Aspire 官方安装说明](https://aspire.dev/get-started/install-cli/)。
+- 已启动的 Docker Desktop 或 Aspire 支持的兼容容器运行环境。
+
+在仓库根目录安装依赖并信任开发证书：
+
+```bash
+dotnet tool restore
+aspire certs trust
+dotnet restore OpenERP.slnx --locked-mode
+pnpm --dir OpenERP.Web install --frozen-lockfile
+```
+
+本文直接调用 PATH 中的 `aspire`。`dotnet tool restore` 还原仓库本地工具（包括 EF Core 工具），不替代 PATH 中 Aspire CLI 的安装。首次信任证书可能需要系统确认，已信任后无需重复操作。
+
+### 启动与停止
+
+在仓库根目录后台启动；Git worktree 或需要与其他本地实例分开运行时使用隔离模式：
+
+```bash
+aspire start --isolated
+```
+
+仓库的 `aspire.config.json` 已指定唯一 AppHost，无需重复指定项目。`--isolated` 隔离运行状态，不等于创建独立测试数据库或清空数据卷。普通后台启动可用 `aspire start`；需要终端前台运行时可用 `aspire run`。
+
+也可以在安装了 Aspire 扩展的 VS Code 中，选择仓库提供的 `apphost` 启动配置运行；需要 worktree 隔离时使用上面的 CLI 入口。
+
+打开启动输出中的 Aspire Dashboard，在资源列表查看健康状态。等 `api` 通过健康检查、`web` 就绪后，点击 `web` 的 HTTPS 地址打开应用。首次使用见[本地初始化与密码重置](#本地初始化与密码重置)。Dashboard 登录与应用管理员登录相互独立。
+
+通过 `aspire start` 启动的后台实例，在同一仓库或 worktree 根目录运行 `aspire stop` 停止；关闭启动终端不会停止后台实例。终端前台 `aspire run` 按 `Ctrl+C` 停止；通过 VS Code 启动时使用编辑器的停止按钮。普通停止不要使用 `--force`，它会删除持久资源。
+
+代码修改后见[更新运行中的代码](#更新运行中的代码)。数据卷与凭据的保留方式见[开发数据与密钥](#开发数据与密钥)。
 
 ## 代码导航
 
@@ -31,7 +70,7 @@ pnpm --dir OpenERP.Web test
 
 ### 后端集成测试资源与失败诊断
 
-集成测试使用项目的 AppHost 模型，由 `AspireIntegrationFixture` 管理测试会话。fixture 初始化只启动 PostgreSQL 并等待 `openerp` 数据库健康；数据库与 CLI 测试可直接使用它，无须启动 API、Redis 或对象存储。需要存储的测试调用 `EnsureStorageStartedAsync`（获取存储连接时也会确保就绪）；HTTP 测试在异步初始化中调用 `EnsureApiStartedAsync`，按依赖顺序准备存储、Redis 和 API。`StartWebAsync` 先准备 API，再启动前端安装器和前端。同步创建 HTTP 客户端不会隐式启动服务。
+集成测试使用项目的 AppHost 模型，由 `AspireIntegrationFixture` 管理测试会话。fixture 初始化只启动 PostgreSQL 并等待 `openerp` 数据库健康；数据库与 CLI 测试可直接使用它，无须启动 API、Redis 或对象存储。需要存储的测试调用 `EnsureStorageStartedAsync`（获取存储连接时也会确保就绪）；HTTP 测试在异步初始化中调用 `EnsureApiStartedAsync`，并行准备存储和 Redis，待依赖就绪后启动 API。`StartWebAsync` 先准备 API，再启动前端安装器和前端。同步创建 HTTP 客户端不会隐式启动服务。
 
 兼容的测试在同一 xUnit collection 内复用 PostgreSQL 服务器，数据库专用用例仍各自创建和删除独立数据库；共享 API 的用例保持串行。首次初始化与浏览器验收继续使用独立 fixture，避免共享账号、迁移和初始化状态。资源启动任务只执行一次，失败不会自动重试；已经启动的资源保留至 fixture 结束，因此全量运行中后续数据库用例可能与已启动的 API 共存。容器、密钥目录和存储卷属于本次测试会话，存储卷在测试内跨重启保留数据，最终随 fixture 清理。
 
@@ -48,9 +87,9 @@ pnpm --dir OpenERP.Web lint
 pnpm --dir OpenERP.Web lint:fix
 ```
 
-`lint` 只读检查，不修改文件；`lint:fix` 自动修复支持的问题，仍会报告无法自动修复的问题。两者都使用 `--max-warnings 0`，发现问题时返回非零退出码，后续 CI 可直接调用 `lint`。
+`lint` 只读检查，不修改文件；`lint:fix` 自动修复支持的问题，仍会报告无法自动修复的问题。两者都使用 `--max-warnings 0`，发现问题时返回非零退出码。
 
-ESLint 在这里只负责代码质量和潜在错误，不启用缩进、引号、分号等格式化规则；两格缩进由 [`.editorconfig`](../.editorconfig) 约定，单引号、不加分号等继续沿用现有代码约定，避免与格式化工具产生重复或冲突规则。类型检查仍由独立的 `pnpm --dir OpenERP.Web typecheck`（`vue-tsc --noEmit`）完成，lint 不使用类型信息。规则应优先修复实际问题；确需例外时只在对应行使用带原因的 `eslint-disable-next-line <rule>`，不要扩大全局忽略范围或关闭整类规则。
+类型检查由 `pnpm --dir OpenERP.Web typecheck`（`vue-tsc --noEmit`）执行。遇到 lint 报错或警告，按对应规则的官方文档修正成因，不用行内禁用或放宽配置绕过检查。
 
 ### 测试环境
 
@@ -60,7 +99,7 @@ ESLint 在这里只负责代码质量和潜在错误，不启用缩进、引号�
 
 [WebInstallerTests](../OpenERP.Api.Tests/WebInstallerTests.cs) 使用实际 AppHost 安装参数，在临时目录执行 pnpm 验证无 TTY 的依赖重建与冻结锁文件行为。需要 PATH 中有 Node.js 和 pnpm；fixture 只使用本地依赖，不连接 ERP，也不修改开发目录的 `node_modules`。
 
-浏览器测试入口由 [Playwright 配置](../OpenERP.Web/playwright.config.ts) 指定。默认由配置中的 `webServer` 自动执行生产构建并在 `127.0.0.1:4173` 启动预览服务，无需手工启动应用；安装浏览器后直接运行：
+浏览器测试入口由 [Playwright 配置](../OpenERP.Web/playwright.config.ts) 指定。未指定外部地址时使用 `127.0.0.1:4173`。本地可复用该地址已有的服务，否则由 `webServer` 构建并启动预览服务；安装浏览器后直接运行：
 
 ```bash
 pnpm --dir OpenERP.Web exec playwright install chromium
@@ -75,26 +114,26 @@ pnpm --dir OpenERP.Web test:e2e
 OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class '*BrowserAcceptanceTests'
 ```
 
-该入口创建测试专用数据库，从未初始化状态启动 HTTPS 前端，将实际端点及本次测试要设置的密码通过环境传给 Playwright，并串行运行浏览器用例；测试密码不会注入 API 作为预置密码。初始化用例保存设置页和设置成功后的登录页截图，完成后由 Aspire 测试夹具清理测试资源。它先通过 .NET 严格校验前端证书，再将该证书的公钥临时提供给 Node 客户端，不跳过证书校验；临时文件在结束后删除。独立运行 Playwright 时，Node 如不识别本机开发证书，需用 `NODE_EXTRA_CA_CERTS` 指定对应的公开 PEM 证书。不设置开关时，此浏览器入口明确跳过，不计作浏览器验收通过。
+该入口创建测试专用数据库，从未初始化状态启动 HTTPS 前端，将实际端点及本次测试要设置的密码通过环境传给 Playwright，并串行运行浏览器用例；测试密码不会注入 API 作为预置密码。初始化用例保存设置页和设置成功后的登录页截图，完成后由 Aspire 测试夹具清理测试资源。它先通过 .NET 严格校验前端证书，再通过 `NODE_EXTRA_CA_CERTS` 将已校验的服务端 PEM 证书提供给 Node 客户端，不跳过证书校验；临时文件在结束后删除。独立运行 Playwright 时，Node 如不识别本机开发证书，需用 `NODE_EXTRA_CA_CERTS` 指定对应的公开 PEM 证书。不设置开关时，此浏览器入口明确跳过，不计作浏览器验收通过。
 
 ### 真实 ERP 验证
 
-常规后端测试自行准备隔离 PostgreSQL，不需要连接开发数据库。可选的 [OrderLiveAcceptanceTests](../OpenERP.Api.Tests/OrderLiveAcceptanceTests.cs) 使用进程环境变量：
+常规后端测试自行准备隔离 PostgreSQL，不需要连接开发数据库。真实 ERP 验收通过进程环境变量启用：
 
 | 变量 | 用途与前提 |
 | --- | --- |
-| `OPENERP_TEST_ERP_TOKEN` | 有权读取目标店铺的 Token；启用 SID `644928` 的只读分页验证，该店需有超过 100 单 |
+| `OPENERP_TEST_ERP_TOKEN` | 启用 SID `644928` 的[只读分页验证](../OpenERP.Api.Tests/OrderLiveAcceptanceTests.cs)（需超过 100 单），以及 SID `30` 的[报表核对](order-snapshot-report.md#验证)（只读源端，写入测试专用数据库） |
 | `OPENERP_TEST_POSTGRES` | 与上述 Token 一起启用 SID `30` 的源端与入库结果比对；指向已完成该店手动同步的数据库 |
 
-数据库比对用例的前置步骤是在浏览器完成 SID `30` 的两次手动同步；测试本身只读源端和数据库，不执行同步或建表。未设置相应变量时用例跳过。凭证仅通过进程环境提供，不写入文档或版本库；测试命令见本页[构建与测试](#构建与测试)。
+使用 `OPENERP_TEST_POSTGRES` 的比对用例的前置步骤是在浏览器完成 SID `30` 的两次手动同步；测试本身只读源端和数据库，不执行同步或建表。未设置相应变量时用例跳过。凭证仅通过进程环境提供，不写入文档或版本库；测试命令见本页[构建与测试](#构建与测试)。
 
 ### GitHub Actions
 
 [后端 PR 检查](../.github/workflows/ci-backend.yml)按照 [Aspire 官方 CI 指导](https://aspire.dev/testing/testing-in-ci/)在 Ubuntu 上还原、构建并无过滤执行整个 solution。容器由既有 Aspire 测试夹具启动和清理，YAML 不自行编排容器；Node.js/pnpm 用于既有 `WebInstallerTests`，HTTPS 信任用于既有集成测试。构建、容器启动、测试断言或清理失败会使 job 失败。
 
-测试使用运行器原生 `--zero-tests-policy strict` 拒绝零用例，原生 xUnit CTRF 报告保存为 `backend-results` artifact。CI 不注入真实 ERP 凭证，也不设置浏览器启用开关；两个 `OrderLiveAcceptanceTests` 和 `BrowserAcceptanceTests` 保留上述条件跳过，报告中的跳过不计作验证通过。完整后端套件包含真实容器集成测试，执行耗时不能按纯单元测试估算。
+测试使用运行器原生 `--zero-tests-policy strict` 拒绝零用例。xUnit 直接生成 CTRF 报告 `backend.json`，GitHub Actions 将测试结果目录原样上传为 `backend-results-<attempt>`，可从对应运行下载。CI 未提供真实 ERP 凭证或隔离浏览器开关时，相应用例跳过，单独报告。完整后端套件包含真实容器集成测试，执行耗时不能按纯单元测试估算。
 
-[前端检查](../.github/workflows/ci-web.yml)在 PR 与 `main` 推送时自动执行 lint、类型检查、单元测试与构建，四项互相独立：某项失败后其余仍会执行，一次运行即可看到全部结论。浏览器 job 只在 `workflow_dispatch` 时执行，手动运行失败仍会传递到结果汇总；失败时在运行页下载 `playwright-report-<attempt>` 产物，用 `pnpm --dir OpenERP.Web exec playwright show-report <下载的 zip>` 查看失败用例的截图与 trace。产物只在测试步骤失败时上传，运行被取消或超时会跳过该步骤，此时没有可下载的报告。
+[前端检查](../.github/workflows/ci-web.yml)在 PR 与 `main` 推送时自动执行 lint、类型检查、单元测试与构建，依赖安装成功且运行未取消时，一项失败后仍执行其余检查。浏览器 job 只在 `workflow_dispatch` 时执行，手动运行失败仍会传递到结果汇总；失败时在运行页下载 `playwright-report-<attempt>` 产物，用 `pnpm --dir OpenERP.Web exec playwright show-report <下载的 zip>` 查看失败用例的截图与 trace。浏览器 job 的前序步骤失败时会尝试上传已生成的报告。
 
 `web-hosting` job 在 PR 与 `main` 推送时验证发布形态的 Web 宿主：按发布流水线执行 `aspire publish`，断言生成的 Compose 中 `web` 仍是无 YARP 变量、保留 `PORT`/`API_HTTP`/service discovery 与 `WEB_PORT` 回环映射的计算容器；再用 `aspire do build-web` 构建镜像，并只启动这一个容器验证宿主行为矩阵（深链接回退、缺失静态资源/非 GET 导航/保留路径 404、API 不可用 502）。失败时输出容器日志。该 job 是对已构建发布产物的契约测试，不替代 Aspire 编排；应用与依赖容器仍由既有 Aspire 测试夹具启动和清理，YAML 不编排这些容器。
 
@@ -188,7 +227,7 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 
 ## 本地诊断
 
-在 Aspire Dashboard 的资源列表中查看状态、端点、控制台日志和追踪。终端诊断命令直接使用 PATH 中的 `aspire`；启动与停止见 [README](../README.md#启动并访问)。
+在 Aspire Dashboard 的资源列表中查看状态、端点、控制台日志和追踪。终端诊断命令直接使用 PATH 中的 `aspire`。启动与停止见[本地开发](#启动与停止)。
 
 从仓库根目录检查实际资源名、端点和就绪状态，再查看 API 日志与追踪：
 
