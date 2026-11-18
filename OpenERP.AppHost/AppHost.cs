@@ -57,6 +57,7 @@ else
 var web = builder.AddViteApp("web", "../OpenERP.Web")
     // 安装器没有 TTY；允许 pnpm 重建不兼容的 node_modules，同时保持锁文件校验。
     .WithPnpm(installArgs: ["--frozen-lockfile", "--config.confirmModulesPurge=false"])
+    .WithReference(api)
     .WaitFor(api)
     .WithExternalHttpEndpoints();
 
@@ -99,9 +100,6 @@ if (publishing)
         .WithEnvironment("PGPASSFILE", passfile)
         .WithEnvironment("ConnectionStrings__seaweedfs", ReferenceExpression.Create($"Endpoint={storageEndpoint}"))
         .WithVolume(s3Credentials, s3Directory, env: "OPENERP_S3_CREDENTIALS_DIRECTORY", isReadOnly: true);
-
-    // YARP 读取外层 HTTPS 反代写入的原始协议。
-    web.WithEnvironment("ASPNETCORE_FORWARDEDHEADERS_ENABLED", "true");
 
     var composeEnvironment = builder.AddDockerComposeEnvironment("compose")
         .WithDashboard(false)
@@ -146,7 +144,8 @@ if (publishing)
             foreach (var name in new[] { "postgres", "redis", "seaweedfs", "api", "web" })
                 services[name].Restart = "unless-stopped";
 
-            // 外部 HTTPS 反代连接宿主机回环地址。目标端口沿用生成的 YARP 监听端口。
+            // 端口映射沿用 Aspire 为 web 分配的容器端口；Caddy 读取 Aspire 注入的 PORT。
+            // 外层反代仍需按部署文档覆盖 X-Forwarded-Proto/For。
             var ports = services["web"].Ports;
             ports[0] = $"127.0.0.1:${{WEB_PORT:-8080}}:{ports.Single()}";
         });
@@ -161,9 +160,8 @@ if (publishing)
         .PublishAsDockerComposeService((_, service) => service.Restart = "no");
     api.WaitForCompletion(migrations);
 
-#pragma warning disable ASPIREJAVASCRIPT001 // 使用 Aspire 生成的 YARP 容器交付 Vite 静态产物。
-    web.PublishAsStaticWebsite(apiPath: "/api", apiTarget: api);
-#pragma warning restore ASPIREJAVASCRIPT001
+    // 发布态 AddViteApp 自动把 web 转为容器，并优先使用 OpenERP.Web/Dockerfile：
+    // Caddy 托管 Vite 产物、代理 /api，并保留外层反代写入的转发头。
 
     if (releaseTag is not null)
     {
@@ -197,8 +195,7 @@ if (publishing)
 }
 else
 {
-    web.WithReference(api)
-        .WithEnvironment("API_BASE_URL", api.GetEndpoint("https"));
+    web.WithEnvironment("API_BASE_URL", api.GetEndpoint("https"));
 
 #pragma warning disable ASPIRECERTIFICATES001 // Use Aspire's local HTTPS certificate integration for Vite.
     web.WithHttpsDeveloperCertificate();

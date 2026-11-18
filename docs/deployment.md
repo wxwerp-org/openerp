@@ -16,9 +16,18 @@ docker compose up
 
 首次启动时，`credentials` 生成 PostgreSQL 密码与 SeaweedFS 的 S3 凭据，并分别保存到两个 Docker 命名卷。Redis 在 Compose 内网使用无密码模式。PostgreSQL 就绪后，`migrations` 执行同版本 EF Core bundle，迁移成功后 API 才启动。用 `docker compose up -d --wait` 可在后台启动，用 `docker compose ps -a` 确认 `credentials` 和 `migrations` 已成功退出。启动失败时通过 `docker compose logs` 查看出错的服务，修复后重新执行 `up`。
 
-将外层 HTTPS 反代的整个站点转发到 `http://127.0.0.1:8080`，保留原请求路径和 Host，并覆盖客户端可能发送的 `X-Forwarded-Proto` 和 `X-Forwarded-For`，分别写入 `https` 和外层反代所见的客户端地址。若反代容器已接入 `openerp_aspire` 网络，可用 `http://web:5000` 作为上游。YARP 和 API 接受转发头，Web 的宿主机端口须保持仅绑定回环地址，API 端口须留在 Compose 网络内，该网络仅接入受信任的部署容器。外层反代应允许上传功能所需的请求体大小（至少 21 MiB，含 multipart 开销）。
+将外层 HTTPS 反代（例如 Caddy）的整个站点转发到 `http://127.0.0.1:8080`，保留原请求路径和 Host，并覆盖客户端可能发送的 `X-Forwarded-Proto` 和 `X-Forwarded-For`，分别写入 `https` 和外层反代所见的客户端地址。Caddy 默认即按此设置转发头并透传 Host，最小配置为：
 
-开放入口前，通过 HTTPS 打开首页并检查 `/api/auth/status`，确认 `/api/auth/csrf` 返回 200 且设置带 `Secure` 的 Cookie。在「设置管理员密码」页设置并确认密码，再用 `admin` 登录。密码长度为 6–20 个字符，保留首尾空白。登录后验证文件上传和下载。需要使用 ERP 功能时，通过右上角「系统设置 → 基础 → ERP 接入」填写 Token，再到店铺页验证查询和订单同步。当前 Release 直接打开 `/settings` 会返回 404，请从首页进入系统设置。
+```caddyfile
+example.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:8080
+}
+```
+
+改动 `WEB_PORT` 后同步修改上游端口；若反代容器已接入 `openerp_aspire` 网络，可用 `http://web:8000` 作为上游（Web 容器内的 Caddy 监听 Aspire 注入的 8000）。外层反代只负责 TLS、HTTP→HTTPS 与压缩，不要配置 SPA 回退、不要改写 `/api` 前缀：Web 容器内的 Caddy 负责把前端 history 深链接回退到 `index.html`、把同源 `/api/*` 转发给 API，并对缺失的静态资源、非 GET 导航以及 `/health`、`/alive` 返回真实 404；它保留外层写入的 `X-Forwarded-Proto` 与 `X-Forwarded-For`，API 因此能看到 `https` 和真实客户端地址。外层探活请访问 `/`。Web 的宿主机端口须保持仅绑定回环地址，API 端口须留在 Compose 网络内，该网络仅接入受信任的部署容器。外层反代应允许上传功能所需的请求体大小（至少 21 MiB，含 multipart 开销）；若外层反代前还有 CDN 或负载均衡，需在外层配置可信代理以保留真实客户端地址。
+
+开放入口前，通过 HTTPS 打开首页并检查 `/api/auth/status`，确认 `/api/auth/csrf` 返回 200 且设置带 `Secure` 的 Cookie。直达并刷新 `/shops`、`/reports/orders` 与 `/settings`，确认未知路径显示“页面不存在”，且 `/assets/missing.js` 与 `/api/not-a-route` 返回 404 而不是首页。在「设置管理员密码」页设置并确认密码，再用 `admin` 登录。密码长度为 6–20 个字符，保留首尾空白。登录后验证文件上传和下载。需要使用 ERP 功能时，通过右上角「系统设置 → 基础 → ERP 接入」填写 Token，再到店铺页验证查询和订单同步。
 
 初始化入口匿名开放。公网可达时，第一个成功设置密码的人将成为管理员，因此应用启动后应立即初始化。全新实例被抢先初始化且尚无业务数据时可重新部署。已有数据时可通过[重置管理员密码](#重置管理员密码)恢复，保留数据库和数据卷。
 
