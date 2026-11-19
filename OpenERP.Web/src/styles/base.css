@@ -82,21 +82,6 @@ h3,
 h4 {
   margin: 0;
 }
-svg {
-  display: block;
-}
-.ic {
-  width: 14px;
-  height: 14px;
-  flex: none;
-  display: inline-block;
-  vertical-align: middle;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
 .ic-12 {
   width: 12px;
   height: 12px;

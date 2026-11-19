@@ -35,7 +35,7 @@ function onChange(event: Event): void {
   >
     <input
       v-bind="$attrs"
-      class="app-checkbox relative m-0 h-14 w-14 shrink-0 cursor-pointer appearance-none rounded-2 border border-check-border bg-white align-middle checked:border-primary checked:bg-primary disabled:cursor-default"
+      class="app-checkbox relative m-0 h-14 w-14 shrink-0 cursor-pointer appearance-none rounded-2 border border-check-border bg-white align-middle hover:border-primary checked:border-primary checked:bg-primary disabled:cursor-default"
       type="checkbox"
       :checked="modelValue"
       :disabled="disabled"
@@ -48,7 +48,7 @@ function onChange(event: Event): void {
   <input
     v-else
     v-bind="$attrs"
-    class="app-checkbox relative m-0 h-14 w-14 shrink-0 cursor-pointer appearance-none rounded-2 border border-check-border bg-white align-middle checked:border-primary checked:bg-primary disabled:cursor-default"
+    class="app-checkbox relative m-0 h-14 w-14 shrink-0 cursor-pointer appearance-none rounded-2 border border-check-border bg-white align-middle hover:border-primary checked:border-primary checked:bg-primary disabled:cursor-default"
     type="checkbox"
     :checked="modelValue"
     :disabled="disabled"

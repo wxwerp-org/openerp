@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useAttrs } from 'vue'
+
+defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(
   defineProps<{
@@ -9,14 +11,6 @@ const props = withDefaults(
     invalid?: boolean
     readonly?: boolean
     disabled?: boolean
-    placeholder?: string
-    id?: string
-    label?: string
-    describedBy?: string
-    name?: string
-    autocomplete?: string
-    maxlength?: number
-    required?: boolean
   }>(),
   {
     type: 'text',
@@ -24,21 +18,22 @@ const props = withDefaults(
     invalid: false,
     readonly: false,
     disabled: false,
-    required: false,
     modelValue: undefined,
-    placeholder: undefined,
-    id: undefined,
-    label: undefined,
-    describedBy: undefined,
-    name: undefined,
-    autocomplete: undefined,
-    maxlength: undefined,
   },
 )
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
+
+const attrs = useAttrs()
+const rootAttrs = computed(() => ({ class: attrs.class, style: attrs.style }))
+const controlAttrs = computed(() => {
+  const rest: Record<string, unknown> = { ...attrs }
+  delete rest.class
+  delete rest.style
+  return rest
+})
 
 const shellClass = computed(() => [
   props.size === 'md'
@@ -64,20 +59,13 @@ function onInput(event: Event): void {
 </script>
 
 <template>
-  <div :data-size="size" :class="shellClass">
+  <div :data-size="size" :class="[shellClass, rootAttrs.class]" :style="rootAttrs.style">
     <input
-      :id="id"
+      v-bind="controlAttrs"
       :type="type"
       :value="modelValue ?? ''"
-      :placeholder="placeholder"
       :readonly="readonly"
       :disabled="disabled"
-      :required="required"
-      :name="name"
-      :autocomplete="autocomplete"
-      :maxlength="maxlength"
-      :aria-label="label"
-      :aria-describedby="describedBy"
       :aria-invalid="invalid ? 'true' : undefined"
       :class="inputClass"
       @input="onInput"

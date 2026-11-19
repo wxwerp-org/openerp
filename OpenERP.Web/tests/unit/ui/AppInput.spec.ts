@@ -15,9 +15,9 @@ describe('AppInput', () => {
 
   it('Given 表单输入 When 渲染 Then 原生输入属性透传', () => {
     const wrapper = mount(AppInput, {
-      props: {
+      props: { modelValue: '林沁' },
+      attrs: {
         id: 'profileName',
-        modelValue: '林沁',
         placeholder: '请输入姓名',
         required: true,
         maxlength: 20,
@@ -30,6 +30,24 @@ describe('AppInput', () => {
     expect(input.attributes('required')).toBeDefined()
     expect(input.attributes('maxlength')).toBe('20')
     expect((input.element as HTMLInputElement).value).toBe('林沁')
+  })
+
+  it('Given 额外原生属性 When 渲染 Then 落在原生输入而不是外层容器', () => {
+    const wrapper = mount(AppInput, {
+      attrs: {
+        inputmode: 'numeric',
+        pattern: '[0-9]*',
+        'aria-label': '验证码',
+        'aria-describedby': 'codeHint',
+      },
+    })
+
+    const input = wrapper.get('input')
+    expect(input.attributes('inputmode')).toBe('numeric')
+    expect(input.attributes('pattern')).toBe('[0-9]*')
+    expect(input.attributes('aria-label')).toBe('验证码')
+    expect(input.attributes('aria-describedby')).toBe('codeHint')
+    expect(wrapper.attributes('aria-label')).toBeUndefined()
   })
 
   it('Given 校验失败或只读 When 渲染 Then 暴露状态且不可编辑', () => {

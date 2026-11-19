@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useAttrs } from 'vue'
 import AppIcon from './AppIcon.vue'
+
+defineOptions({ inheritAttrs: false })
 
 type SelectValue = string | number
 
@@ -8,25 +10,28 @@ const props = withDefaults(
   defineProps<{
     modelValue?: SelectValue
     options: { value: SelectValue; label: string }[]
-    size?: 'md' | 'sm' | 'control'
+    size?: 'md' | 'sm'
     disabled?: boolean
-    id?: string
-    label?: string
-    name?: string
   }>(),
   {
     size: 'md',
     disabled: false,
     modelValue: undefined,
-    id: undefined,
-    label: undefined,
-    name: undefined,
   },
 )
 
 const emit = defineEmits<{
   'update:modelValue': [value: SelectValue]
 }>()
+
+const attrs = useAttrs()
+const rootAttrs = computed(() => ({ class: attrs.class, style: attrs.style }))
+const controlAttrs = computed(() => {
+  const rest: Record<string, unknown> = { ...attrs }
+  delete rest.class
+  delete rest.style
+  return rest
+})
 
 const shellClass = computed(() => [
   'relative inline-flex items-center rounded-4 border border-input bg-white hover:border-input-hover focus-within:border-primary',
@@ -46,13 +51,11 @@ function onChange(event: Event): void {
 </script>
 
 <template>
-  <span :data-size="size" :class="shellClass">
+  <span :data-size="size" :class="[shellClass, rootAttrs.class]" :style="rootAttrs.style">
     <select
-      :id="id"
-      :name="name"
+      v-bind="controlAttrs"
       :value="modelValue === undefined ? '' : String(modelValue)"
       :disabled="disabled"
-      :aria-label="label"
       :class="selectClass"
       @change="onChange"
     >

@@ -55,11 +55,16 @@ describe('AppDialog', () => {
     expect(wrapper.emitted('closed')).toHaveLength(1)
   })
 
-  it('Given 分层弹窗 When 渲染 Then 暴露层类型供定位样式使用', () => {
+  it('Given 分层弹窗 When 渲染 Then 暴露层类型与遮罩供定位样式使用', () => {
     const wrapper = mount(AppDialog, {
       props: { open: false, id: 'formLayer', layer: 'form' },
     })
-
     expect(wrapper.get('dialog').attributes('data-layer')).toBe('form')
+    expect(wrapper.get('dialog').attributes('data-backdrop')).toBe('none')
+
+    const dimmed = mount(AppDialog, {
+      props: { open: false, id: 'shopLayer', backdrop: 'dim' },
+    })
+    expect(dimmed.get('dialog').attributes('data-backdrop')).toBe('dim')
   })
 })

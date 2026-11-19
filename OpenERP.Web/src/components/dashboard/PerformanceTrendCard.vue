@@ -33,7 +33,7 @@ const period = ref(props.periods[0] ?? '')
           aria-label="业绩周期"
           :padding-x="7"
           :min-width="36"
-          option-class="max-[1500px]:px-6 max-[1500px]:min-w-32"
+          option-class="[@media(max-width:1500px)]:px-6 [@media(max-width:1500px)]:min-w-32"
         />
         <button class="date-range-btn" type="button">
           <span>2026-11-11 - 2026-11-11</span
