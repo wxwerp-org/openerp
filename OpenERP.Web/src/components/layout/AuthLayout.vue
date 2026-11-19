@@ -38,18 +38,11 @@
 </template>
 
 <style scoped>
-/* 登录/初始化页允许窄屏：布局组件挂载时解除桌面固定最小宽度。 */
+/* 登录/初始化页允许窄屏：布局组件挂载时解除桌面固定最小宽度。
+   该覆盖必须保持未分层（unlayered），否则会被 legacy 层的 body 规则压回；
+   body 无法用工具类命中，故按布局例外保留在此。 */
 :global(body:has([data-layout='auth'])) {
   min-width: 0;
   overflow: auto;
-}
-
-/* 卡片标题排版属于布局对插槽内容的约定，页面迁移（Phase 3a）时改由页面自身工具类承担。 */
-[data-layout='auth'] :deep(h1) {
-  margin: 0;
-  color: var(--color-ink);
-  font-size: var(--text-22);
-  font-weight: 600;
-  line-height: var(--text-22--line-height);
 }
 </style>

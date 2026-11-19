@@ -60,6 +60,7 @@
   --font-sans:
     Verdana, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', -apple-system,
     BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --color-white: #fff;
   --color-primary: #005bf5;
@@ -132,6 +133,7 @@
   --color-page-num-border: #d7e4ff;
   --color-empty-icon: #c6ced9;
   --color-empty-icon-strong: #c9d2dd;
+  --color-empty-icon-muted: #cbd3df;
   --color-radio-border: #c6cfdc;
   --color-radio-check: #65a6ff;
   --color-radio-border-disabled: #d5dbe4;

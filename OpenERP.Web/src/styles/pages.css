@@ -335,13 +335,6 @@
   overflow: hidden;
 }
 
-/* 服务连接 */
-.page-service {
-  flex-direction: column;
-  background: var(--page);
-  overflow-y: auto;
-}
-
 /* 授权店铺 */
 .page-shops {
   flex-direction: column;
@@ -451,64 +444,6 @@
 }
 .split-select .btn {
   height: 30px;
-}
-.placeholder-page {
-  background: var(--page);
-  overflow: auto;
-}
-.simple-page {
-  width: 100%;
-  min-height: 100%;
-  padding: 16px;
-  background: var(--page);
-}
-.simple-page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  background: #fff;
-  border-radius: 6px;
-  padding: 20px 24px;
-  border: 1px solid var(--line);
-}
-.simple-page-head h1 {
-  font-size: 20px;
-  line-height: 28px;
-  color: var(--text);
-  font-weight: 600;
-}
-.simple-page-head p {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 4px;
-}
-.simple-page-card {
-  background: #fff;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  margin-top: 12px;
-  min-height: 440px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: var(--muted);
-}
-.simple-page-card .ic {
-  width: 38px;
-  height: 38px;
-  color: #cbd3df;
-  stroke-width: 1.2;
-}
-.simple-page-card strong {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--body);
-}
-.simple-page-card span {
-  font-size: 12px;
-  color: var(--muted);
 }
 /* 浮层提示 */
 .toast {
