@@ -760,12 +760,70 @@ test('Given 667×375 矮屏 When 滚动导航至设置 Then 尾部入口可达�
   const settings = page.locator('[data-group="settings"] .nav-group-head')
   await settings.evaluate((element) => element.scrollIntoView({ block: 'center' }))
   await settings.hover()
-  const submenu = page.locator('[data-group="settings"] .nav-sub')
+  const submenu = page.locator('[data-group="settings"] .nav-flyout')
   await expect(submenu).toBeVisible()
+  await expect
+    .poll(async () => submenu.evaluate((element) => element.getBoundingClientRect().bottom))
+    .toBeLessThanOrEqual(375)
   const submenuBox = await submenu.boundingBox()
   expect(submenuBox).not.toBeNull()
-  expect(submenuBox!.x).toBeGreaterThanOrEqual(56)
+  expect(submenuBox!.x).toBeGreaterThanOrEqual(48)
   expect(submenuBox!.x + submenuBox!.width).toBeLessThanOrEqual(667)
   expect(submenuBox!.y).toBeGreaterThanOrEqual(0)
   expect(submenuBox!.y + submenuBox!.height).toBeLessThanOrEqual(375)
+})
+
+test('Given 1920px 桌面 When 平台分布横向排列 Then 圆环和分布列表均完整可见', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.route('**/api/reports/order-snapshot?**', async (route) => {
+    await route.fulfill({ json: manyReport() })
+  })
+
+  await openReport(page)
+
+  const geometry = await page.locator('.snapshot-dist-card').evaluate((card) => {
+    const cardBox = card.getBoundingClientRect()
+    const chartBox = card.querySelector('.snapshot-donut-chart')!.getBoundingClientRect()
+    const listBox = card.querySelector('.snapshot-dist-list')!.getBoundingClientRect()
+    return {
+      cardLeft: cardBox.left,
+      cardRight: cardBox.right,
+      chartLeft: chartBox.left,
+      chartRight: chartBox.right,
+      listLeft: listBox.left,
+      listRight: listBox.right,
+      listWidth: listBox.width,
+    }
+  })
+  expect(geometry.chartLeft).toBeGreaterThanOrEqual(geometry.cardLeft)
+  expect(geometry.chartRight).toBeLessThanOrEqual(geometry.listLeft)
+  expect(geometry.listWidth).toBeGreaterThan(0)
+  expect(geometry.listRight).toBeLessThanOrEqual(geometry.cardRight)
+})
+
+test('Given 窄屏悬停子菜单 When 指针从分组缓慢移入浮层 Then 菜单保持打开并可进入业务配置', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 667, height: 375 })
+  await page.route('**/api/reports/order-snapshot?**', async (route) => {
+    await route.fulfill({ json: reportSample })
+  })
+  await page.goto('/reports/orders')
+  await expect(page.locator('.page-order-snapshot-report')).toBeVisible()
+
+  const settings = page.locator('[data-group="settings"] .nav-group-head')
+  await settings.evaluate((element) => element.scrollIntoView({ block: 'center' }))
+  await settings.hover()
+  const submenu = page.locator('[data-group="settings"] .nav-flyout')
+  await expect(submenu).toBeVisible()
+  await expect
+    .poll(async () => submenu.evaluate((element) => element.getBoundingClientRect().bottom))
+    .toBeLessThanOrEqual(375)
+  const submenuBox = await submenu.boundingBox()
+  expect(submenuBox).not.toBeNull()
+
+  await page.mouse.move(submenuBox!.x + 20, submenuBox!.y + 20, { steps: 16 })
+  await expect(submenu).toBeVisible()
+  await submenu.getByRole('button', { name: '业务配置', exact: true }).click()
+  await expect(page).toHaveURL(/\/settings$/)
 })

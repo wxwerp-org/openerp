@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import AppIcon from './AppIcon.vue'
 
 type NavItem = { label: string; page?: string }
@@ -109,14 +109,46 @@ const collapsedGroups = ref(
   new Set(groups.filter((group) => group.id !== 'product').map((group) => group.id)),
 )
 const flyoutGroup = ref<string | null>(null)
+const flyoutTop = ref(8)
+const flyoutElement = ref<HTMLElement | null>(null)
+let flyoutCloseTimer: ReturnType<typeof setTimeout> | undefined
+let flyoutOpenTimer: ReturnType<typeof setTimeout> | undefined
 
 function isGroupActive(group: NavGroup): boolean {
   return group.items.some((item) => item.page === props.activePage)
 }
 
+function cancelFlyoutClose(): void {
+  if (flyoutCloseTimer) clearTimeout(flyoutCloseTimer)
+  flyoutCloseTimer = undefined
+}
+
+function cancelFlyoutOpen(): void {
+  if (flyoutOpenTimer) clearTimeout(flyoutOpenTimer)
+  flyoutOpenTimer = undefined
+}
+
+function closeFlyout(): void {
+  cancelFlyoutClose()
+  cancelFlyoutOpen()
+  flyoutGroup.value = null
+}
+
+function closeFlyoutSoon(): void {
+  cancelFlyoutClose()
+  cancelFlyoutOpen()
+  flyoutCloseTimer = setTimeout(closeFlyout, 200)
+}
+
+onUnmounted(() => {
+  cancelFlyoutClose()
+  cancelFlyoutOpen()
+})
+
 watch(
   () => props.activePage,
   () => {
+    closeFlyout()
     const activeGroup = groups.find(isGroupActive)
     if (activeGroup) collapsedGroups.value.delete(activeGroup.id)
   },
@@ -127,10 +159,58 @@ function isGroupCollapsed(group: NavGroup): boolean {
   return collapsedGroups.value.has(group.id)
 }
 
-function toggleGroup(group: NavGroup): void {
+function usesRail(): boolean {
+  return (
+    props.collapsed ||
+    (props.activePage === 'order-report' && window.matchMedia('(max-width: 768px)').matches)
+  )
+}
+
+function setFlyoutElement(element: unknown): void {
+  flyoutElement.value = element instanceof HTMLElement ? element : null
+}
+
+function showFlyout(group: NavGroup, groupElement: Element): void {
+  const groupTop = groupElement.getBoundingClientRect().top
+  flyoutTop.value = Math.max(8, groupTop)
+  flyoutGroup.value = group.id
+  void nextTick(() => {
+    if (!flyoutElement.value || flyoutGroup.value !== group.id) return
+    const flyoutHeight = flyoutElement.value.getBoundingClientRect().height
+    flyoutTop.value = Math.max(8, Math.min(groupTop, window.innerHeight - flyoutHeight - 8))
+  })
+}
+
+function openFlyout(group: NavGroup, event: MouseEvent | FocusEvent): void {
+  cancelFlyoutClose()
+  cancelFlyoutOpen()
+  const target = event.currentTarget as HTMLElement
+  showFlyout(group, target.closest('.nav-group') ?? target)
+}
+
+function openFlyoutOnHover(group: NavGroup, event: MouseEvent): void {
+  if (!flyoutGroup.value || flyoutGroup.value === group.id) {
+    openFlyout(group, event)
+    return
+  }
+  cancelFlyoutClose()
+  cancelFlyoutOpen()
+  const target = event.currentTarget as HTMLElement
+  const groupElement = target.closest('.nav-group') ?? target
+  flyoutOpenTimer = setTimeout(() => {
+    flyoutOpenTimer = undefined
+    showFlyout(group, groupElement)
+  }, 200)
+}
+
+function toggleGroup(group: NavGroup, event: MouseEvent): void {
   if (props.collapsed) {
     emit('update:collapsed', false)
     collapsedGroups.value.delete(group.id)
+    return
+  }
+  if (usesRail()) {
+    openFlyout(group, event)
     return
   }
   if (collapsedGroups.value.has(group.id)) collapsedGroups.value.delete(group.id)
@@ -138,21 +218,21 @@ function toggleGroup(group: NavGroup): void {
 }
 
 function navigate(page?: string, label?: string): void {
-  flyoutGroup.value = null
+  closeFlyout()
   if (page) emit('navigate', page)
   else if (label) emit('preview', label)
 }
 
-function openFlyoutOnFocus(group: NavGroup): void {
-  if (props.collapsed) flyoutGroup.value = group.id
+function openFlyoutOnFocus(group: NavGroup, event: FocusEvent): void {
+  if (usesRail()) openFlyout(group, event)
 }
 
 function closeFlyoutOnFocusOut(_group: NavGroup, event: FocusEvent): void {
   const container = event.currentTarget as HTMLElement
-  if (!container.contains(event.relatedTarget as Node | null)) flyoutGroup.value = null
+  if (!container.contains(event.relatedTarget as Node | null)) closeFlyout()
 }
 
-const hasFlyout = computed(() => props.collapsed && flyoutGroup.value !== null)
+const hasFlyout = computed(() => flyoutGroup.value !== null)
 </script>
 
 <template>
@@ -210,17 +290,17 @@ const hasFlyout = computed(() => props.collapsed && flyoutGroup.value !== null)
         class="nav-group"
         :class="{ collapsed: isGroupCollapsed(group), active: isGroupActive(group) }"
         :data-group="group.id"
-        @mouseenter="collapsed && (flyoutGroup = group.id)"
-        @mouseleave="flyoutGroup = null"
-        @focusin="openFlyoutOnFocus(group)"
+        @mouseenter="usesRail() && openFlyoutOnHover(group, $event)"
+        @mouseleave="closeFlyoutSoon"
+        @focusin="openFlyoutOnFocus(group, $event)"
         @focusout="closeFlyoutOnFocusOut(group, $event)"
-        @keydown.esc.stop="flyoutGroup = null"
+        @keydown.esc.stop="closeFlyout"
       >
         <button
           class="nav-group-head"
           type="button"
           :aria-expanded="!isGroupCollapsed(group)"
-          @click="toggleGroup(group)"
+          @click="toggleGroup(group, $event)"
         >
           <AppIcon :name="group.icon" />
           <span class="nav-group-label">{{ group.label }}</span>
@@ -239,7 +319,12 @@ const hasFlyout = computed(() => props.collapsed && flyoutGroup.value !== null)
             {{ item.label }}
           </button>
         </div>
-        <div v-if="hasFlyout && flyoutGroup === group.id" class="nav-flyout open">
+        <div
+          v-if="hasFlyout && flyoutGroup === group.id"
+          :ref="setFlyoutElement"
+          class="nav-flyout open"
+          :style="{ top: `${flyoutTop}px` }"
+        >
           <div class="nav-flyout-title">{{ group.label }}</div>
           <button
             v-for="item in group.items"
@@ -268,3 +353,11 @@ const hasFlyout = computed(() => props.collapsed && flyoutGroup.value !== null)
     </div>
   </aside>
 </template>
+
+<style scoped>
+.nav-flyout {
+  left: 48px;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+}
+</style>
