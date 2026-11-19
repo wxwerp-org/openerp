@@ -901,26 +901,6 @@ function submitJumpPage(): void {
     display: none;
   }
 
-  :global(body:has(.page-order-snapshot-report) .sidebar .nav-group:hover .nav-sub),
-  :global(body:has(.page-order-snapshot-report) .sidebar .nav-group:focus-within .nav-sub) {
-    position: fixed;
-    top: 50%;
-    left: 56px;
-    z-index: 300;
-    display: grid;
-    max-height: calc(100dvh - 16px);
-    overflow-y: auto;
-    margin: 0;
-    transform: translateY(-50%);
-    width: max-content;
-    min-width: 120px;
-    padding: 6px;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: #fff;
-    box-shadow: 0 2px 8px rgb(16 24 40 / 10%);
-  }
-
   :global(body:has(.page-order-snapshot-report) .sidebar .nav-sub-item) {
     white-space: nowrap;
   }
