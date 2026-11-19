@@ -107,7 +107,8 @@ jobs:
           dotnet tool install --local dotnet-ef --version "$(jq -r '.tools["dotnet-ef"].version' .config/dotnet-tools.json)"
           aspire do build-openerp --non-interactive
           aspire publish --non-interactive -o "$RUNNER_TEMP/aspire-output"
-          python3 deploy/tests/smoke.py --compose "$RUNNER_TEMP/aspire-output/docker-compose.yaml"
+          yq --from-file deploy/compose.yq "$RUNNER_TEMP/aspire-output/docker-compose.yaml" > "$RUNNER_TEMP/compose.yaml"
+          python3 deploy/tests/smoke.py --compose "$RUNNER_TEMP/compose.yaml"
 
   e2e:
     name: 浏览器端到端
