@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { logout, type Account } from '../../account/session'
 import AccountMenu from '../navigation/AccountMenu.vue'
@@ -27,6 +27,36 @@ const accountMenu = ref<InstanceType<typeof AccountMenu> | null>(null)
 const activePage = computed<string | null>(() => {
   return navigationPages.find((page) => page.path === route.path)?.id ?? null
 })
+
+const narrowViewport = ref(false)
+const coarsePointer = ref(false)
+let narrowQuery: MediaQueryList | undefined
+let coarseQuery: MediaQueryList | undefined
+
+function syncViewportTraits(): void {
+  narrowViewport.value = narrowQuery?.matches ?? false
+  coarsePointer.value = coarseQuery?.matches ?? false
+}
+
+onMounted(() => {
+  if (typeof window.matchMedia !== 'function') return
+  narrowQuery = window.matchMedia('(max-width: 768px)')
+  coarseQuery = window.matchMedia('(pointer: coarse)')
+  syncViewportTraits()
+  narrowQuery.addEventListener('change', syncViewportTraits)
+  coarseQuery.addEventListener('change', syncViewportTraits)
+})
+
+onUnmounted(() => {
+  narrowQuery?.removeEventListener('change', syncViewportTraits)
+  coarseQuery?.removeEventListener('change', syncViewportTraits)
+})
+
+/** 商品量报表在窄屏下需要解除桌面最小宽度，并让侧栏收敛为导航轨道。 */
+const reportShell = computed(() => activePage.value === 'order-report')
+const reportRail = computed(() => reportShell.value && narrowViewport.value)
+const touchRail = computed(() => reportRail.value && coarsePointer.value)
+const shellMinWidthClass = computed(() => (reportShell.value ? 'min-w-0' : 'min-w-1440'))
 
 watch(
   activePage,
@@ -89,12 +119,15 @@ async function handleAccountAction(
   >
   <IconSprite />
   <div
-    class="flex h-[100dvh] w-screen min-w-1440 overflow-hidden bg-page"
-    :style="{ '--sidebar-width': sidebarCollapsed ? '56px' : '200px' }"
+    class="flex h-[100dvh] w-screen overflow-hidden bg-page"
+    :class="shellMinWidthClass"
+    :data-fluid-shell="reportShell ? '' : undefined"
+    :style="{ '--sidebar-width': sidebarCollapsed || reportRail ? '56px' : '200px' }"
   >
     <AppSidebar
       :active-page="activePage ?? ''"
-      :collapsed="sidebarCollapsed"
+      :collapsed="sidebarCollapsed || reportRail"
+      :touch-rail="touchRail"
       @update:collapsed="sidebarCollapsed = $event"
       @navigate="navigate"
       @preview="showToast(`原型演示：${$event}`)"
@@ -129,3 +162,11 @@ async function handleAccountAction(
   </div>
   <AppToast :message="toast" data-testid="toast" />
 </template>
+
+<style scoped>
+/* 商品量报表在窄屏下允许收缩：body 无法用工具类命中，该覆盖保持未分层
+   （unlayered）以压过 @layer base 的 body reset；离开报表路由后属性移除自动失效。 */
+:global(body:has([data-fluid-shell])) {
+  min-width: 0;
+}
+</style>

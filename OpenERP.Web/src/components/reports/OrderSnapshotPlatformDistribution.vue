@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import AppCard from '../../ui/AppCard.vue'
 import type { OrderSnapshotReport } from '../../reports/orderSnapshot'
 import {
   formatSnapshotQuantity,
@@ -29,57 +30,84 @@ function formatPercentage(percentage: number): string {
 </script>
 
 <template>
-  <section class="card snapshot-dist-card">
-    <div class="card-head">
-      <div class="card-head-left">
-        <div class="card-title">平台分布</div>
+  <AppCard data-testid="report-platform-distribution" class="@container flex flex-col pb-16">
+    <div class="flex h-54 min-w-0 flex-none items-start justify-between gap-12 px-16 pt-16">
+      <div class="flex min-w-0 items-center gap-8">
+        <div class="flex items-center gap-4 text-14/22 font-bold whitespace-nowrap text-ink">
+          平台分布
+        </div>
       </div>
     </div>
-    <p v-if="loading" class="snapshot-loading">正在加载平台分布…</p>
-    <figure v-else-if="rows.length" class="snapshot-dist-figure">
-      <figcaption class="snapshot-dist-caption">按平台统计订单占比</figcaption>
-      <div class="snapshot-dist-body">
-        <div class="donut-wrap">
-          <svg class="snapshot-donut-chart" viewBox="0 0 166 166" aria-hidden="true">
-            <circle cx="83" cy="83" r="63" fill="none" stroke="#EFF4FB" stroke-width="17"></circle>
+    <p v-if="loading" class="m-0 px-16 pt-24 pb-8 text-center text-12 text-muted">
+      正在加载平台分布…
+    </p>
+    <figure v-else-if="rows.length" class="m-0 flex min-h-0 flex-col gap-10 px-16 pt-8">
+      <figcaption class="text-12 text-muted">按平台统计订单占比</figcaption>
+      <div
+        class="flex min-w-0 items-center gap-14 @max-[480px]:flex-col @max-[480px]:items-stretch"
+      >
+        <div
+          class="relative flex w-218 flex-none flex-col items-center justify-center @max-[480px]:w-full"
+        >
+          <svg
+            data-testid="report-platform-chart"
+            class="block size-166 @max-[480px]:mx-auto"
+            viewBox="0 0 166 166"
+            aria-hidden="true"
+          >
+            <circle
+              cx="83"
+              cy="83"
+              r="63"
+              class="fill-none stroke-donut-track [stroke-width:17]"
+            ></circle>
             <circle
               v-for="segment in segments"
               :key="segment.platform"
               cx="83"
               cy="83"
               r="63"
-              fill="none"
+              class="fill-none [stroke-width:17]"
               :stroke="segment.color"
-              stroke-width="17"
               pathLength="100"
               :stroke-dasharray="`${segment.percentage * 100} ${100 - segment.percentage * 100}`"
               :stroke-dashoffset="segment.dashOffset"
               transform="rotate(-90 83 83)"
             ></circle>
           </svg>
-          <div class="snapshot-donut-center">
-            <strong class="tnum">{{ formatSnapshotQuantity(totalOrders) }}</strong
-            ><span>总订单数</span>
+          <div
+            class="pointer-events-none absolute top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-center"
+          >
+            <strong class="block text-20/26 font-medium text-ink tabular-nums">{{
+              formatSnapshotQuantity(totalOrders)
+            }}</strong
+            ><span class="mt-1 block text-11/15 text-muted">总订单数</span>
           </div>
         </div>
-        <div class="snapshot-dist-list">
-          <div v-for="row in rows" :key="row.platform" class="snapshot-dist-row">
-            <div class="snapshot-dist-row-top">
+        <div data-testid="report-platform-legend" class="flex min-w-0 flex-1 flex-col gap-12">
+          <div v-for="row in rows" :key="row.platform" class="flex flex-col gap-5">
+            <div class="flex justify-between gap-8 text-12 text-body">
               <span
-                ><span class="legend-color" :style="{ background: row.color }"></span
+                ><span
+                  class="inline-block size-7 flex-none rounded-2"
+                  :style="{ background: row.color }"
+                ></span
                 >{{ row.label }}</span
-              ><b
+              ><b class="font-medium text-ink tabular-nums"
                 >{{ formatPercentage(row.percentage) }} ·
                 {{ formatSnapshotQuantity(row.orderCount) }}</b
               >
             </div>
-            <div class="dist-bar">
-              <span :style="{ width: `${row.percentage * 100}%`, background: row.color }"></span>
+            <div class="h-6 overflow-hidden rounded-3 bg-progress-track">
+              <span
+                class="block h-full rounded-3 bg-primary"
+                :style="{ width: `${row.percentage * 100}%`, background: row.color }"
+              ></span>
             </div>
           </div>
         </div>
       </div>
-      <table class="visually-hidden">
+      <table class="sr-only">
         <caption>
           平台订单分布
         </caption>
@@ -99,105 +127,6 @@ function formatPercentage(percentage: number): string {
         </tbody>
       </table>
     </figure>
-    <p v-else class="snapshot-empty">暂无平台分布数据</p>
-  </section>
+    <p v-else class="m-0 px-16 pt-24 pb-8 text-center text-12 text-muted">暂无平台分布数据</p>
+  </AppCard>
 </template>
-
-<style scoped>
-.snapshot-dist-card {
-  container-type: inline-size;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 16px;
-}
-.snapshot-dist-figure {
-  margin: 0;
-  padding: 8px 16px 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.snapshot-dist-caption {
-  font-size: 12px;
-  color: var(--muted);
-}
-.snapshot-dist-body {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-}
-.snapshot-donut-chart {
-  width: 166px;
-  height: 166px;
-  display: block;
-  flex: none;
-}
-.snapshot-donut-center {
-  position: absolute;
-  left: 50%;
-  top: 48%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  pointer-events: none;
-}
-.snapshot-donut-center strong {
-  display: block;
-  font-size: 20px;
-  line-height: 26px;
-  color: var(--text);
-  font-weight: 500;
-}
-.snapshot-donut-center span {
-  display: block;
-  font-size: 11px;
-  line-height: 15px;
-  color: var(--muted);
-  margin-top: 1px;
-}
-.snapshot-dist-list {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.snapshot-dist-row {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.snapshot-dist-row-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--body);
-  font-size: 12px;
-}
-.snapshot-dist-row-top b {
-  font-weight: 500;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-.snapshot-empty,
-.snapshot-loading {
-  margin: 0;
-  padding: 24px 16px 8px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--muted);
-}
-@container (inline-size < 480px) {
-  .snapshot-dist-body {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .snapshot-dist-card .donut-wrap {
-    width: 100%;
-  }
-  .snapshot-donut-chart {
-    margin: 0 auto;
-  }
-}
-</style>
