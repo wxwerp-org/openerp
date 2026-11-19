@@ -90,7 +90,6 @@ async function handleAccountAction(
   <IconSprite />
   <div
     class="flex h-[100dvh] w-screen min-w-1440 overflow-hidden bg-page"
-    data-testid="app-shell"
     :style="{ '--sidebar-width': sidebarCollapsed ? '56px' : '200px' }"
   >
     <AppSidebar
