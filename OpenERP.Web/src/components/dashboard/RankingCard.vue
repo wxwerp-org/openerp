@@ -71,7 +71,12 @@ const period = ref(props.periods[0] ?? '')
         <button class="btn" type="button">更多筛选</button>
       </div>
       <div class="rank-controls-right">
-        <AppSegmented v-model="period" :options="periods" aria-label="排行周期" />
+        <AppSegmented
+          v-model="period"
+          :options="periods"
+          aria-label="排行周期"
+          option-class="[@media(max-width:1500px)]:px-6 [@media(max-width:1500px)]:min-w-33"
+        />
         <button class="date-range-btn" type="button">
           <span>2026-10-13 - 2026-11-11</span
           ><svg class="ic" aria-hidden="true"><use href="#i-calendar" /></svg>

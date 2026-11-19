@@ -86,13 +86,13 @@ function optionClasses(index: number, option: string): string[] {
   const active = option === props.modelValue
   const previousActive = index > 0 && props.options[index - 1] === props.modelValue
   return [
-    'inline-flex items-center justify-center whitespace-nowrap border-0 bg-white hover:text-primary',
+    'inline-flex items-center justify-center whitespace-nowrap bg-white hover:text-primary',
     optionHeightClass[props.size],
     lineHeightClass[resolvedLineHeight.value],
     active ? 'text-primary' : colorClass[resolvedColor.value],
     paddingXClass[resolvedPaddingX.value],
     minWidthClass[resolvedMinWidth.value],
-    index > 0 ? 'border-l border-solid' : '',
+    index > 0 ? 'border-y-0 border-r-0 border-l border-solid' : 'border-0',
     index > 0 ? (previousActive ? 'border-l-transparent' : 'border-l-line') : '',
     active ? 'relative z-[1] rounded-3 [box-shadow:inset_0_0_0_1px_var(--color-primary)]' : '',
     props.optionClass,

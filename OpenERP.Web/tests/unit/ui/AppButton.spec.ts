@@ -79,6 +79,17 @@ describe('AppButton', () => {
     expect(wrapper.text()).toBe('去店铺')
   })
 
+  it('Given 禁用的链接按钮 When 渲染 Then 暴露禁用状态并移出 Tab 顺序', () => {
+    const wrapper = mount(AppButton, {
+      props: { href: '/shops', disabled: true },
+      slots: { default: '去授权' },
+    })
+
+    const link = wrapper.get('a')
+    expect(link.attributes('aria-disabled')).toBe('true')
+    expect(link.attributes('tabindex')).toBe('-1')
+  })
+
   it('Given href When 渲染 Then 使用链接语义而不是按钮', () => {
     const wrapper = mount(AppButton, {
       props: { href: '/shops' },

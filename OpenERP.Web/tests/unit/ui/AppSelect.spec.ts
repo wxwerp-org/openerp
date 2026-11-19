@@ -20,6 +20,19 @@ describe('AppSelect', () => {
     expect(select.get('option').attributes('value')).toBe('20')
   })
 
+  it('Given 数字与字符串同值选项 When 选择字符串项 Then 按选项位置保留类型', async () => {
+    const ambiguous = [
+      { value: 1, label: '数字一' },
+      { value: '1', label: '字符串一' },
+    ]
+    const wrapper = mount(AppSelect, { props: { modelValue: 1, options: ambiguous } })
+    const select = wrapper.get('select').element as HTMLSelectElement
+    select.selectedIndex = 1
+    await wrapper.get('select').trigger('change')
+
+    expect(wrapper.emitted('update:modelValue')).toEqual([['1']])
+  })
+
   it('Given 切换选项 When 用户选择 Then 发出原始类型的值', async () => {
     const wrapper = mount(AppSelect, { props: { modelValue: 20, options } })
 

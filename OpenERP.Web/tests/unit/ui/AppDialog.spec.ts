@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import AppDialog from '../../../src/ui/AppDialog.vue'
 import { installNativeDialogShim } from '../installNativeDialogShim'
 
@@ -23,7 +23,9 @@ describe('AppDialog', () => {
   })
 
   it('Given 打开弹窗 When 用户按 Esc Then 阻断原生关闭并请求宿主关闭', async () => {
-    const wrapper = mount(AppDialog, { props: { open: true, id: 'testLayer' } })
+    const wrapper = mount(AppDialog, {
+      props: { open: true, id: 'testLayer', ariaLabel: '测试弹窗' },
+    })
     await nextTick()
 
     const cancel = new Event('cancel', { cancelable: true })
@@ -36,7 +38,7 @@ describe('AppDialog', () => {
 
   it('Given 不可关闭弹窗 When 用户按 Esc Then 阻断关闭且不请求宿主动作', async () => {
     const wrapper = mount(AppDialog, {
-      props: { open: true, id: 'testLayer', closable: false },
+      props: { open: true, id: 'testLayer', closable: false, ariaLabel: '测试弹窗' },
     })
     await nextTick()
 
@@ -48,11 +50,22 @@ describe('AppDialog', () => {
   })
 
   it('Given 弹窗已关闭 When 关闭事件触发 Then 通知宿主收尾', async () => {
-    const wrapper = mount(AppDialog, { props: { open: true, id: 'testLayer' } })
+    const wrapper = mount(AppDialog, {
+      props: { open: true, id: 'testLayer', ariaLabel: '测试弹窗' },
+    })
     await nextTick()
 
     ;(wrapper.get('dialog').element as HTMLDialogElement).close()
     expect(wrapper.emitted('closed')).toHaveLength(1)
+  })
+
+  it('Given 打开且无可访问名称 When 渲染 Then 开发期发出告警', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    mount(AppDialog, { props: { open: true, id: 'unnamedLayer' } })
+    await nextTick()
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('缺少可访问名称'))
+    warn.mockRestore()
   })
 
   it('Given 分层弹窗 When 渲染 Then 暴露层类型与遮罩供定位样式使用', () => {
