@@ -134,13 +134,13 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 ### GitHub Actions
 
-[后端 PR 检查](../.github/workflows/ci-backend.yml)按照 [Aspire 官方 CI 指导](https://aspire.dev/testing/testing-in-ci/)在 Ubuntu 上还原、构建并无过滤执行整个 solution。容器由既有 Aspire 测试夹具启动和清理，YAML 不自行编排容器；Node.js/pnpm 用于既有 `WebInstallerTests`，HTTPS 信任用于既有集成测试。构建、容器启动、测试断言或清理失败会使 job 失败。
+[后端 PR 检查](../.github/workflows/ci-backend.yml)在 PR 改动后端项目、共享构建输入、Node.js/pnpm 工具链文件或该 workflow 时触发，按照 [Aspire 官方 CI 指导](https://aspire.dev/testing/testing-in-ci/)在 Ubuntu 上还原、构建并无过滤执行整个 solution。容器由既有 Aspire 测试夹具启动和清理，YAML 不自行编排容器；Node.js/pnpm 用于既有 `WebInstallerTests`，HTTPS 信任用于既有集成测试。构建、容器启动、测试断言或清理失败会使 job 失败。
 
 测试使用运行器原生 `--zero-tests-policy strict` 拒绝零用例。xUnit 直接生成 CTRF 报告 `backend.json`，GitHub Actions 将测试结果目录原样上传为 `backend-results-<attempt>`，可从对应运行下载。CI 未提供真实 ERP 凭证或隔离浏览器开关时，相应用例跳过，单独报告。完整后端套件包含真实容器集成测试，执行耗时不能按纯单元测试估算。
 
-[前端检查](../.github/workflows/ci-web.yml)在 PR 与 `main` 推送时自动执行 lint、类型检查、单元测试与构建，依赖安装成功且运行未取消时，一项失败后仍执行其余检查。浏览器 job 只在 `workflow_dispatch` 时执行，手动运行失败仍会传递到结果汇总；失败时在运行页下载 `playwright-report-<attempt>` 产物，用 `pnpm --dir OpenERP.Web exec playwright show-report <下载的 zip>` 查看失败用例的截图与 trace。浏览器 job 的前序步骤失败时会尝试上传已生成的报告。
+[前端检查](../.github/workflows/ci-web.yml)在 PR 改动 Web 项目、发布宿主输入、共享构建配置或该 workflow 时触发，也在每次推送 `main` 时运行。它执行 lint、类型检查、单元测试与构建，依赖安装成功且运行未取消时，一项失败后仍执行其余检查。浏览器 job 只在 `workflow_dispatch` 时执行，手动运行失败仍会传递到结果汇总；失败时在运行页下载 `playwright-report-<attempt>` 产物，用 `pnpm --dir OpenERP.Web exec playwright show-report <下载的 zip>` 查看失败用例的截图与 trace。浏览器 job 的前序步骤失败时会尝试上传已生成的报告。
 
-`web-hosting` job 在 PR 与 `main` 推送时验证发布形态的 Web 宿主：按发布流水线执行 `aspire publish`，断言生成的 Compose 中 `web` 仍是无 YARP 变量、保留 `PORT`/`API_HTTP`/service discovery 与 `WEB_PORT` 回环映射的计算容器；再用 `aspire do build-web` 构建镜像，并只启动这一个容器验证宿主行为矩阵（深链接回退、缺失静态资源/非 GET 导航/保留路径 404、API 不可用 502）。失败时输出容器日志。该 job 是对已构建发布产物的契约测试，不替代 Aspire 编排；应用与依赖容器仍由既有 Aspire 测试夹具启动和清理，YAML 不编排这些容器。
+前端 workflow 中的 `web-hosting` job 验证发布形态的 Web 宿主：按发布流水线执行 `aspire publish`，断言生成的 Compose 中 `web` 仍是无 YARP 变量、保留 `PORT`/`API_HTTP`/service discovery 与 `WEB_PORT` 回环映射的计算容器；再用 `aspire do build-web` 构建镜像，并只启动这一个容器验证宿主行为矩阵（深链接回退、缺失静态资源/非 GET 导航/保留路径 404、API 不可用 502）。失败时输出容器日志。该 job 是对已构建发布产物的契约测试，不替代 Aspire 编排；应用与依赖容器仍由既有 Aspire 测试夹具启动和清理，YAML 不编排这些容器。
 
 ## 管理员账户与会话
 

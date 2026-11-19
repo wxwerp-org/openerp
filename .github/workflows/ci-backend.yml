@@ -3,6 +3,22 @@ name: Backend PR checks
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - 'OpenERP.Api/**'
+      - 'OpenERP.Api.Tests/**'
+      - 'OpenERP.AppHost/**'
+      - 'OpenERP.Core/**'
+      - 'OpenERP.ServiceDefaults/**'
+      - 'OpenERP.slnx'
+      - 'Directory.Build.props'
+      - 'global.json'
+      - '.editorconfig'
+      - '.gitattributes'
+      - '.github/workflows/ci-backend.yml'
+      # WebInstallerTests 使用 CI 安装的 Node.js 和 pnpm。
+      - '.node-version'
+      - 'OpenERP.Web/package.json'
+      - 'OpenERP.Web/pnpm-lock.yaml'
 
 permissions:
   contents: read
