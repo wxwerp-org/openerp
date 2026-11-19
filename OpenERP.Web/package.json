@@ -26,6 +26,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.65.0",
+    "@tailwindcss/vite": "4.3.5",
     "@types/node": "26.6.6",
     "@vitejs/plugin-vue": "6.0.10",
     "@vitest/eslint-plugin": "1.6.28",
@@ -38,6 +39,7 @@
     "globals": "17.14.0",
     "jsdom": "31.0.0",
     "prettier": "3.9.6",
+    "tailwindcss": "4.3.5",
     "typescript": "6.0.3",
     "typescript-eslint": "8.72.2",
     "vite": "8.3.8",
