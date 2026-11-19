@@ -96,27 +96,26 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: #f2f5fa;
+    background: var(--color-scroll-track);
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #c8d4e3;
-    border: 2px solid #f2f5fa;
+    background: var(--color-scroll-thumb-root);
+    border: 2px solid var(--color-scroll-track);
     border-radius: 8px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #aebdd0;
+    background: var(--color-scroll-thumb-root-hover);
   }
 
   ::-webkit-scrollbar-corner {
-    background: #f2f5fa;
+    background: var(--color-scroll-track);
   }
 }
 
 /**
- * 唯一设计 token 源。数值来自迁移前 src/styles 与 SFC scoped 样式的实测值，
- * 这些数值来自迁移前的页面实测值，改动前先用视觉探针复核。
+ * 唯一设计 token 源。数值来自迁移前的页面实测值，改动前先用视觉探针复核。
  */
 @theme static {
   /* 清空 Tailwind 默认设计变量，避免误用默认色板/字号/圆角/阴影。 */
@@ -136,18 +135,17 @@
 
   --color-white: #fff;
   --color-primary: #005bf5;
+  /* 品牌标识（侧栏与登录页 logo）沿用旧品牌蓝，与交互主色不同。 */
+  --color-brand: #0968ff;
   --color-primary-hover: #0047c7;
   --color-primary-soft: rgba(0, 91, 245, 0.1);
   --color-primary-faint: rgba(0, 91, 245, 0.06);
-  --color-primary-line: #b9d2ff;
   --color-primary-disabled: #a9c4f5;
   --color-ink: #0b1019;
-  --color-ink-alt: #172033;
   --color-body: #55585f;
   --color-body-strong: #33363c;
   --color-body-alt: #333b4a;
   --color-muted: #888c94;
-  --color-muted-alt: #64748b;
   --color-placeholder: #a6abb4;
   --color-surface: #fff;
   --color-page: #f2f5fa;
@@ -158,7 +156,6 @@
   --color-topnav: #f6f7f9;
   --color-line: #e6e8eb;
   --color-line-soft: #ebedf0;
-  --color-border: #e7eaf0;
   --color-border-nav: #e8eaed;
   --color-input: #cad2e0;
   --color-input-hover: #aeb9c9;
@@ -201,6 +198,9 @@
   --color-scroll-thumb: #cbd5e1;
   --color-scroll-thumb-nav: #d5dae1;
   --color-scroll-track: #f2f5fa;
+  /* 页面级滚动条沿用的旧全局值，与 AppTable/侧栏的自定义滚动条分开维护。 */
+  --color-scroll-thumb-root: #c8d4e3;
+  --color-scroll-thumb-root-hover: #aebdd0;
 
   --color-soft-bg: rgba(11, 16, 25, 0.1);
   --color-soft-bg-hover: rgba(11, 16, 25, 0.16);
@@ -231,7 +231,6 @@
   --color-row-hover-alt: #f9fbff;
   --color-row-hover-soft: #fbfcfe;
   --color-row-soft: #f8fafd;
-  --color-row-soft-alt: #f7f9fd;
   --color-check-border: #c3cbd8;
   --color-num-muted: #b0b7c3;
   --color-shop-card-hover-border: #b7d1ff;
@@ -242,7 +241,6 @@
   --color-chart-line: #005bf5;
   --color-chart-line-alt: #8fc0ff;
   --color-chart-fill: #f0f6ff;
-  --color-chart-dot: #f5a623;
   --color-chart-point-border: #c9d9ef;
   --color-chart-tooltip-border: #e6e8eb;
   --color-chart-tooltip-title: #888c94;
@@ -275,7 +273,6 @@
   --color-legend-alt: #7bb3ff;
   --color-chart-order-bar: #bfd8ff;
   --color-thumb-icon: #728197;
-  --color-warning-deep: #c67900;
   --color-urgency-high-bg: #fff8ec;
   --color-urgency-normal-bg: #f2faf4;
   --color-stock-track: #eaf1fb;
@@ -299,8 +296,6 @@
   --text-13--line-height: 20px;
   --text-14: 14px;
   --text-14--line-height: 22px;
-  --text-15: 15px;
-  --text-15--line-height: 22px;
   --text-16: 16px;
   --text-16--line-height: 24px;
   --text-18: 18px;
@@ -324,6 +319,9 @@
   --leading-30: 30px;
   --leading-32: 32px;
   --leading-56: 56px;
+
+  /* 工作台初始化引导卡箭头形的切角尺寸。 */
+  --guide-notch: 17px;
 
   --radius-1: 1px;
   --radius-2: 2px;

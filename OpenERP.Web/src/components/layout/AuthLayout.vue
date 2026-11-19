@@ -9,7 +9,7 @@
           <path
             d="M4.7 25.9 12.9 6.2c1.2-2.9 5.1-2.9 6.4 0l2.1 5"
             fill="none"
-            stroke="#0968FF"
+            class="stroke-brand"
             stroke-width="4.2"
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -17,7 +17,7 @@
           <path
             d="M8.7 26 19.3 6.3c1-1.8 3.7-1.6 4.6.3 1 2.1 2.2 4.9 3.1 7.5.7 1.8.5 3.9-.5 5.5l-2.3 3.3"
             fill="none"
-            stroke="#0968FF"
+            class="stroke-brand"
             stroke-width="4"
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -25,7 +25,7 @@
           <path
             d="M9.7 19.3h8.1"
             fill="none"
-            stroke="#0968FF"
+            class="stroke-brand"
             stroke-width="3.6"
             stroke-linecap="round"
           />

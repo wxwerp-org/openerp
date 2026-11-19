@@ -103,6 +103,12 @@ import AppIcon from '../../ui/AppIcon.vue'
 }
 
 .guide-step:first-child {
-  clip-path: polygon(0 0, calc(100% - 17px) 0, 100% 50%, calc(100% - 17px) 100%, 0 100%);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--guide-notch)) 0,
+    100% 50%,
+    calc(100% - var(--guide-notch)) 100%,
+    0 100%
+  );
 }
 </style>

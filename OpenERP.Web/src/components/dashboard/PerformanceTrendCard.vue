@@ -188,7 +188,7 @@ const period = ref(props.periods[0] ?? '')
           <text class="fill-chart-tooltip-value font-sans text-12 font-semibold" x="1030" y="82">
             $24,860.00
           </text>
-          <text class="fill-chart-tooltip-title font-sans text-11" x="1030" y="95" fill="#888C94">
+          <text class="fill-chart-tooltip-title font-sans text-11" x="1030" y="95">
             较昨日同时段 +18.2%
           </text>
         </g>

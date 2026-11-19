@@ -126,7 +126,8 @@ async function handleAccountAction(
   >
     <AppSidebar
       :active-page="activePage ?? ''"
-      :collapsed="sidebarCollapsed || reportRail"
+      :collapsed="sidebarCollapsed"
+      :rail="reportRail"
       :touch-rail="touchRail"
       @update:collapsed="sidebarCollapsed = $event"
       @navigate="navigate"

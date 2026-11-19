@@ -80,10 +80,13 @@ test('Given 商品量报表有平台店铺和订单样本 When 从统计导航�
   )
 
   // 页签页标题只由顶部页签承载，页内不再渲染可见标题。
-  const headings = page.locator('#page-order-snapshot-report h1')
+  const headings = page.getByRole('heading', { level: 1, name: '商品量报表' })
   await expect(headings).toHaveCount(1)
-  await expect(headings).toHaveClass(/sr-only/)
-  await expect(headings).toHaveText('商品量报表')
+  // 视觉隐藏但保留无障碍名称：sr-only 裁剪为 1×1 像素。
+  const headingBox = await headings.boundingBox()
+  expect(headingBox).not.toBeNull()
+  expect(headingBox!.width).toBeLessThanOrEqual(1)
+  expect(headingBox!.height).toBeLessThanOrEqual(1)
 
   await expect(
     page.getByText('按本地来源订单计数；件数为当前商品行数量合计，包含禁用/追加行。'),
@@ -649,7 +652,7 @@ test('Given 真实宿主本地订单 When 打开商品量报表 Then 页面与�
   const distList = page.locator('[data-testid="report-platform-legend"]')
   await expect(distList.getByText('50.0%')).toHaveCount(2)
   await expect(distList).toContainText('Temu 半托管')
-  await expect(distList.getByText('Temu 半托管', { exact: true })).toHaveCount(1)
+  await expect(distList.getByText('Temu', { exact: true })).toHaveCount(1)
   await expect(page.locator('[data-testid="report-shop-ranking"]')).toContainText('店铺 30')
   await expect(page.locator('[data-testid="report-shop-ranking"]')).toContainText('店铺 31')
 
@@ -887,5 +890,29 @@ test('Given 窄屏悬停子菜单 When 指针从分组缓慢移入浮层 Then �
   await page.mouse.move(submenuBox!.x + 20, submenuBox!.y + 20, { steps: 16 })
   await expect(submenu).toBeVisible()
   await submenu.getByRole('button', { name: '业务配置', exact: true }).click()
+  await expect(page).toHaveURL(/\/settings$/)
+})
+
+test('Given 375px 报表轨道导航 When 点击分组 Then 浮层打开且 Escape 后可再次打开', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.route('**/api/reports/order-snapshot?**', async (route) => {
+    await route.fulfill({ json: reportSample })
+  })
+  await page.goto('/reports/orders')
+  await expect(page.locator('#page-order-snapshot-report')).toBeVisible()
+
+  const settings = page.locator('[data-group="settings"] button[aria-expanded]')
+  await settings.evaluate((element) => element.scrollIntoView({ block: 'center' }))
+  const flyout = page.locator('[data-testid="nav-flyout"]')
+
+  await settings.click()
+  await expect(flyout).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(flyout).toHaveCount(0)
+  await settings.click()
+  await expect(flyout).toBeVisible()
+  await flyout.getByRole('button', { name: '业务配置', exact: true }).click()
   await expect(page).toHaveURL(/\/settings$/)
 })
