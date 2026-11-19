@@ -1144,6 +1144,10 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.order-sync-dialog__empty a {
+  pointer-events: auto;
+}
+
 .order-sync-dialog__busy {
   margin: 0 0 12px;
   color: var(--muted);
