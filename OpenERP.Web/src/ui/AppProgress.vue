@@ -7,19 +7,27 @@ const props = withDefaults(
     label: string
     min?: number
     max?: number
-    color?: string
+    tone?: 'primary' | 'success' | 'warning' | 'danger'
   }>(),
   {
     min: 0,
     max: 100,
-    color: undefined,
+    tone: 'primary',
   },
 )
 
+const toneColor: Record<'primary' | 'success' | 'warning' | 'danger', string> = {
+  primary: 'var(--color-primary)',
+  success: 'var(--color-success)',
+  warning: 'var(--color-warning)',
+  danger: 'var(--color-danger)',
+}
+
+const clampedValue = computed(() => Math.min(Math.max(props.value, props.min), props.max))
 const ratio = computed(() => {
   const span = props.max - props.min
   if (span <= 0) return 0
-  return Math.min(100, Math.max(0, ((props.value - props.min) / span) * 100))
+  return ((clampedValue.value - props.min) / span) * 100
 })
 </script>
 
@@ -30,11 +38,11 @@ const ratio = computed(() => {
     :aria-label="label"
     :aria-valuemin="min"
     :aria-valuemax="max"
-    :aria-valuenow="value"
+    :aria-valuenow="clampedValue"
   >
     <span
       class="block h-full rounded-3"
-      :style="{ width: `${ratio}%`, background: color ?? 'var(--color-primary)' }"
+      :style="{ width: `${ratio}%`, background: toneColor[tone] }"
     />
   </div>
 </template>

@@ -7,7 +7,10 @@ const props = withDefaults(
     modelValue: string
     /** 容器与按钮高度档：sm = 28/26，md = 30/28。 */
     size?: 'sm' | 'md'
-    /** 按钮行高档；个别上下文按钮高度与行高不一致时显式覆盖。 */
+    /**
+     * 迁移期像素级几何覆盖：lineHeight/color/paddingX/minWidth 用于复刻旧页面的上下文覆盖，
+     * 随对应页面（3b 产品、3d 工作台）迁移后收敛为更少的语义档位。
+     */
     lineHeight?: 26 | 28
     /** 按钮文字颜色档；个别上下文（如排行榜维度）沿用常规文字色。 */
     color?: 'body' | 'ink'

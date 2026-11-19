@@ -14,6 +14,12 @@ describe('AppRadio', () => {
     expect(wrapper.text()).toBe('自动')
   })
 
+  it('Given 当前值与选项一致 When 渲染 Then 原生单选为选中态', () => {
+    const wrapper = mount(AppRadio, { props: { modelValue: 'a', value: 'a' } })
+
+    expect((wrapper.get('input').element as HTMLInputElement).checked).toBe(true)
+  })
+
   it('Given 点击未选项 When 触发变更 Then 发出该选项值', async () => {
     const wrapper = mount(AppRadio, { props: { modelValue: 'a', value: 'b' } })
 

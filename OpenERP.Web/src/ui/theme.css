@@ -20,6 +20,29 @@
 @import '../styles/utilities.css' layer(legacy);
 
 /**
+ * 图标基础样式属于主题 reset 的一部分：AppIcon 与尚未迁移的原生 svg 共用 `.ic`。
+ * 页面迁移完成后由 AppIcon 的尺寸/描边 props 接管，并随旧 CSS 一并删除。
+ */
+@layer base {
+  svg {
+    display: block;
+  }
+
+  .ic {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    display: inline-block;
+    vertical-align: middle;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}
+
+/**
  * 唯一设计 token 源。数值来自迁移前 src/styles 与 SFC scoped 样式的实测值，
  * 迁移期间不允许重新设计视觉值。
  */
@@ -106,6 +129,7 @@
   --color-radio-check: #65a6ff;
   --color-radio-border-disabled: #d5dbe4;
   --color-radio-check-disabled: #afc9f3;
+  --color-radio-bg-disabled: #f7f9fc;
   --color-btn-hover-bg: #f8fafd;
   --color-btn-disabled-bg: #f7f9fc;
   --color-btn-disabled-text: #c7cdd6;

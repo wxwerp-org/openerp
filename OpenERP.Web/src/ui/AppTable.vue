@@ -79,11 +79,11 @@ const tableStyle = computed(() => {
   border-radius: 8px;
 }
 
-.app-table tbody tr:hover td {
+.app-table :deep(tbody tr:hover td) {
   background: var(--color-row-hover);
 }
 
-.app-table.is-wrap tbody td {
+.app-table.is-wrap :deep(tbody td) {
   height: auto;
   padding-top: 14px;
   padding-bottom: 14px;

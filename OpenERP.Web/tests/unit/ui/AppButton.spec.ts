@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils'
+import { defineComponent, h } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import AppButton from '../../../src/ui/AppButton.vue'
 
@@ -58,6 +59,24 @@ describe('AppButton', () => {
 
     await wrapper.get('button').trigger('click')
     expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('Given to When 渲染 Then 使用路由链接语义而不是按钮', () => {
+    const RouterLinkStub = defineComponent({
+      props: { to: { type: String, required: true } },
+      setup(props, { slots }) {
+        return () => h('a', { href: props.to }, slots.default?.())
+      },
+    })
+    const wrapper = mount(AppButton, {
+      props: { to: '/shops' },
+      slots: { default: '去店铺' },
+      global: { stubs: { RouterLink: RouterLinkStub } },
+    })
+
+    expect(wrapper.find('button').exists()).toBe(false)
+    expect(wrapper.get('a').attributes('href')).toBe('/shops')
+    expect(wrapper.text()).toBe('去店铺')
   })
 
   it('Given href When 渲染 Then 使用链接语义而不是按钮', () => {

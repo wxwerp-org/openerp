@@ -26,6 +26,8 @@ const emit = defineEmits<{
   closed: []
 }>()
 
+// 调用方必须提供 ariaLabelledby（指向可见标题）或 ariaLabel，二者至少其一。
+
 const dialog = useNativeDialog(() => props.open)
 
 function bindDialog(element: Element | ComponentPublicInstance | null): void {
@@ -47,6 +49,7 @@ function handleClose(): void {
     :id="id"
     :ref="bindDialog"
     :data-layer="layer"
+    :data-backdrop="backdrop"
     :aria-labelledby="ariaLabelledby"
     :aria-label="ariaLabel"
     :class="[
