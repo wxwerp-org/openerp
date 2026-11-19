@@ -37,12 +37,12 @@ const controlAttrs = computed(() => {
 
 const shellClass = computed(() => [
   props.size === 'md'
-    ? 'flex h-[var(--control-h-lg)] w-full items-center rounded-4 border bg-white'
-    : 'inline-flex h-[var(--control-h)] shrink-0 items-center rounded-4 border bg-white',
+    ? 'flex h-[var(--control-h-lg)] w-full items-center rounded-4 border'
+    : 'inline-flex h-[var(--control-h)] shrink-0 items-center rounded-4 border',
   props.invalid
     ? 'border-danger focus-within:border-danger'
     : 'border-input hover:border-input-hover focus-within:border-primary',
-  props.readonly ? 'bg-tag-gray-bg' : '',
+  props.readonly ? 'bg-tag-gray-bg' : 'bg-white',
 ])
 
 const inputClass = computed(() => [
@@ -53,7 +53,19 @@ const inputClass = computed(() => [
   'placeholder:text-placeholder',
 ])
 
+let composing = false
+
+function onCompositionStart(): void {
+  composing = true
+}
+
+function onCompositionEnd(event: CompositionEvent): void {
+  composing = false
+  emit('update:modelValue', (event.target as HTMLInputElement).value)
+}
+
 function onInput(event: Event): void {
+  if (composing) return
   emit('update:modelValue', (event.target as HTMLInputElement).value)
 }
 </script>
@@ -68,6 +80,8 @@ function onInput(event: Event): void {
       :disabled="disabled"
       :aria-invalid="invalid ? 'true' : undefined"
       :class="inputClass"
+      @compositionstart="onCompositionStart"
+      @compositionend="onCompositionEnd"
       @input="onInput"
     />
     <slot name="suffix" />

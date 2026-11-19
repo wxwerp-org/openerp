@@ -15,7 +15,8 @@ const props = withDefaults(
 )
 
 const classes = computed(() => [
-  'sticky top-0 z-[3] h-40 overflow-hidden border-b border-line-soft bg-white text-12/18 font-semibold text-ellipsis whitespace-nowrap text-ink',
+  'sticky top-0 h-40 overflow-hidden border-b border-line-soft bg-white text-12/18 font-semibold text-ellipsis whitespace-nowrap text-ink',
+  props.sticky === 'none' ? 'z-[3]' : 'z-[6]',
   props.numeric ? 'text-right tabular-nums' : 'text-left',
   props.sticky === 'left'
     ? 'left-0 z-[6] w-28 border-r border-line-soft pl-8 pr-0'

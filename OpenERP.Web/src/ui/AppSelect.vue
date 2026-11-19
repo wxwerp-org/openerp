@@ -44,9 +44,9 @@ const selectClass = computed(() => [
 ])
 
 function onChange(event: Event): void {
-  const raw = (event.target as HTMLSelectElement).value
-  const matched = props.options.find((option) => String(option.value) === raw)
-  emit('update:modelValue', matched ? matched.value : raw)
+  const select = event.target as HTMLSelectElement
+  const option = props.options[select.selectedIndex]
+  emit('update:modelValue', option ? option.value : select.value)
 }
 </script>
 

@@ -54,16 +54,20 @@ const classes = computed(() => [
   props.variant === 'text' ? 'px-4' : 'px-10',
   colorClass[props.variant],
   variantClass[props.variant],
+  props.disabled && (props.to || props.href) ? 'pointer-events-none' : '',
 ])
 
 const tag = computed(() => (props.to ? RouterLink : props.href ? 'a' : 'button'))
-const rootProps = computed(() =>
-  props.to
-    ? { to: props.to }
-    : props.href
-      ? { href: props.href }
-      : { type: props.type, disabled: props.disabled },
-)
+const rootProps = computed<Record<string, unknown>>(() => {
+  if (props.to) return linkProps({ to: props.to })
+  if (props.href) return linkProps({ href: props.href })
+  return { type: props.type, disabled: props.disabled }
+})
+
+function linkProps(base: Record<string, unknown>): Record<string, unknown> {
+  if (!props.disabled) return base
+  return { ...base, 'aria-disabled': 'true', tabindex: -1 }
+}
 </script>
 
 <template>

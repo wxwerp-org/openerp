@@ -50,6 +50,19 @@ describe('AppInput', () => {
     expect(wrapper.attributes('aria-label')).toBeUndefined()
   })
 
+  it('Given 中文输入法组合中 When 输入 Then 不提前更新模型，组合结束再提交', async () => {
+    const wrapper = mount(AppInput, { props: { modelValue: '' } })
+    const input = wrapper.get('input')
+
+    await input.trigger('compositionstart')
+    await input.setValue('林')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+
+    ;(input.element as HTMLInputElement).value = '林沁'
+    await input.trigger('compositionend')
+    expect(wrapper.emitted('update:modelValue')).toEqual([['林沁']])
+  })
+
   it('Given 校验失败或只读 When 渲染 Then 暴露状态且不可编辑', () => {
     const invalid = mount(AppInput, { props: { invalid: true } })
     expect(invalid.get('input').attributes('aria-invalid')).toBe('true')

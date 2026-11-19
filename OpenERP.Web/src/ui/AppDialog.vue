@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ComponentPublicInstance } from 'vue'
+import { watch, type ComponentPublicInstance } from 'vue'
 import { useNativeDialog } from '../composables/useNativeDialog'
 
 const props = withDefaults(
@@ -27,6 +27,17 @@ const emit = defineEmits<{
 }>()
 
 // 调用方必须提供 ariaLabelledby（指向可见标题）或 ariaLabel，二者至少其一。
+if (import.meta.env.DEV) {
+  watch(
+    () => props.open,
+    (open) => {
+      if (open && !props.ariaLabelledby && !props.ariaLabel) {
+        console.warn(`[AppDialog] 弹窗 ${props.id} 缺少可访问名称（ariaLabelledby/ariaLabel）。`)
+      }
+    },
+    { immediate: true },
+  )
+}
 
 const dialog = useNativeDialog(() => props.open)
 
