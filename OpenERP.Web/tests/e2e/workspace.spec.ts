@@ -317,10 +317,7 @@ test('Given 独立服务路由 When 从设置侧栏导航 Then 授权店铺和�
   await expect(page.locator('.page-shops .grid-table')).toBeVisible()
   await expect(page.locator('[data-nav-page="shops"]').first()).toHaveClass(/active/)
 
-  await page.locator('[data-nav-page="orders-sync"]').click()
-  await expect(page).toHaveURL(/\/orders\/sync$/)
-  await expect(page.locator('.page-shops h1')).toHaveText('订单同步（临时）')
-  await expect(page.locator('[data-nav-page="orders-sync"]').first()).toHaveClass(/active/)
+  await expect(page.locator('[data-nav-page="orders-sync"]')).toHaveCount(0)
 
   await page.locator('[data-nav-page="service-connection"]').click()
   await expect(page).toHaveURL(/\/service-connection$/)

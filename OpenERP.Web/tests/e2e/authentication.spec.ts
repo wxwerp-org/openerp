@@ -370,8 +370,9 @@ test('Given 隔离宿主中的管理员已登录 When 保存关闭状态的定�
     }),
   )
 
-  await page.goto('/shops')
+  await page.goto('/orders')
   await submitLogin(page, adminPassword)
+  await page.getByRole('button', { name: '同步历史订单', exact: true }).first().click()
   const settings = page.locator('.sync-settings-card')
   await expect(settings.getByText('未启用')).toBeVisible()
 

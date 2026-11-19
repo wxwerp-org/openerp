@@ -7,29 +7,49 @@ async function prepareWorkspace(page: Page) {
   if (process.env.OPENERP_TEST_LOCAL_ORDERS === '1') return
 
   const item = {
-    id: 'browser-local-order', sid: 30, shopName: null, platform: 'TemuPop',
+    id: 'browser-local-order',
+    sid: 30,
+    shopName: null,
+    platform: 'TemuPop',
     platformOrders: [
       { number: 'TM-72801-A', status: '已发货', matched: false },
       { number: 'TM-72801-B', status: '待发货', matched: false },
     ],
-    created: '2026-11-17T08:30:00', dispatched: null, lineCount: 2, itemQuantity: 5,
+    created: '2026-11-17T08:30:00',
+    dispatched: null,
+    lineCount: 2,
+    itemQuantity: 5,
   }
-  const options = { shops: [{ sid: 30, name: null }], platforms: ['TemuPop'], statuses: ['待发货', '已发货'] }
+  const options = {
+    shops: [{ sid: 30, name: null }],
+    platforms: ['TemuPop'],
+    statuses: ['待发货', '已发货'],
+  }
   await page.route(/\/api\/orders(?:\?|$)/, async (route) => {
     const params = new URL(route.request().url()).searchParams
     const number = params.get('number')
     let items = [item]
     if (number === '72801-A') {
-      items = params.get('status') === '待发货' ? [] : [{
-        ...item,
-        platformOrders: [{ ...item.platformOrders[0], matched: true }, item.platformOrders[1]],
-      }]
+      items =
+        params.get('status') === '待发货'
+          ? []
+          : [
+              {
+                ...item,
+                platformOrders: [
+                  { ...item.platformOrders[0], matched: true },
+                  item.platformOrders[1],
+                ],
+              },
+            ]
     }
     await route.fulfill({ json: { items, options, total: items.length, page: 1, pageSize: 20 } })
   })
 }
 
-test('Given 同一主单有两个平台订单 When 按号码和状态查单 Then 保留整单数量且过滤不匹配的订单', async ({ page }, testInfo) => {
+test('Given 同一主单有两个平台订单 When 按号码和状态查单 Then 保留整单数量且过滤不匹配的订单', async ({
+  page,
+}, testInfo) => {
   await prepareWorkspace(page)
   await page.goto('/orders')
 
