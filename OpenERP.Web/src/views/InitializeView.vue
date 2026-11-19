@@ -15,9 +15,9 @@ const labelClass = 'text-13/20 font-semibold text-ink'
 const errorClass =
   'm-0 rounded-4 border border-tag-red-border bg-danger-faint px-12 py-10 text-13/20 text-danger'
 const inputClass =
-  'min-h-[42px] w-full min-w-0 rounded-4 border bg-white px-12 py-10 text-14/20 text-ink outline-none transition-[border-color,box-shadow] duration-150 focus-visible:[box-shadow:0_0_0_3px_var(--color-primary-soft)] disabled:cursor-not-allowed disabled:bg-page-soft disabled:text-muted'
+  'min-h-[42px] w-full min-w-0 rounded-4 border bg-white px-12 py-10 text-14/20 text-ink outline-none outline-0 transition-[border-color,box-shadow] duration-150 ease-[ease] focus-visible:[box-shadow:0_0_0_3px_var(--color-primary-soft)] disabled:cursor-not-allowed disabled:bg-page-soft disabled:text-muted'
 const validBorderClass =
-  'border-input hover:border-input-hover focus-visible:border-primary disabled:hover:border-input'
+  'border-input hover:border-input-hover hover:focus-visible:border-input-hover focus-visible:border-primary disabled:hover:border-input'
 const invalidBorderClass = 'border-danger'
 
 function inputState(invalid: boolean): string {

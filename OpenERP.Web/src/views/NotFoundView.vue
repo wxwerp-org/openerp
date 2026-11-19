@@ -12,7 +12,7 @@ function goHome(): void {
 </script>
 
 <template>
-  <section class="flex h-full min-h-0 w-full flex-col overflow-auto bg-page">
+  <section id="page-not-found" class="flex h-full min-h-0 w-full flex-col bg-page">
     <div class="min-h-full w-full bg-page p-16">
       <div
         class="flex items-start justify-between rounded-6 border border-line bg-white px-24 py-20"
