@@ -236,8 +236,8 @@ const scenarios: Scenario[] = [
     path: '/',
     waitFor: async (page) => page.locator('.dash-grid .card').first().waitFor(),
     afterGoto: async (page) => {
-      await page.locator('#collapseNav').click()
-      await page.locator('.sidebar.is-rail').waitFor()
+      await page.locator('[data-testid="collapse-nav"]').click()
+      await page.locator('[data-testid="sidebar"][data-rail="true"]').waitFor()
     },
   },
   {
@@ -528,7 +528,7 @@ const scenarios: Scenario[] = [
     path: '/',
     waitFor: async (page) => page.locator('.dash-grid .card').first().waitFor(),
     afterGoto: async (page) => {
-      await page.locator('#accountBtn').click()
+      await page.locator('[data-testid="account-button"]').click()
       await page.locator('#accountMenu').waitFor({ state: 'visible' })
     },
   },
@@ -537,7 +537,7 @@ const scenarios: Scenario[] = [
     path: '/',
     waitFor: async (page) => page.locator('.dash-grid .card').first().waitFor(),
     afterGoto: async (page) => {
-      await page.locator('#accountBtn').click()
+      await page.locator('[data-testid="account-button"]').click()
       await page.locator('[data-account-action="profile"]').click()
       await page.locator('#profileLayer[open]').waitFor()
     },
@@ -547,7 +547,7 @@ const scenarios: Scenario[] = [
     path: '/',
     waitFor: async (page) => page.locator('.dash-grid .card').first().waitFor(),
     afterGoto: async (page) => {
-      await page.locator('#accountBtn').click()
+      await page.locator('[data-testid="account-button"]').click()
       await page.locator('[data-account-action="password"]').click()
       await page.locator('#passwordLayer[open]').waitFor()
     },

@@ -159,11 +159,13 @@ test('Given 原型工作台 When 打开首页并进入用户管理 Then 全部�
   await expect(page.locator('.trend-chart')).toBeVisible()
   await expect(page.locator('.donut-chart')).toBeVisible()
 
-  await page.locator('[data-group="settings"] .nav-group-head').click()
+  await page.locator('[data-group="settings"] button[aria-expanded]').click()
   await page.locator('[data-nav-page="users"]').click()
   await expect(page).toHaveURL(/\/users$/)
   await expect(page.locator('#userTableBody tr')).toHaveCount(4)
-  await expect(page.locator('.page-tab.active .tab-label')).toHaveText('用户管理')
+  await expect(page.locator('[data-testid="page-tab"] [aria-current="page"]')).toHaveText(
+    '用户管理',
+  )
 })
 
 test('Given 多平台配置 When 选择店铺设置并打开账户弹窗 Then 配置内容和焦点行为与原型一致', async ({
@@ -176,15 +178,15 @@ test('Given 多平台配置 When 选择店铺设置并打开账户弹窗 Then �
   await expect(page.locator('#settingsSecondTitle')).toHaveText('多平台')
   await expect(page.locator('#settingsContent')).toContainText('配置多平台模块下的店铺设置能力')
 
-  await page.locator('.account-button').click()
+  await page.locator('[data-testid="account-button"]').click()
   await page.locator('[data-account-action="profile"]').click()
   await expect(page.locator('#profileLayer')).toBeVisible()
   await expect(page.locator('#profileName')).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(page.locator('#profileLayer')).toBeHidden()
-  await expect(page.locator('.account-button')).toBeFocused()
+  await expect(page.locator('[data-testid="account-button"]')).toBeFocused()
 
-  await page.locator('.account-button').click()
+  await page.locator('[data-testid="account-button"]').click()
   await page.locator('[data-account-action="password"]').click()
   await expect(page.locator('#oldPassword')).toBeFocused()
   await page.locator('#oldPassword').fill('old-password')
@@ -194,7 +196,7 @@ test('Given 多平台配置 When 选择店铺设置并打开账户弹窗 Then �
   await expect(page.getByText('两次输入的密码不一致')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('#passwordLayer')).toBeHidden()
-  await expect(page.locator('.account-button')).toBeFocused()
+  await expect(page.locator('[data-testid="account-button"]')).toBeFocused()
 })
 
 test('Given 产品和订单原型 When 打开表单与公告 Then 弹窗可见且桌面页面无横向溢出', async ({
@@ -310,19 +312,25 @@ test('Given 独立服务路由 When 从设置侧栏导航 Then 授权店铺和�
   await mockShops(page)
   await page.route('**/api/ping', (route) => route.fulfill({ json: { message: '连接正常' } }))
   await page.goto('/')
-  await page.locator('[data-group="settings"] .nav-group-head').click()
+  await page.locator('[data-group="settings"] button[aria-expanded]').click()
 
   await page.locator('[data-nav-page="shops"]').click()
   await expect(page).toHaveURL(/\/shops$/)
   await expect(page.locator('.page-shops .grid-table')).toBeVisible()
-  await expect(page.locator('[data-nav-page="shops"]').first()).toHaveClass(/active/)
+  await expect(page.locator('[data-nav-page="shops"]').first()).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
 
   await expect(page.locator('[data-nav-page="orders-sync"]')).toHaveCount(0)
 
   await page.locator('[data-nav-page="service-connection"]').click()
   await expect(page).toHaveURL(/\/service-connection$/)
   await expect(page.locator('.page-service .service-panel')).toBeVisible()
-  await expect(page.locator('[data-nav-page="service-connection"]').first()).toHaveClass(/active/)
+  await expect(page.locator('[data-nav-page="service-connection"]').first()).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
 })
 
 test('Given 一页 20 家店铺 When 视口高度不足 Then 分页栏固定可见且表格体可滚动到最后一行', async ({

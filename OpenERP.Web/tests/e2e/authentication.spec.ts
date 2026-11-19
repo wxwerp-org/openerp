@@ -71,7 +71,7 @@ test('Given 全新数据库尚未初始化 When 浏览器设置管理员密码 T
     await page.goto('/users?first=1#main')
     await expect(page).toHaveURL(/\/initialize\?returnTo=/)
     await expect(page.getByRole('heading', { name: '初始化 OpenERP' })).toBeVisible()
-    await expect(page.locator('.sidebar')).toHaveCount(0)
+    await expect(page.locator('[data-testid="sidebar"]')).toHaveCount(0)
     await expect(page.getByLabel('用户名')).toHaveValue('admin')
     await expect(page.getByLabel('用户名')).not.toBeEditable()
     await expect(page.getByLabel('原密码')).toHaveCount(0)
@@ -107,7 +107,7 @@ test('Given 全新数据库尚未初始化 When 浏览器设置管理员密码 T
 
     await submitLogin(page, adminPassword)
     await expect(page).toHaveURL(/\/users\?first=1#main$/)
-    await expect(page.locator('.account-button')).toBeVisible()
+    await expect(page.locator('[data-testid="account-button"]')).toBeVisible()
   } finally {
     await secondDevice.close()
   }
@@ -130,7 +130,9 @@ test('Given 首个浏览器已登录且持有持久刷新 Cookie When 新浏览�
     const loginResponse = await loginResponsePromise
     expect(loginResponse.status()).toBe(200)
     const loginSession = await expectSessionResponse(loginResponse)
-    await expect(firstPage.locator('.account-button')).toHaveText(loginSession.account.name)
+    await expect(firstPage.locator('[data-testid="account-button"]')).toHaveText(
+      loginSession.account.name,
+    )
     await expectAccessTokenNotPersisted(firstPage, loginSession.accessToken)
 
     const storageState = await firstContext.storageState()
@@ -175,7 +177,7 @@ test('Given 首个浏览器已登录且持有持久刷新 Cookie When 新浏览�
       expect(headers.cookie).toContain('__Secure-OpenERP.Refresh=')
 
       const refreshedSession = await expectSessionResponse(refreshResponse)
-      await expect(restoredPage.locator('.account-button')).toHaveText(
+      await expect(restoredPage.locator('[data-testid="account-button"]')).toHaveText(
         refreshedSession.account.name,
       )
       await expectAccessTokenNotPersisted(restoredPage, refreshedSession.accessToken)
@@ -195,7 +197,7 @@ test('Given 未登录时直达工作台 When 错误凭证失败后成功登录 T
   await page.goto('/users?from=login#main')
   await expect(page).toHaveURL(/\/login\?returnTo=/)
   await expect(page.getByRole('heading', { name: '登录 OpenERP' })).toBeVisible()
-  await expect(page.locator('.sidebar')).toHaveCount(0)
+  await expect(page.locator('[data-testid="sidebar"]')).toHaveCount(0)
   await page.screenshot({ path: testInfo.outputPath('login.png') })
 
   await submitLogin(page, 'wrong-password')
@@ -205,7 +207,7 @@ test('Given 未登录时直达工作台 When 错误凭证失败后成功登录 T
   await expect(page).toHaveURL(/\/users\?from=login#main$/)
   await expect(page.locator('#userTableBody tr')).toHaveCount(4)
   await page.reload()
-  await expect(page.locator('.account-button')).toBeVisible()
+  await expect(page.locator('[data-testid="account-button"]')).toBeVisible()
   await expect(page).toHaveURL(/\/users\?from=login#main$/)
 })
 
@@ -224,7 +226,7 @@ test('Given 两个浏览器已登录 When 保存资料然后退出当前浏览�
   try {
     expect((await signInWithApi(secondDevice.request)).status()).toBe(200)
     await page.goto('/')
-    await page.locator('.account-button').click()
+    await page.locator('[data-testid="account-button"]').click()
     await page.getByRole('menuitem', { name: '修改个人信息' }).click()
     await expect(page.getByLabel('用户名')).toHaveValue('admin')
     await expect(page.getByLabel('用户名')).not.toBeEditable()
@@ -240,11 +242,11 @@ test('Given 两个浏览器已登录 When 保存资料然后退出当前浏览�
     await page.getByLabel('邮箱').fill('admin@example.test')
     await page.getByRole('button', { name: '保存' }).click()
     await expect(page.getByRole('dialog')).toBeHidden()
-    await expect(page.locator('.account-button')).toHaveText(newName)
+    await expect(page.locator('[data-testid="account-button"]')).toHaveText(newName)
     await page.reload()
-    await expect(page.locator('.account-button')).toHaveText(newName)
+    await expect(page.locator('[data-testid="account-button"]')).toHaveText(newName)
 
-    await page.locator('.account-button').click()
+    await page.locator('[data-testid="account-button"]').click()
     const logoutRequestPromise = page.waitForRequest(
       (request) =>
         new URL(request.url()).pathname === '/api/auth/logout' && request.method() === 'POST',
@@ -303,10 +305,10 @@ test('Given 两个浏览器已登录 When 原密码校验失败后修改密码�
     expect((await signInWithApi(secondDevice.request)).status()).toBe(200)
     const secondPage = await secondDevice.newPage()
     await secondPage.goto('/users')
-    await expect(secondPage.locator('.account-button')).toBeVisible()
+    await expect(secondPage.locator('[data-testid="account-button"]')).toBeVisible()
 
     await page.goto('/')
-    await page.locator('.account-button').click()
+    await page.locator('[data-testid="account-button"]').click()
     await page.getByRole('menuitem', { name: '修改密码' }).click()
     await page.getByLabel('原密码').fill('wrong-password')
     await page.locator('#newPassword').fill(newPassword)

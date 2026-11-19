@@ -8,9 +8,6 @@
   --text: #0b1019;
   --body: #55585f;
   --muted: #888c94;
-  --color-text: #172033;
-  --color-muted: #64748b;
-  --color-border: #e7eaf0;
   --placeholder: #a6abb4;
   --page: #f2f5fa;
   --page-soft: #f7f9fd;
@@ -97,13 +94,6 @@ h4 {
 .ic-fill {
   fill: currentColor;
   stroke: none;
-}
-.sprite {
-  position: absolute;
-  width: 0;
-  height: 0;
-  overflow: hidden;
-  pointer-events: none;
 }
 .tnum {
   font-variant-numeric: tabular-nums;

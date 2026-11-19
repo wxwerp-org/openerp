@@ -111,6 +111,13 @@
   --color-nav-icon: #7a818b;
   --color-nav-icon-muted: #a2a8b1;
   --color-sidebar-foot: #8a9099;
+  /* 布局壳（AppShell / 侧栏 / 页签 / 账户菜单）实测色值 */
+  --color-hover-bg: #e8eaed;
+  --color-tab: #5b6068;
+  --color-menu-icon: #6b7786;
+  --color-caret-soft: #9aa0a8;
+  --color-avatar-bg: #dce8ff;
+  --color-danger-faint: #fff2f2;
   --color-scroll-thumb: #cbd5e1;
   --color-scroll-thumb-nav: #d5dae1;
   --color-scroll-track: #f2f5fa;

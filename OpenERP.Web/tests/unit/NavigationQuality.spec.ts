@@ -15,12 +15,12 @@ describe('导航与临时状态质量', () => {
       props: { activePage: 'dashboard', collapsed: true },
       attachTo: document.body,
     })
-    const sales = wrapper.get('[data-group="sales"] .nav-group-head')
+    const sales = wrapper.get('[data-group="sales"] button[aria-expanded]')
 
     await sales.trigger('focusin')
-    expect(wrapper.find('[data-group="sales"] .nav-flyout').exists()).toBe(true)
+    expect(wrapper.find('[data-group="sales"] [data-testid="nav-flyout"]').exists()).toBe(true)
     await sales.trigger('keydown', { key: 'Escape' })
-    expect(wrapper.find('[data-group="sales"] .nav-flyout').exists()).toBe(false)
+    expect(wrapper.find('[data-group="sales"] [data-testid="nav-flyout"]').exists()).toBe(false)
   })
 
   it('Given 账户按钮 When 按方向下键和 Escape Then 打开菜单并聚焦首项后关闭归还焦点', async () => {
@@ -28,15 +28,15 @@ describe('导航与临时状态质量', () => {
       props: { account: adminAccount },
       attachTo: document.body,
     })
-    const button = wrapper.get('.account-button')
+    const button = wrapper.get('[data-testid="account-button"]')
 
     await button.trigger('keydown', { key: 'ArrowDown' })
-    expect(wrapper.get('.account-button').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('[data-testid="account-button"]').attributes('aria-expanded')).toBe('true')
     expect(document.activeElement?.textContent).toContain('修改个人信息')
 
-    await wrapper.get('.account-menu').trigger('keydown', { key: 'Escape' })
-    expect(wrapper.get('.account-button').attributes('aria-expanded')).toBe('false')
-    expect(document.activeElement?.id).toBe('accountBtn')
+    await wrapper.get('#accountMenu').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.get('[data-testid="account-button"]').attributes('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="account-button"]').element)
   })
 
   it('Given 工作区页签 When 点击路由链接 Then 不重复发出 select 且打开页面菜单含新品开发', async () => {
@@ -64,9 +64,9 @@ describe('导航与临时状态质量', () => {
       global: { plugins: [router] },
     })
 
-    await wrapper.get('#tabAdd').trigger('click')
+    await wrapper.get('[data-testid="tab-add"]').trigger('click')
     expect(wrapper.get('#tabMenu').text()).toContain('新品开发')
-    await wrapper.get('.page-tab .tab-label').trigger('click')
+    await wrapper.get('[data-testid="page-tab"] a').trigger('click')
     expect(wrapper.emitted('select')).toBeUndefined()
   })
 
@@ -91,7 +91,7 @@ describe('导航与临时状态质量', () => {
     })
     await flushPromises()
 
-    expect(wrapper.find('.nav-link.active').exists()).toBe(false)
+    expect(wrapper.find('[data-nav-page="dashboard"][aria-current="page"]').exists()).toBe(false)
   })
 
   it('Given 重复导航 When 键盘用户进入页面 Then 可通过跳转链接聚焦主内容', async () => {
@@ -111,7 +111,7 @@ describe('导航与临时状态质量', () => {
     })
     await flushPromises()
 
-    expect(wrapper.get('.skip-link').attributes('href')).toBe('#main')
+    expect(wrapper.get('a[href="#main"]').attributes('href')).toBe('#main')
     expect(wrapper.get('#main').attributes('tabindex')).toBe('-1')
   })
 })
