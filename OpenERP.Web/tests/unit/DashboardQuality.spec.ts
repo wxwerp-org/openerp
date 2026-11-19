@@ -48,7 +48,7 @@ describe('工作台数据控件与无障碍质量', () => {
 
   it('Given 产品空表 When 展示排序图标 Then 排序按钮明确禁用', () => {
     const wrapper = mount(ProductListView)
-    const controls = wrapper.findAll('.sort-head')
+    const controls = wrapper.findAll('[data-testid="product-sort"]')
     expect(controls.length).toBeGreaterThan(0)
     for (const control of controls) {
       expect(control.element).toBeInstanceOf(HTMLButtonElement)

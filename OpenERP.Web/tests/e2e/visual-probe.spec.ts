@@ -248,12 +248,12 @@ const scenarios: Scenario[] = [
   {
     name: 'products-1440',
     path: '/products',
-    waitFor: async (page) => page.locator('.grid-table').first().waitFor(),
+    waitFor: async (page) => page.getByRole('region', { name: '产品列表' }).waitFor(),
   },
   {
     name: 'products-dialog-1440',
     path: '/products',
-    waitFor: async (page) => page.locator('.grid-table').first().waitFor(),
+    waitFor: async (page) => page.getByRole('region', { name: '产品列表' }).waitFor(),
     afterGoto: async (page) => {
       await page.locator('#openProductForm').click()
       await page.locator('#productFormLayer[open]').waitFor()
@@ -262,7 +262,7 @@ const scenarios: Scenario[] = [
   {
     name: 'products-dialog-error-1440',
     path: '/products',
-    waitFor: async (page) => page.locator('.grid-table').first().waitFor(),
+    waitFor: async (page) => page.getByRole('region', { name: '产品列表' }).waitFor(),
     afterGoto: async (page) => {
       await page.locator('#openProductForm').click()
       await page.locator('#productFormLayer[open]').waitFor()
@@ -277,7 +277,8 @@ const scenarios: Scenario[] = [
       await mockOrders(page)
       await mockErpConfig(page)
     },
-    waitFor: async (page) => page.locator('.order-table tbody tr').first().waitFor(),
+    waitFor: async (page) =>
+      page.getByRole('region', { name: '订单列表' }).locator('tbody tr').first().waitFor(),
   },
   {
     name: 'orders-empty-1440',
@@ -304,7 +305,8 @@ const scenarios: Scenario[] = [
       await mockOrders(page)
       await mockErpConfig(page)
     },
-    waitFor: async (page) => page.locator('.order-table tbody tr').first().waitFor(),
+    waitFor: async (page) =>
+      page.getByRole('region', { name: '订单列表' }).locator('tbody tr').first().waitFor(),
     afterGoto: async (page) => {
       await page.locator('#openNotice').click()
       await page.locator('#noticeLayer[open]').waitFor()
@@ -317,7 +319,8 @@ const scenarios: Scenario[] = [
       await mockOrders(page)
       await mockOrderSync(page)
     },
-    waitFor: async (page) => page.locator('.order-table tbody tr').first().waitFor(),
+    waitFor: async (page) =>
+      page.getByRole('region', { name: '订单列表' }).locator('tbody tr').first().waitFor(),
     afterGoto: async (page) => {
       await page.getByRole('button', { name: '同步历史订单', exact: true }).first().click()
       await page.locator('#order-sync-panel[open]').waitFor()

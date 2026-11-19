@@ -45,11 +45,11 @@ describe('数据驱动控件与文档结构', () => {
 
     await button.trigger('click')
     expect(header.attributes('aria-sort')).toBe('ascending')
-    expect(wrapper.get('#userTableBody tr td.user-name').text()).toBe('alex.chen')
+    expect(wrapper.get('#userTableBody tr td[data-testid="user-name"]').text()).toBe('alex.chen')
 
     await button.trigger('click')
     expect(header.attributes('aria-sort')).toBe('descending')
-    expect(wrapper.get('#userTableBody tr td.user-name').text()).toBe('lucy.lin')
+    expect(wrapper.get('#userTableBody tr td[data-testid="user-name"]').text()).toBe('lucy.lin')
   })
 
   it('Given 列表与页面 When 渲染文档结构 Then 每页有 h1 且表格有 caption 和列 scope', () => {

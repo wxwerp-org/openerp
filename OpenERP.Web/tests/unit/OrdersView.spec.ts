@@ -116,7 +116,7 @@ describe('订单列表', () => {
     const row = wrapper.get('tbody tr')
     expect(row.findAll('li').map((item) => item.text())).toEqual(['PO-001已发货', 'PO-002待发货'])
     expect(row.get('mark').text()).toBe('PO-002待发货')
-    expect(row.findAll('.num-cell').map((cell) => cell.text())).toEqual(['2', '7'])
+    expect(row.findAll('[data-numeric="true"]').map((cell) => cell.text())).toEqual(['2', '7'])
   })
 
   it('Given 订单遍及两页 When 翻页再更改筛选 Then 显示目标页且新搜索返回第一页', async () => {
@@ -165,7 +165,7 @@ describe('订单列表', () => {
     await flushPromises()
 
     expect(wrapper.get('[role="status"]').text()).toContain('暂无同步订单')
-    await wrapper.get('.order-message button').trigger('click')
+    await wrapper.get('[data-testid="orders-message"] button').trigger('click')
     await flushPromises()
 
     const dialog = wrapper.get('dialog[open][aria-labelledby]')

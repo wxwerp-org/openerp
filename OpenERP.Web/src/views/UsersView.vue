@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import AppButton from '../ui/AppButton.vue'
+import AppCheckbox from '../ui/AppCheckbox.vue'
 import AppIcon from '../ui/AppIcon.vue'
+import AppIconButton from '../ui/AppIconButton.vue'
+import AppListSearchbar from '../ui/AppListSearchbar.vue'
+import AppListToolbar from '../ui/AppListToolbar.vue'
+import AppPager from '../ui/AppPager.vue'
+import AppTable from '../ui/AppTable.vue'
+import AppTd from '../ui/AppTd.vue'
+import AppTh from '../ui/AppTh.vue'
 
 const users = [
   {
@@ -79,197 +88,215 @@ const sortedUsers = computed(() => {
 function toggleCreatedSort(): void {
   sortDirection.value = sortDirection.value === 'ascending' ? 'descending' : 'ascending'
 }
+
+/** 旧筛选条的拼接控件与上下文覆盖较多，按实测几何显式书写，避免组合类互相覆盖。 */
+const joinedControlStart =
+  'inline-flex h-[var(--control-h)] shrink-0 items-center gap-6 rounded-l-4 border-y border-l border-input bg-white px-10 text-12/28 whitespace-nowrap text-placeholder hover:border-input-hover'
+const fieldBox =
+  'inline-flex h-[var(--control-h)] shrink-0 items-center border border-input bg-white'
+const fieldBoxJoinedEnd =
+  'inline-flex h-[var(--control-h)] shrink-0 items-center border-y border-r border-input bg-white'
+const fieldBoxInput =
+  'h-28 min-w-0 border-0 border-current bg-transparent px-10 py-0 text-12/18 text-ink outline-none placeholder:text-placeholder'
+const searchButton =
+  'flex h-28 w-30 shrink-0 items-center justify-center text-search-icon hover:bg-search-hover-bg hover:text-primary'
+const splitButtonStart =
+  'inline-flex h-[var(--control-h)] shrink-0 items-center justify-center gap-5 rounded-l-4 border-y border-l border-input bg-white px-10 text-12/28 whitespace-nowrap text-ink hover:border-input-hover hover:bg-btn-hover-bg'
+const splitButtonEnd =
+  'inline-flex h-[var(--control-h)] w-30 shrink-0 items-center justify-center rounded-r-4 border border-input bg-white px-0 text-12/28 text-ink hover:border-input-hover hover:bg-btn-hover-bg'
+const caretClass = 'opacity-[0.65]'
+const pageSizeClass =
+  'inline-flex h-28 min-w-100 shrink-0 items-center justify-between gap-10 rounded-4 border border-input bg-white px-9 text-ink'
+const statusPill =
+  'inline-flex h-18 items-center justify-center rounded-2 border px-5 text-11/16 whitespace-nowrap'
+const statusPillOn = `${statusPill} border-tag-green-border bg-tag-green-bg text-success`
+const statusPillOff = `${statusPill} border-status-off-border bg-tag-gray-bg text-muted`
+const pageJumpInput =
+  'h-28 w-46 rounded-4 border border-input bg-white px-4 py-0 text-center text-12/18 text-ink outline-none focus:border-primary'
 </script>
 
 <template>
-  <section id="page-users" class="page page-users active">
-    <h1 class="visually-hidden">用户管理</h1>
-    <div class="list-searchbar user-filter">
-      <div class="date-group">
-        <button class="control placeholder" type="button">
-          登录时间<AppIcon name="i-chev-down" icon-class="caret" />
+  <section id="page-users" class="flex h-full w-full min-h-0 flex-col overflow-hidden bg-white">
+    <h1 class="sr-only">用户管理</h1>
+    <AppListSearchbar label="用户筛选">
+      <div class="flex items-stretch">
+        <button :class="joinedControlStart" type="button">
+          登录时间<AppIcon name="i-chev-down" :size="10" class="text-caret" />
         </button>
-        <div class="field-box" style="width: 155px">
-          <input aria-label="登录时间范围" placeholder="开始日期 - 结束日期" readonly /><AppIcon
-            name="i-calendar"
+        <div :class="fieldBoxJoinedEnd" class="w-[155px] rounded-r-4">
+          <input
+            :class="fieldBoxInput"
+            aria-label="登录时间范围"
+            placeholder="开始日期 - 结束日期"
+            readonly
           />
+          <AppIcon name="i-calendar" :size="14" class="mr-8 text-placeholder" />
         </div>
       </div>
-      <button class="control placeholder" type="button">
-        用户状态<AppIcon name="i-chev-down" icon-class="caret" />
+      <button
+        class="inline-flex h-[var(--control-h)] shrink-0 items-center gap-6 rounded-4 border border-input bg-white px-10 text-12/28 whitespace-nowrap text-placeholder hover:border-input-hover"
+        type="button"
+      >
+        用户状态<AppIcon name="i-chev-down" :size="10" class="text-caret" />
       </button>
-      <button class="control placeholder" type="button">
-        用户角色<AppIcon name="i-chev-down" icon-class="caret" />
+      <button
+        class="inline-flex h-[var(--control-h)] shrink-0 items-center gap-6 rounded-4 border border-input bg-white px-10 text-12/28 whitespace-nowrap text-placeholder hover:border-input-hover"
+        type="button"
+      >
+        用户角色<AppIcon name="i-chev-down" :size="10" class="text-caret" />
       </button>
-      <div class="field-box realname-field" style="width: 83px">
-        <input aria-label="真实姓名" placeholder="真实姓名" />
+      <div :class="fieldBox" class="w-[83px] rounded-4">
+        <input :class="fieldBoxInput" aria-label="真实姓名" placeholder="真实姓名" />
       </div>
-      <div class="field-box mode-field" style="width: 59px; margin-left: -1px">
-        <input aria-label="查询方式" value="模糊" readonly /><AppIcon
-          name="i-chev-down"
-          icon-class="caret"
+      <div :class="fieldBox" class="-ml-1 w-[59px] rounded-4">
+        <input :class="fieldBoxInput" aria-label="查询方式" value="模糊" readonly />
+        <AppIcon name="i-chev-down" :size="10" class="mr-9 text-caret" />
+      </div>
+      <div
+        class="flex h-[var(--control-h)] min-w-40 max-w-237 flex-1 items-center overflow-hidden rounded-4 border border-input bg-white"
+      >
+        <input
+          :class="fieldBoxInput"
+          class="flex-1"
+          aria-label="搜索用户"
+          placeholder="输入用户名、手机号搜索"
         />
-      </div>
-      <div class="search-box">
-        <input aria-label="搜索用户" placeholder="输入用户名、手机号搜索" />
-        <button class="search-btn" type="button" title="搜索" aria-label="搜索">
-          <AppIcon name="i-search" icon-class="ic-16" />
+        <button :class="searchButton" type="button" title="搜索" aria-label="搜索">
+          <AppIcon name="i-search" :size="16" />
         </button>
-        <span class="split-line"></span>
-        <button class="search-btn" type="button" title="高级搜索" aria-label="高级搜索">
-          <AppIcon name="i-filter" icon-class="ic-16" />
+        <span class="h-16 w-px shrink-0 bg-line-soft"></span>
+        <button :class="searchButton" type="button" title="高级搜索" aria-label="高级搜索">
+          <AppIcon name="i-filter" :size="16" />
         </button>
       </div>
-      <button class="btn" type="button">更多筛选</button>
-      <button class="btn soft" type="button">重置</button>
-    </div>
-    <div class="list-toolbar">
-      <div class="toolbar-left">
-        <div class="split-select">
-          <button class="btn" type="button" style="border-radius: 4px 0 0 4px; border-right: 0">
-            添加用户
-          </button>
-          <button
-            class="btn"
-            type="button"
-            style="width: 30px; padding: 0; border-radius: 0 4px 4px 0"
-            aria-label="添加用户选项"
-          >
-            <AppIcon name="i-chev-down" icon-class="caret" />
-          </button>
-        </div>
-        <button class="btn" type="button">
-          批量<AppIcon name="i-chev-down" icon-class="caret" />
-        </button>
-        <button class="btn" type="button">
-          负责人交接<AppIcon name="i-chev-down" icon-class="caret" />
-        </button>
-        <button class="btn" type="button">批量解绑</button>
-      </div>
-      <div class="toolbar-right">
-        <button class="btn-icon" type="button" title="刷新" aria-label="刷新">
-          <AppIcon name="i-refresh" />
-        </button>
-        <button class="btn-icon" type="button" title="帮助" aria-label="帮助">
-          <AppIcon name="i-help" />
+      <AppButton>更多筛选</AppButton>
+      <AppButton variant="soft">重置</AppButton>
+    </AppListSearchbar>
+    <AppListToolbar>
+      <div class="inline-flex shrink-0 items-stretch">
+        <button :class="splitButtonStart" type="button">添加用户</button>
+        <button :class="splitButtonEnd" type="button" aria-label="添加用户选项">
+          <AppIcon name="i-chev-down" :size="10" :class="caretClass" />
         </button>
       </div>
-    </div>
-    <div class="table-region">
-      <div class="table-box">
-        <div class="table-area">
-          <div class="table-scroll" tabindex="0" role="region" aria-label="用户管理表格">
-            <table class="grid-table user-table" style="width: 2152px">
-              <caption class="visually-hidden">
-                用户管理列表
-              </caption>
-              <colgroup>
-                <col style="width: 38px" />
-                <col style="width: 120px" />
-                <col style="width: 120px" />
-                <col style="width: 120px" />
-                <col style="width: 140px" />
-                <col style="width: 80px" />
-                <col style="width: 140px" />
-                <col style="width: 160px" />
-                <col style="width: 160px" />
-                <col style="width: 120px" />
-                <col style="width: 80px" />
-                <col style="width: 160px" />
-                <col style="width: 120px" />
-                <col style="width: 280px" />
-                <col style="width: 260px" />
-                <col style="width: 54px" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th scope="col" class="col-check">
-                    <input class="checkbox" type="checkbox" aria-label="全选" />
-                  </th>
-                  <th scope="col">用户名</th>
-                  <th scope="col">真实姓名</th>
-                  <th scope="col">手机号</th>
-                  <th scope="col">邮箱</th>
-                  <th scope="col">状态</th>
-                  <th scope="col">部门</th>
-                  <th scope="col" data-sort="created" :aria-sort="sortDirection ?? undefined">
-                    <button
-                      class="sort-head"
-                      type="button"
-                      aria-label="按创建时间排序"
-                      @click="toggleCreatedSort"
-                    >
-                      创建时间<AppIcon
-                        name="i-sort"
-                        icon-class="sort-icon"
-                        style="color: #005bf5"
-                      />
-                    </button>
-                  </th>
-                  <th scope="col">角色</th>
-                  <th scope="col">关联权限</th>
-                  <th scope="col">登录次数</th>
-                  <th scope="col">最近登录时间</th>
-                  <th scope="col">最近登录IP</th>
-                  <th scope="col">第三方授权</th>
-                  <th scope="col">账号安全</th>
-                  <th scope="col" class="col-action">操作</th>
-                </tr>
-              </thead>
-              <tbody id="userTableBody">
-                <tr v-for="user in sortedUsers" :key="user.username">
-                  <td class="col-check">
-                    <input class="checkbox" type="checkbox" :aria-label="`选择${user.realname}`" />
-                  </td>
-                  <td class="user-name" :title="user.username">{{ user.username }}</td>
-                  <td>{{ user.realname }}</td>
-                  <td>{{ user.phone }}</td>
-                  <td :title="user.email">{{ user.email }}</td>
-                  <td>
-                    <span class="status-pill" :class="{ off: user.status === '停用' }">{{
-                      user.status
-                    }}</span>
-                  </td>
-                  <td>{{ user.department }}</td>
-                  <td>{{ user.created }}</td>
-                  <td>{{ user.role }}</td>
-                  <td>{{ user.perms }}</td>
-                  <td>{{ user.logins }}</td>
-                  <td>{{ user.lastLogin }}</td>
-                  <td>{{ user.lastIp }}</td>
-                  <td>{{ user.thirdParty }}</td>
-                  <td>
-                    <span class="security-cell"
-                      ><AppIcon
-                        v-if="user.security !== '未绑定'"
-                        name="i-shield-check"
-                        icon-class="ic-12"
-                      />{{ user.security }}</span
-                    >
-                  </td>
-                  <td class="col-action">
-                    <div class="oper-cell">
-                      <button class="oper-link" type="button">编辑</button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="table-pagination">
-          <span>共4条</span>
-          <button class="page-btn" type="button" disabled aria-label="上一页">
-            <AppIcon name="i-chev-left" icon-class="ic-12" />
-          </button>
-          <span class="page-num">1</span>
-          <button class="page-btn" type="button" disabled aria-label="下一页">
-            <AppIcon name="i-chev-right" icon-class="ic-12" />
-          </button>
-          <button class="page-size" type="button">20条/页<AppIcon name="i-chev-down" /></button>
-          <span class="page-jump">前往<input value="1" aria-label="前往页码" />页</span>
-        </div>
-      </div>
-    </div>
+      <AppButton>批量<AppIcon name="i-chev-down" :size="10" :class="caretClass" /></AppButton>
+      <AppButton>负责人交接<AppIcon name="i-chev-down" :size="10" :class="caretClass" /></AppButton>
+      <AppButton>批量解绑</AppButton>
+      <template #right>
+        <AppIconButton label="刷新" tone="toolbar"><AppIcon name="i-refresh" /></AppIconButton>
+        <AppIconButton label="帮助" tone="toolbar"><AppIcon name="i-help" /></AppIconButton>
+      </template>
+    </AppListToolbar>
+    <AppTable caption="用户管理列表" label="用户管理表格" :width="2152">
+      <colgroup>
+        <col style="width: 38px" />
+        <col style="width: 120px" />
+        <col style="width: 120px" />
+        <col style="width: 120px" />
+        <col style="width: 140px" />
+        <col style="width: 80px" />
+        <col style="width: 140px" />
+        <col style="width: 160px" />
+        <col style="width: 160px" />
+        <col style="width: 120px" />
+        <col style="width: 80px" />
+        <col style="width: 160px" />
+        <col style="width: 120px" />
+        <col style="width: 280px" />
+        <col style="width: 260px" />
+        <col style="width: 54px" />
+      </colgroup>
+      <thead>
+        <tr>
+          <AppTh sticky="left" class="pl-8">
+            <AppCheckbox aria-label="全选" />
+          </AppTh>
+          <AppTh>用户名</AppTh>
+          <AppTh>真实姓名</AppTh>
+          <AppTh>手机号</AppTh>
+          <AppTh>邮箱</AppTh>
+          <AppTh>状态</AppTh>
+          <AppTh>部门</AppTh>
+          <AppTh data-sort="created" :aria-sort="sortDirection ?? undefined">
+            <button
+              class="inline-flex min-h-24 max-w-full items-center gap-3 text-left disabled:cursor-default"
+              type="button"
+              aria-label="按创建时间排序"
+              @click="toggleCreatedSort"
+            >
+              创建时间<AppIcon name="i-sort" icon-class="h-12 w-8 text-primary" />
+            </button>
+          </AppTh>
+          <AppTh>角色</AppTh>
+          <AppTh>关联权限</AppTh>
+          <AppTh>登录次数</AppTh>
+          <AppTh>最近登录时间</AppTh>
+          <AppTh>最近登录IP</AppTh>
+          <AppTh>第三方授权</AppTh>
+          <AppTh>账号安全</AppTh>
+          <AppTh sticky="right">操作</AppTh>
+        </tr>
+      </thead>
+      <tbody id="userTableBody">
+        <tr v-for="user in sortedUsers" :key="user.username">
+          <AppTd sticky="left" class="pl-10">
+            <AppCheckbox :aria-label="`选择${user.realname}`" />
+          </AppTd>
+          <AppTd tone="ink" data-testid="user-name" :title="user.username">{{
+            user.username
+          }}</AppTd>
+          <AppTd>{{ user.realname }}</AppTd>
+          <AppTd>{{ user.phone }}</AppTd>
+          <AppTd :title="user.email">{{ user.email }}</AppTd>
+          <AppTd>
+            <span :class="user.status === '停用' ? statusPillOff : statusPillOn">
+              {{ user.status }}
+            </span>
+          </AppTd>
+          <AppTd>{{ user.department }}</AppTd>
+          <AppTd>{{ user.created }}</AppTd>
+          <AppTd>{{ user.role }}</AppTd>
+          <AppTd>{{ user.perms }}</AppTd>
+          <AppTd>{{ user.logins }}</AppTd>
+          <AppTd>{{ user.lastLogin }}</AppTd>
+          <AppTd>{{ user.lastIp }}</AppTd>
+          <AppTd>{{ user.thirdParty }}</AppTd>
+          <AppTd>
+            <span class="inline-flex items-center gap-5 text-body">
+              <AppIcon
+                v-if="user.security !== '未绑定'"
+                name="i-shield-check"
+                :size="12"
+                class="text-menu-icon"
+              />
+              {{ user.security }}
+            </span>
+          </AppTd>
+          <AppTd sticky="right">
+            <div class="flex items-center gap-12">
+              <button
+                class="text-12/18 whitespace-nowrap text-primary hover:underline"
+                type="button"
+              >
+                编辑
+              </button>
+            </div>
+          </AppTd>
+        </tr>
+      </tbody>
+      <template #footer>
+        <AppPager :page="1" :page-count="1" label="用户分页">
+          <template #prefix><span>共4条</span></template>
+          <template #suffix>
+            <button :class="pageSizeClass" type="button">
+              20条/页<AppIcon name="i-chev-down" :size="10" class="text-placeholder" />
+            </button>
+            <span class="inline-flex items-center gap-7 pl-3 text-body">
+              前往<input :class="pageJumpInput" value="1" aria-label="前往页码" />页
+            </span>
+          </template>
+        </AppPager>
+      </template>
+    </AppTable>
   </section>
 </template>
