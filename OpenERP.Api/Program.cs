@@ -21,6 +21,7 @@ builder.AddFileStorage();
 builder.Services.AddSingleton<FileStore>();
 builder.AddAccountAuthentication();
 builder.Services.AddScoped<IOrderSnapshotReportQuery, OrderSnapshotReportQuery>();
+builder.Services.AddScoped<OrderListQuery>();
 builder.Services.AddScoped<IErpTokenStore, ErpTokenStore>();
 builder.Services.AddHttpClient<WxwErpClient>(client => client.Timeout = TimeSpan.FromSeconds(15))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
@@ -80,6 +81,7 @@ app.UseWebSockets();
 app.MapErp();
 app.MapHub<ErpHub>("/api/hubs/erp", options => options.CloseOnAuthenticationExpiration = true);
 app.MapOrderReports();
+app.MapOrderList();
 app.MapGet("/api/ping", (ILogger<Program> logger) =>
 {
     logger.LogInformation("OpenERP connectivity check received");
