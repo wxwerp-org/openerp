@@ -50,7 +50,6 @@ async function requestApi(apiHttps?: string, apiBaseUrl?: string) {
   const vite = await createViteServer({
     root: webRoot,
     configFile: join(webRoot, 'vite.config.ts'),
-    logLevel: 'silent',
     optimizeDeps: { noDiscovery: true },
     server: { host, port: 0, watch: null, ws: false },
   })
