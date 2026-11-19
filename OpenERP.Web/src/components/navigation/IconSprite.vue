@@ -204,14 +204,31 @@
         d="M18 3.8 29 7.7v9.1c0 7.1-4.5 12.1-11 15.4-6.5-3.3-11-8.3-11-15.4V7.7L18 3.8Z"
         stroke-width="1.5"
       />
-      <path d="m12.7 17.8 3.6 3.5 7.2-7.3" stroke="#005BF5" stroke-width="1.8" />
+      <path
+        d="m12.7 17.8 3.6 3.5 7.2-7.3"
+        style="stroke: var(--color-primary)"
+        stroke-width="1.8"
+      />
     </symbol>
     <symbol id="i-guide-account" viewBox="0 0 36 36">
       <circle cx="15.4" cy="12" r="5.2" stroke-width="1.4" />
       <path d="M5.8 30.5c.6-6.1 4.1-9.3 9.6-9.3 2 0 3.7.5 5.1 1.4" stroke-width="1.4" />
-      <rect x="21.2" y="19.4" width="10.1" height="8.2" rx="1.5" fill="#005BF5" stroke="none" />
-      <path d="M23.2 19.3v-2a3 3 0 0 1 6 0v2" stroke="#005BF5" stroke-width="1.6" fill="none" />
-      <circle cx="26.2" cy="23.4" r="1.1" fill="#fff" stroke="none" />
+      <rect
+        x="21.2"
+        y="19.4"
+        width="10.1"
+        height="8.2"
+        rx="1.5"
+        style="fill: var(--color-primary)"
+        stroke="none"
+      />
+      <path
+        d="M23.2 19.3v-2a3 3 0 0 1 6 0v2"
+        style="stroke: var(--color-primary)"
+        stroke-width="1.6"
+        fill="none"
+      />
+      <circle cx="26.2" cy="23.4" r="1.1" style="fill: var(--color-white)" stroke="none" />
     </symbol>
     <symbol id="i-guide-product" viewBox="0 0 36 36">
       <rect x="4" y="6.2" width="12" height="14" rx="1.3" stroke-width="1.4" />
@@ -222,19 +239,28 @@
         height="14"
         rx="1.3"
         stroke-width="1.4"
-        fill="#E8F1FF"
-        stroke="#005BF5"
+        style="fill: var(--color-guide-product-bg); stroke: var(--color-primary)"
       />
       <path
         d="M7.2 10.2h5.6M7.2 13.7h5.6M7.2 17.2h3.7M23.2 10.2h5.6M23.2 13.7h5.6M23.2 17.2h3.7"
         stroke-width="1.2"
       />
       <path d="M7 25h9M16 25h13M7 30h9M16 30h9" stroke-width="1.4" />
-      <circle cx="27.8" cy="29.8" r="3.2" fill="#fff" stroke="#005BF5" stroke-width="1.4" />
-      <path d="M26.7 29.9h2.2M27.8 28.8v2.2" stroke="#005BF5" stroke-width="1.1" />
+      <circle
+        cx="27.8"
+        cy="29.8"
+        r="3.2"
+        style="fill: var(--color-white); stroke: var(--color-primary)"
+        stroke-width="1.4"
+      />
+      <path
+        d="M26.7 29.9h2.2M27.8 28.8v2.2"
+        style="stroke: var(--color-primary)"
+        stroke-width="1.1"
+      />
     </symbol>
     <symbol id="i-guide-supply" viewBox="0 0 36 36">
-      <circle cx="18" cy="17" r="3.2" stroke="#005BF5" stroke-width="1.6" />
+      <circle cx="18" cy="17" r="3.2" style="stroke: var(--color-primary)" stroke-width="1.6" />
       <circle cx="8" cy="9" r="3" stroke-width="1.4" />
       <circle cx="28" cy="9" r="3" stroke-width="1.4" />
       <circle cx="8" cy="27" r="3" stroke-width="1.4" />

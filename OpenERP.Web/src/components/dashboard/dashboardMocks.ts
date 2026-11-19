@@ -66,24 +66,24 @@ export const performanceStats: PerformanceStat[] = [
     label: '广告订单量',
     value: '386',
     comparisons: [
-      { label: '环比', value: '+6.2%', color: '#00941E' },
-      { label: '同比', value: '+9.8%', color: '#00941E' },
+      { label: '环比', value: '+6.2%', color: 'var(--color-success)' },
+      { label: '同比', value: '+9.8%', color: 'var(--color-success)' },
     ],
   },
   {
     label: '广告销售额',
     value: '$18,420',
     comparisons: [
-      { label: '环比', value: '+10.9%', color: '#00941E' },
-      { label: '同比', value: '+13.4%', color: '#00941E' },
+      { label: '环比', value: '+10.9%', color: 'var(--color-success)' },
+      { label: '同比', value: '+13.4%', color: 'var(--color-success)' },
     ],
   },
   {
     label: 'ACOS',
     value: '17.7%',
     comparisons: [
-      { label: '环比', value: '-0.3pp', color: '#00941E' },
-      { label: '同比', value: '-1.1pp', color: '#00941E' },
+      { label: '环比', value: '-0.3pp', color: 'var(--color-success)' },
+      { label: '同比', value: '-1.1pp', color: 'var(--color-success)' },
     ],
   },
 ]
