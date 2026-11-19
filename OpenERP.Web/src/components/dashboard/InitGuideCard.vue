@@ -99,7 +99,14 @@ import AppIcon from '../../ui/AppIcon.vue'
 <style scoped>
 /* 旧 .init-step 的箭头切角形状无法用单个工具类表达，仅保留这条几何规则；颜色与尺寸走工具类。 */
 .guide-step {
-  clip-path: polygon(0 0, calc(100% - 17px) 0, 100% 50%, calc(100% - 17px) 100%, 0 100%, 17px 50%);
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--guide-notch)) 0,
+    100% 50%,
+    calc(100% - var(--guide-notch)) 100%,
+    0 100%,
+    var(--guide-notch) 50%
+  );
 }
 
 .guide-step:first-child {

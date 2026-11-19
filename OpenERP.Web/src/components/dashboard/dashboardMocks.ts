@@ -1,7 +1,6 @@
 export interface PerformanceComparison {
   label: string
   value: string
-  className?: string
   color?: string
 }
 
@@ -59,8 +58,8 @@ export const performanceStats: PerformanceStat[] = [
     label: '广告花费',
     value: '$3,264',
     comparisons: [
-      { label: '环比', value: '-4.6%', className: 'up', color: '#00941E' },
-      { label: '同比', value: '-2.1%', className: 'up', color: '#00941E' },
+      { label: '环比', value: '-4.6%', color: 'var(--color-success)' },
+      { label: '同比', value: '-2.1%', color: 'var(--color-success)' },
     ],
   },
   {
@@ -247,10 +246,10 @@ export interface DistributionSegment {
 export const orderTypes = ['销售', '退货']
 export const orderPeriods = ['前7天', '前14天', '前28天']
 export const distributionSegments: DistributionSegment[] = [
-  { name: 'Amazon US', percentage: 46, count: 387, color: '#005BF5', offset: 0 },
-  { name: 'Amazon DE', percentage: 27, count: 228, color: '#65A6FF', offset: -46 },
-  { name: 'Amazon JP', percentage: 17, count: 143, color: '#A8CBFF', offset: -73 },
-  { name: '其他站点', percentage: 10, count: 84, color: '#D5E5FF', offset: -90 },
+  { name: 'Amazon US', percentage: 46, count: 387, color: 'var(--color-chart-1)', offset: 0 },
+  { name: 'Amazon DE', percentage: 27, count: 228, color: 'var(--color-chart-2)', offset: -46 },
+  { name: 'Amazon JP', percentage: 17, count: 143, color: 'var(--color-chart-3)', offset: -73 },
+  { name: '其他站点', percentage: 10, count: 84, color: 'var(--color-chart-4)', offset: -90 },
 ]
 
 export interface WarehouseStock {
@@ -266,7 +265,7 @@ export const inventoryMetrics = ['数量', '货值']
 export const warehouseStocks: WarehouseStock[] = [
   {
     name: 'FBA仓',
-    color: '#005BF5',
+    color: 'var(--color-chart-1)',
     inStock: '5,482',
     inTransit: '638',
     days: '42.6',
@@ -274,7 +273,7 @@ export const warehouseStocks: WarehouseStock[] = [
   },
   {
     name: '海外仓',
-    color: '#65A6FF',
+    color: 'var(--color-chart-2)',
     inStock: '1,836',
     inTransit: '212',
     days: '35.8',
@@ -282,13 +281,20 @@ export const warehouseStocks: WarehouseStock[] = [
   },
   {
     name: '本地仓',
-    color: '#A8CBFF',
+    color: 'var(--color-chart-3)',
     inStock: '932',
     inTransit: '128',
     days: '28.4',
     total: '1,060',
   },
-  { name: 'AWD仓', color: '#D5E5FF', inStock: '170', inTransit: '282', days: '61.2', total: '452' },
+  {
+    name: 'AWD仓',
+    color: 'var(--color-chart-4)',
+    inStock: '170',
+    inTransit: '282',
+    days: '61.2',
+    total: '452',
+  },
 ]
 
 export const profitTypes = ['结算利润', '订单利润']

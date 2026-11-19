@@ -115,10 +115,10 @@ pnpm --dir OpenERP.Web format
 
 ```bash
 # 采集当前代码到指定目录（会自动构建并启动预览服务）
-VISUAL_PROBE=1 VISUAL_OUT=OpenERP.Web/artifacts/issue93/after pnpm --dir OpenERP.Web visual:capture
+VISUAL_PROBE=1 VISUAL_OUT=artifacts/issue93/after pnpm --dir OpenERP.Web visual:capture
 
 # 对比两批产物：控件、调色板、布局指标按默认 4px 容差比较
-pnpm --dir OpenERP.Web visual:compare OpenERP.Web/artifacts/issue93/before OpenERP.Web/artifacts/issue93/after
+pnpm --dir OpenERP.Web visual:compare artifacts/issue93/before artifacts/issue93/after
 ```
 
 需要逐像素复核时，可用图像工具直接比较两批产物 `screenshots/` 下的同名 PNG。探针只覆盖桌面固定布局；移动端/窄屏行为以 Playwright 用例的视口断言为准。

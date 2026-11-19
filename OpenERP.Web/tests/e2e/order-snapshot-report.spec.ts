@@ -82,6 +82,7 @@ test('Given 商品量报表有平台店铺和订单样本 When 从统计导航�
   // 页签页标题只由顶部页签承载，页内不再渲染可见标题。
   const headings = page.getByRole('heading', { level: 1, name: '商品量报表' })
   await expect(headings).toHaveCount(1)
+  await expect(page.locator('#page-order-snapshot-report h1')).toHaveCount(1)
   // 视觉隐藏但保留无障碍名称：sr-only 裁剪为 1×1 像素。
   const headingBox = await headings.boundingBox()
   expect(headingBox).not.toBeNull()
