@@ -641,3 +641,131 @@ test('Given 真实宿主本地订单 When 打开商品量报表 Then 页面与�
     fullPage: true,
   })
 })
+
+test('Given 空报表 When 表格没有数据 Then 空态提示完整位于表格内容区内', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.route('**/api/reports/order-snapshot?**', async (route) => {
+    await route.fulfill({
+      json: {
+        ...reportSample,
+        summary: { orderCount: 0, itemQuantity: 0 },
+        groups: [],
+        orders: [],
+        page: 1,
+        pageCount: 1,
+      },
+    })
+  })
+
+  await openReport(page)
+
+  for (const selector of ['.report-groups-panel', '.report-orders-panel']) {
+    const geometry = await page.locator(selector).evaluate((panel) => {
+      const area = panel.querySelector('.table-area')!.getBoundingClientRect()
+      const message = panel.querySelector('.empty-overlay span')!.getBoundingClientRect()
+      return {
+        areaTop: area.top,
+        areaBottom: area.bottom,
+        messageTop: message.top,
+        messageBottom: message.bottom,
+      }
+    })
+    expect(geometry.messageTop).toBeGreaterThanOrEqual(geometry.areaTop)
+    expect(geometry.messageBottom).toBeLessThanOrEqual(geometry.areaBottom)
+  }
+})
+
+test('Given 850px 桌面 When 分析区保持双列 Then 圆环与中心总数不被卡片裁切', async ({ page }) => {
+  await page.setViewportSize({ width: 850, height: 900 })
+  await page.route('**/api/reports/order-snapshot?**', async (route) => {
+    await route.fulfill({ json: manyReport() })
+  })
+
+  await openReport(page)
+
+  const geometry = await page.locator('.snapshot-dist-card').evaluate((card) => {
+    const cardBox = card.getBoundingClientRect()
+    const chartBox = card.querySelector('.snapshot-donut-chart')!.getBoundingClientRect()
+    const centerBox = card.querySelector('.snapshot-donut-center')!.getBoundingClientRect()
+    return {
+      cardLeft: cardBox.left,
+      cardRight: cardBox.right,
+      chartLeft: chartBox.left,
+      chartRight: chartBox.right,
+      centerLeft: centerBox.left,
+      centerRight: centerBox.right,
+    }
+  })
+  expect(geometry.chartLeft).toBeGreaterThanOrEqual(geometry.cardLeft)
+  expect(geometry.chartRight).toBeLessThanOrEqual(geometry.cardRight)
+  expect(geometry.centerLeft).toBeGreaterThanOrEqual(geometry.cardLeft)
+  expect(geometry.centerRight).toBeLessThanOrEqual(geometry.cardRight)
+})
+
+test('Given 细指针窄窗口 When 展示多页报表 Then 分页控件换行且翻页可用', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await routePagedReport(page)
+
+  await openReport(page)
+  expect(await page.evaluate(() => matchMedia('(pointer: fine)').matches)).toBe(true)
+
+  const controls = await page.locator('.report-pagination').evaluate((footer) => {
+    const footerBox = footer.getBoundingClientRect()
+    return Array.from(footer.querySelectorAll('button, label, input')).map((control) => {
+      const box = control.getBoundingClientRect()
+      return {
+        name: control.getAttribute('aria-label') ?? control.textContent?.trim(),
+        left: box.left,
+        right: box.right,
+        footerLeft: footerBox.left,
+        footerRight: footerBox.right,
+      }
+    })
+  })
+  for (const control of controls) {
+    expect(control.left, `${control.name} 左边界`).toBeGreaterThanOrEqual(control.footerLeft)
+    expect(control.right, `${control.name} 右边界`).toBeLessThanOrEqual(control.footerRight)
+  }
+
+  await page.getByRole('button', { name: '下一页' }).click()
+  await expect(page.locator('.page-num')).toHaveText('2')
+  await page.getByRole('button', { name: '上一页' }).click()
+  await expect(page.locator('.page-num')).toHaveText('1')
+})
+
+test('Given 667×375 矮屏 When 滚动导航至设置 Then 尾部入口可达且子菜单浮层不被裁切', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 667, height: 375 })
+  await page.route('**/api/reports/order-snapshot?**', async (route) => {
+    await route.fulfill({ json: reportSample })
+  })
+  await page.goto('/reports/orders')
+  await expect(page.locator('.page-order-snapshot-report')).toBeVisible()
+
+  const navigation = page.locator('.side-nav')
+  const metrics = await navigation.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+    return {
+      overflowY: getComputedStyle(element).overflowY,
+      scrollTop: element.scrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+    }
+  })
+  expect(metrics.overflowY).toBe('auto')
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight)
+  expect(metrics.scrollTop).toBeGreaterThan(0)
+
+  const settings = page.locator('[data-group="settings"] .nav-group-head')
+  await settings.evaluate((element) => element.scrollIntoView({ block: 'center' }))
+  await settings.hover()
+  const submenu = page.locator('[data-group="settings"] .nav-sub')
+  await expect(submenu).toBeVisible()
+  const submenuBox = await submenu.boundingBox()
+  expect(submenuBox).not.toBeNull()
+  expect(submenuBox!.x).toBeGreaterThanOrEqual(56)
+  expect(submenuBox!.x + submenuBox!.width).toBeLessThanOrEqual(667)
+  expect(submenuBox!.y).toBeGreaterThanOrEqual(0)
+  expect(submenuBox!.y + submenuBox!.height).toBeLessThanOrEqual(375)
+})

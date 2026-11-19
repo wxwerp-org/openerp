@@ -677,6 +677,10 @@ function submitJumpPage(): void {
   min-width: 0;
 }
 
+.report-panel .table-area {
+  min-block-size: 96px;
+}
+
 /* 分析区：店铺排行 8 列、平台分布 4 列（工作台全局仅提供 12/6/3 跨度）。 */
 .report-analysis-grid > .report-rank-card {
   grid-column: span 8;
@@ -824,6 +828,13 @@ function submitJumpPage(): void {
   .report-orders-panel .report-orders-table {
     min-width: 720px;
   }
+
+  .report-pagination {
+    height: auto;
+    min-block-size: 30px;
+    flex-wrap: wrap;
+    padding-block: 4px;
+  }
 }
 
 @container (inline-size < 480px) {
@@ -878,7 +889,8 @@ function submitJumpPage(): void {
   }
 
   :global(body:has(.page-order-snapshot-report) .sidebar .side-nav) {
-    overflow: visible;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   :global(body:has(.page-order-snapshot-report) .sidebar .nav-group) {
@@ -891,11 +903,15 @@ function submitJumpPage(): void {
 
   :global(body:has(.page-order-snapshot-report) .sidebar .nav-group:hover .nav-sub),
   :global(body:has(.page-order-snapshot-report) .sidebar .nav-group:focus-within .nav-sub) {
-    position: absolute;
-    top: 0;
-    left: 48px;
+    position: fixed;
+    top: 50%;
+    left: 56px;
     z-index: 300;
     display: grid;
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+    margin: 0;
+    transform: translateY(-50%);
     width: max-content;
     min-width: 120px;
     padding: 6px;

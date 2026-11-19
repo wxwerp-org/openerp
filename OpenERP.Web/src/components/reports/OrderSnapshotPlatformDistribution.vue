@@ -128,6 +128,9 @@ function formatPercentage(percentage: number): string {
   gap: 14px;
   min-width: 0;
 }
+.snapshot-dist-card .donut-wrap {
+  width: 100%;
+}
 .snapshot-donut-chart {
   width: 166px;
   height: 166px;
