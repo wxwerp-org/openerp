@@ -18,14 +18,15 @@ public sealed class OrderLiveAcceptanceTests(ITestOutputHelper output)
     {
         // Given 可读取真实历史订单的测试 Token。
         using var http = CreateHttp();
-        var erp = CreateErp(http);
+        var erp = new WxwErpClient(http);
+        var token = ReadLiveToken();
         var ct = TestContext.Current.CancellationToken;
 
         // When 使用同一订单读取器按两种每页数量扫完整列表。
-        var small = await erp.ReadOrderIndexAsync(644928, 20, null, ct);
+        var small = await erp.ReadOrderIndexAsync(644928, 20, null, token, ct);
         if (small.IsErr)
             throw new XunitException(small.Error.Message);
-        var large = await erp.ReadOrderIndexAsync(644928, 100, null, ct);
+        var large = await erp.ReadOrderIndexAsync(644928, 100, null, token, ct);
         if (large.IsErr)
             throw new XunitException(large.Error.Message);
 
@@ -50,7 +51,7 @@ public sealed class OrderLiveAcceptanceTests(ITestOutputHelper output)
         // Given 已在浏览器完成 SID 30 的两次手动同步。
         using var http = CreateHttp();
         var ct = TestContext.Current.CancellationToken;
-        var source = await CreateErp(http).ReadOrdersAsync(30, null, ct);
+        var source = await new WxwErpClient(http).ReadOrdersAsync(30, null, ReadLiveToken(), ct);
         if (source.IsErr)
             throw new XunitException(source.Error.Message);
         Assert.NotEmpty(source.Value.Orders);
@@ -97,8 +98,8 @@ public sealed class OrderLiveAcceptanceTests(ITestOutputHelper output)
         Timeout = TimeSpan.FromSeconds(15)
     };
 
-    private static WxwErpClient CreateErp(HttpClient http) => new(http,
-        new TestErpTokenStore(Environment.GetEnvironmentVariable("OPENERP_TEST_ERP_TOKEN") ?? ""));
+    private static ErpAccessToken ReadLiveToken() =>
+        new(Environment.GetEnvironmentVariable("OPENERP_TEST_ERP_TOKEN")!.Trim());
 
     private static async Task<List<string>> QueryAsync(NpgsqlConnection db, string sql, string[] acceptedIds, CancellationToken ct)
     {

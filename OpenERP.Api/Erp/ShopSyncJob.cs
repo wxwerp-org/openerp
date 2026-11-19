@@ -41,11 +41,10 @@ internal sealed class ShopSyncJob(
         using (var scope = scopeFactory.CreateScope())
         {
             var tokenStore = scope.ServiceProvider.GetRequiredService<IErpTokenStore>();
-            var configured = await OpResults.TryInvokeAsync(
-                () => tokenStore.IsConfiguredAsync(cancellationToken));
-            if (configured.IsErr)
-                return OpResults.Err("读取私有 ERP 配置失败，请稍后重试。");
-            if (!configured.Value)
+            var configuration = await tokenStore.GetConfigurationAsync(cancellationToken);
+            if (configuration.IsErr)
+                return configuration.Error;
+            if (!configuration.Value.Configured)
                 return OpResults.Err("尚未配置私有 ERP AccessToken。");
 
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -96,12 +95,11 @@ internal sealed class ShopSyncJob(
             var cancellationToken = CancellationToken.None;
 
             // 并行状态查询不需要数据库；Token 在 fan-out 前只读一次。
-            var tokenResult = await OpResults.TryInvokeAsync(
-                () => tokenStore.GetAsync(cancellationToken));
+            var tokenResult = await tokenStore.GetAsync(cancellationToken);
             if (tokenResult.IsErr)
             {
                 await FinishFailureAsync(
-                    "读取私有 ERP AccessToken 失败，请稍后重试。", startedAt, previousCompletedAt,
+                    tokenResult.Error.Message, startedAt, previousCompletedAt,
                     previousTotal, previousValid, previousInvalid, previousUnknown);
                 return;
             }

@@ -30,7 +30,7 @@ public sealed class ErpPlatformCatalogTests
         using var http = new HttpClient(handler);
 
         // When 读取平台目录。
-        var (result, status) = await CreateClient(http).GetPlatformsAsync(TestContext.Current.CancellationToken);
+        var (result, status) = await new WxwErpClient(http).GetPlatformsAsync(Token, TestContext.Current.CancellationToken);
 
         // Then 只保留有店铺的平台，展示名去掉上游翻译前缀，并按店铺数排序。
         if (result.IsErr)
@@ -59,7 +59,7 @@ public sealed class ErpPlatformCatalogTests
         using var http = new HttpClient(handler);
 
         // When 读取平台目录。
-        var (result, _) = await CreateClient(http).GetPlatformsAsync(TestContext.Current.CancellationToken);
+        var (result, _) = await new WxwErpClient(http).GetPlatformsAsync(Token, TestContext.Current.CancellationToken);
 
         // Then 目录仍可用，仅缺少枚举补充信息。
         if (result.IsErr)
@@ -85,8 +85,8 @@ public sealed class ErpPlatformCatalogTests
         using var http = new HttpClient(handler);
 
         // When 不按平台筛选读取店铺。
-        var (result, status) = await CreateClient(http).GetShopsAsync(
-            1, 20, null, TestContext.Current.CancellationToken);
+        var (result, status) = await new WxwErpClient(http).GetShopsAsync(
+            1, 20, null, Token, TestContext.Current.CancellationToken);
 
         // Then 不再拒绝非 TemuPop 店铺，并保留上游提供的成员 ID。
         if (result.IsErr)
@@ -113,8 +113,8 @@ public sealed class ErpPlatformCatalogTests
         using var http = new HttpClient(handler);
 
         // When 按 AliExpress 筛选。
-        var (result, _) = await CreateClient(http).GetShopsAsync(
-            1, 20, "AliExpress", TestContext.Current.CancellationToken);
+        var (result, _) = await new WxwErpClient(http).GetShopsAsync(
+            1, 20, "AliExpress", Token, TestContext.Current.CancellationToken);
 
         // Then 平台条件原样传给上游。
         if (result.IsErr)
@@ -132,7 +132,7 @@ public sealed class ErpPlatformCatalogTests
         using var http = new HttpClient(handler);
 
         // When 刷新该店授权状态。
-        var result = await CreateClient(http).GetShopStatusAsync("30", "fake-token", TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).GetShopStatusAsync("30", Token, TestContext.Current.CancellationToken);
 
         // Then 只映射上游实际返回的字段。
         if (result.IsErr)
@@ -153,10 +153,10 @@ public sealed class ErpPlatformCatalogTests
             ExpectedToken = "explicit-token"
         };
         using var http = new HttpClient(handler);
-        var client = new WxwErpClient(http, new ThrowingErpTokenStore());
+        var client = new WxwErpClient(http);
 
         // When 使用显式 Token 查询单店状态。
-        var result = await client.GetShopStatusAsync("30", "explicit-token", TestContext.Current.CancellationToken);
+        var result = await client.GetShopStatusAsync("30", new ErpAccessToken("explicit-token"), TestContext.Current.CancellationToken);
 
         // Then 请求成功，且没有读取 TokenStore。
         if (result.IsErr)
@@ -165,7 +165,7 @@ public sealed class ErpPlatformCatalogTests
         Assert.Equal(1, handler.RequestCount);
     }
 
-    private static WxwErpClient CreateClient(HttpClient http) => new(http, new TestErpTokenStore("fake-token"));
+    private static readonly ErpAccessToken Token = new("fake-token");
 
     private sealed class ErpHandler(params (string Path, string Data)[] responses) : HttpMessageHandler
     {

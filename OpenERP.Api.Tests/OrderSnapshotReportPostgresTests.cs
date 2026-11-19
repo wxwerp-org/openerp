@@ -32,8 +32,8 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
-        var tokens = new TestErpTokenStore(Environment.GetEnvironmentVariable("OPENERP_TEST_ERP_TOKEN") ?? "");
-        var read = await new WxwErpClient(http, tokens).ReadOrdersAsync(30, null, timeout.Token);
+        var token = new ErpAccessToken(Environment.GetEnvironmentVariable("OPENERP_TEST_ERP_TOKEN")!.Trim());
+        var read = await new WxwErpClient(http).ReadOrdersAsync(30, null, token, timeout.Token);
         if (read.IsErr) throw new XunitException(read.Error.Message);
         var source = read.Value.Orders;
         Assert.NotEmpty(source);

@@ -63,12 +63,13 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
             [new("product-1", "oguid-1", "sku-id-1", "sku-1", 3, null, null)]);
         var erp = new TestErpClient
         {
-            ReadOrders = (_, _) => Task.FromResult(OpResults.Ok(new OrderImportBatch(
+            ReadOrders = (_, _, _) => Task.FromResult(OpResults.Ok(new OrderImportBatch(
                 1, [order], new Dictionary<string, int>())))
         };
 
         var services = new ServiceCollection();
         services.AddSingleton<IErpClient>(erp);
+        services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
         services.AddScoped(_ => new OrderStore(new AppDbContext(options)));
         using var provider = services.BuildServiceProvider();
         using var jobs = new OrderSyncJobs(provider.GetRequiredService<IServiceScopeFactory>(),
@@ -122,7 +123,7 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
         var order31 = CreateOrder("erp-31", "order-31", 31);
         var erp = new TestErpClient
         {
-            ReadOrders = (sid, _) =>
+            ReadOrders = (sid, _, _) =>
             {
                 if (sid == 30 && Interlocked.Increment(ref shop30Attempts) == 1)
                     return Task.FromResult<OpResult<OrderImportBatch>>(OpResults.Err("店铺 30 首次读取失败。"));
@@ -134,6 +135,7 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
 
         var services = new ServiceCollection();
         services.AddSingleton<IErpClient>(erp);
+        services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
         services.AddScoped(_ => new OrderStore(new AppDbContext(options)));
         using var provider = services.BuildServiceProvider();
         using var jobs = new OrderSyncJobs(provider.GetRequiredService<IServiceScopeFactory>(),

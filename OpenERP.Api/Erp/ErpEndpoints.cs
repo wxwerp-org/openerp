@@ -8,12 +8,18 @@ public static class ErpEndpoints
     public static void MapErp(this WebApplication app)
     {
         var orderSyncEnabled = app.Environment.IsDevelopment() || app.Environment.IsProduction();
-        app.MapGet("/api/erp/config", async (IErpClient erp, CancellationToken cancellationToken) =>
+        app.MapGet("/api/erp/config", async Task<Results<Ok<ErpConfigurationResponse>, ProblemHttpResult>>
+            (IErpTokenStore store, CancellationToken cancellationToken) =>
         {
-            var configuration = await erp.GetConfigurationAsync(cancellationToken);
-            return TypedResults.Ok(new ErpConfigurationResponse(configuration.Configured, configuration.BaseUrl, orderSyncEnabled));
+            var configuration = await store.GetConfigurationAsync(cancellationToken);
+            if (configuration.IsErr)
+                return TypedResults.Problem(statusCode: 503, title: configuration.Error.Message);
+
+            return TypedResults.Ok(new ErpConfigurationResponse(
+                configuration.Value.Configured, configuration.Value.BaseUrl, orderSyncEnabled));
         })
-            .WithSummary("查询私有 ERP 接入配置状态，不返回 Token");
+            .WithSummary("查询私有 ERP 接入配置状态，不返回 Token")
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         app.MapPut("/api/erp/config", async Task<Results<NoContent, ProblemHttpResult>>
             (UpdateErpTokenRequest request, IErpTokenStore store, CancellationToken cancellationToken) =>
@@ -43,7 +49,10 @@ public static class ErpEndpoints
 }
 
 /// <summary>接入配置状态，绝不包含凭证。</summary>
-public sealed record ErpConfiguration(bool Configured, string BaseUrl);
+public sealed record ErpConfiguration(bool Configured, string BaseUrl)
+{
+    internal const string UpstreamBaseUrl = "https://v3-api.wxwerp.com";
+}
 
 /// <summary>上游店铺分页；仅用于 ERP 客户端读取全量目录。</summary>
 public sealed record ShopPage(

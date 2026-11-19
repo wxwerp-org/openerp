@@ -55,12 +55,12 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         await SeedAsync(ct);
         var erp = new TestErpClient
         {
-            GetAllShops = (_, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
+            GetAllShops = (_, _, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
                 new("30", "店铺三十（新）", "TemuPop", "US", "member-30"),
                 new("6", "AE 店", "AliExpress", "GB", "member-6"),
                 new("9", "失效店", "TemuPop", null, null)
             ])),
-            GetPlatforms = _ => Task.FromResult<(OpResult<IReadOnlyList<ErpPlatform>>, int)>((
+            GetPlatforms = (_, _) => Task.FromResult<(OpResult<IReadOnlyList<ErpPlatform>>, int)>((
                 OpResults.Ok<IReadOnlyList<ErpPlatform>>([
                     new("TemuPop", "Temu半托管", "icon-temupop", true, 2),
                     new("AliExpress", "速卖通", "icon-aliexpress", true, 1)
@@ -134,7 +134,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         await SeedAsync(ct, previousCompletedAt);
         var erp = new TestErpClient
         {
-            GetAllShops = (_, _) => Task.FromResult<OpResult<IReadOnlyList<ErpShop>>>(OpResults.Err("ERP 请求超时，请重试。"))
+            GetAllShops = (_, _, _) => Task.FromResult<OpResult<IReadOnlyList<ErpShop>>>(OpResults.Err("ERP 请求超时，请重试。"))
         };
         var (job, notifier, provider) = await CreateJobAsync(erp, ct);
         using var providerLifetime = provider;
@@ -166,42 +166,61 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
     [Fact]
     public async Task Sync_run_uses_one_token_snapshot_for_shops_platforms_and_statuses()
     {
-        // Given 一轮同步中所有上游调用都应使用同一个 Token 快照。
+        // Given 本轮有两家店铺，授权状态请求可以并发执行。
         var ct = TestContext.Current.CancellationToken;
         await MigrateAsync(ct);
+        var store = new TestErpTokenStore("test-token");
         var seenTokens = new ConcurrentBag<string>();
+        var statusCalls = 0;
+        var bothStatusesStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStatuses = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var erp = new TestErpClient
         {
-            GetAllShopsWithToken = (_, token, _) =>
+            GetAllShops = (_, token, _) =>
             {
-                seenTokens.Add(token);
+                seenTokens.Add(token.Value);
                 return Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
-                    new("30", "店铺三十", "TemuPop", "US", "member-30")
+                    new("30", "店铺三十", "TemuPop", "US", "member-30"),
+                    new("31", "店铺三十一", "TemuPop", "US", "member-31")
                 ]));
             },
-            GetPlatformsWithToken = (token, _) =>
+            GetPlatforms = (token, _) =>
             {
-                seenTokens.Add(token);
+                seenTokens.Add(token.Value);
                 return Task.FromResult<(OpResult<IReadOnlyList<ErpPlatform>>, int)>((
                     OpResults.Ok<IReadOnlyList<ErpPlatform>>([
-                        new("TemuPop", "Temu半托管", "icon-temupop", true, 1)
+                        new("TemuPop", "Temu半托管", "icon-temupop", true, 2)
                     ]), 200));
             },
-            GetShopStatus = (_, token, _) =>
+            GetShopStatus = async (_, token, _) =>
             {
-                seenTokens.Add(token);
-                return Task.FromResult(OpResults.Ok(new ErpShopStatus(true, "US", true)));
+                seenTokens.Add(token.Value);
+                if (Interlocked.Increment(ref statusCalls) == 2)
+                    bothStatusesStarted.TrySetResult();
+                await releaseStatuses.Task.WaitAsync(ct);
+                return OpResults.Ok(new ErpShopStatus(true, "US", true));
             }
         };
-        var (job, notifier, provider) = await CreateJobAsync(erp, ct);
+        var (job, notifier, provider) = await CreateJobAsync(erp, ct, store);
         using var providerLifetime = provider;
 
-        // When 执行一轮同步。
+        // When 执行一轮同步并等待两次状态请求同时进入。
         Assert.False((await job.TryStartAsync(ct)).IsErr);
-        await WaitForIdleAsync(job, notifier, ct);
+        try
+        {
+            await bothStatusesStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+        }
+        finally
+        {
+            releaseStatuses.TrySetResult();
+        }
+        var final = await WaitForIdleAsync(job, notifier, ct);
 
-        // Then 店铺、平台、状态查询使用同一个 Token。
-        Assert.Equal(3, seenTokens.Count);
+        // Then 同步成功，店铺、平台、状态查询使用本轮唯一一次读取的 Token。
+        Assert.Null(final.Error);
+        Assert.Equal(2, final.Valid);
+        Assert.Equal(1, store.Reads);
+        Assert.Equal(4, seenTokens.Count);
         Assert.All(seenTokens, token => Assert.Equal("test-token", token));
     }
 
@@ -215,7 +234,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         await SeedAsync(ct, previousCompletedAt);
         var erp = new TestErpClient
         {
-            GetAllShops = (_, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
+            GetAllShops = (_, _, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
                 new("not-a-number", "坏店铺", "TemuPop", "US", null)
             ]))
         };
@@ -246,7 +265,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         var ct = TestContext.Current.CancellationToken;
         var services = new ServiceCollection();
         services.AddSingleton<IErpClient>(new TestErpClient());
-        services.AddSingleton<IErpTokenStore>(new ThrowingErpTokenStore());
+        services.AddSingleton<IErpTokenStore>(new FailingErpTokenStore());
         services.AddLogging();
         await using var provider = services.BuildServiceProvider();
         var job = new ShopSyncJob(
@@ -273,7 +292,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var erp = new TestErpClient
         {
-            GetAllShops = async (_, _) =>
+            GetAllShops = async (_, _, _) =>
             {
                 await gate.Task;
                 return OpResults.Ok<IReadOnlyList<ErpShop>>([]);
@@ -301,8 +320,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         // Given 未配置私有 ERP AccessToken。
         var ct = TestContext.Current.CancellationToken;
         await MigrateAsync(ct);
-        var erp = new TestErpClient { Configuration = new(false, "https://erp.test") };
-        var (job, notifier, provider) = await CreateJobAsync(erp, ct);
+        var (job, notifier, provider) = await CreateJobAsync(new TestErpClient(), ct, new TestErpTokenStore());
         using var providerLifetime = provider;
 
         // When 手动触发同步。
@@ -318,13 +336,12 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
     }
 
     private async Task<(ShopSyncJob Job, RecordingNotifier Notifier, ServiceProvider Provider)> CreateJobAsync(
-        TestErpClient erp, CancellationToken cancellationToken)
+        TestErpClient erp, CancellationToken cancellationToken, IErpTokenStore? store = null)
     {
         var services = new ServiceCollection();
         services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
         services.AddSingleton<IErpClient>(erp);
-        services.AddSingleton<IErpTokenStore>(new TestErpTokenStore(
-            erp.Configuration.Configured ? "test-token" : ""));
+        services.AddSingleton<IErpTokenStore>(store ?? new TestErpTokenStore("test-token"));
         services.AddLogging();
         var provider = services.BuildServiceProvider();
         var notifier = new RecordingNotifier();

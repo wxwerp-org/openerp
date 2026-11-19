@@ -12,11 +12,14 @@ public static class OrderSyncEndpoints
     public static void MapOrderSync(this WebApplication app)
     {
         app.MapPost(OrderSyncRoute, async Task<Results<Accepted<OrderSyncStatus>, ProblemHttpResult>>
-            (int sid, IErpClient erp, OrderSyncJobs jobs, CancellationToken cancellationToken) =>
+            (int sid, IErpTokenStore tokens, OrderSyncJobs jobs, CancellationToken cancellationToken) =>
         {
             if (sid <= 0)
                 return TypedResults.Problem(statusCode: 400, title: "店铺 SID 必须为正整数");
-            if (!(await erp.GetConfigurationAsync(cancellationToken)).Configured)
+            var configuration = await tokens.GetConfigurationAsync(cancellationToken);
+            if (configuration.IsErr)
+                return TypedResults.Problem(statusCode: 503, title: configuration.Error.Message);
+            if (!configuration.Value.Configured)
                 return TypedResults.Problem(statusCode: 503, title: "尚未配置私有 ERP AccessToken");
             var started = jobs.Start(sid);
             if (started.IsErr)
@@ -45,7 +48,7 @@ public static class OrderSyncEndpoints
 
         app.MapPut(SettingsRoute, async Task<Results<Ok<OrderSyncSettingsResponse>, ProblemHttpResult>>
             (OrderSyncSettingsRequest request, IOrderSyncSettingsStore store, OrderSyncScheduler scheduler,
-                IErpClient erp, IOptions<OrderSyncSchedulerOptions> options, CancellationToken cancellationToken) =>
+                IErpTokenStore tokens, IOptions<OrderSyncSchedulerOptions> options, CancellationToken cancellationToken) =>
         {
             if (request.Enabled is null || request.ShopSids is null)
                 return TypedResults.Problem(statusCode: 400, title: "缺少定时同步设置字段");
@@ -53,8 +56,14 @@ public static class OrderSyncEndpoints
                 return TypedResults.Problem(statusCode: 400, title: "启用定时同步前请至少选择一家店铺");
             if (request.ShopSids.Any(sid => sid <= 0))
                 return TypedResults.Problem(statusCode: 400, title: "店铺 SID 必须为正整数");
-            if (request.Enabled.Value && !(await erp.GetConfigurationAsync(cancellationToken)).Configured)
-                return TypedResults.Problem(statusCode: 503, title: "启用定时同步前请先配置私有 ERP AccessToken");
+            if (request.Enabled.Value)
+            {
+                var configuration = await tokens.GetConfigurationAsync(cancellationToken);
+                if (configuration.IsErr)
+                    return TypedResults.Problem(statusCode: 503, title: configuration.Error.Message);
+                if (!configuration.Value.Configured)
+                    return TypedResults.Problem(statusCode: 503, title: "启用定时同步前请先配置私有 ERP AccessToken");
+            }
 
             var saved = await store.SaveAsync(request.Enabled.Value, request.ShopSids, cancellationToken);
             if (saved.IsErr)
@@ -65,12 +74,13 @@ public static class OrderSyncEndpoints
         }).WithSummary("保存定时同步的启用状态与店铺选择，并立即通知调度器");
 
         app.MapGet($"{SettingsRoute}/shops", async Task<Results<Ok<OrderSyncShopSelection>, ProblemHttpResult>>
-            (IErpClient erp, CancellationToken cancellationToken) =>
+            (IErpClient erp, IErpTokenStore tokens, CancellationToken cancellationToken) =>
         {
-            if (!(await erp.GetConfigurationAsync(cancellationToken)).Configured)
-                return TypedResults.Problem(statusCode: 503, title: "尚未配置私有 ERP AccessToken");
+            var token = await tokens.GetAsync(cancellationToken);
+            if (token.IsErr)
+                return TypedResults.Problem(statusCode: 503, title: token.Error.Message);
 
-            var shops = await erp.GetAllShopsAsync("TemuPop", cancellationToken);
+            var shops = await erp.GetAllShopsAsync("TemuPop", token.Value, cancellationToken);
             if (shops.IsErr)
                 return TypedResults.Problem(statusCode: 502, title: "获取店铺失败", detail: shops.Error.Message);
 

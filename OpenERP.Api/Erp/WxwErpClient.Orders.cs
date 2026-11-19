@@ -10,14 +10,14 @@ public sealed partial class WxwErpClient
     private const string OrderTimePath = "/open-api/order_detail/get_time";
     private const string TemuPop = "TemuPop";
 
-    public async Task<OpResult<OrderImportBatch>> ReadOrdersAsync(int sid, Action<OrderReadProgress>? report, CancellationToken ct)
+    public async Task<OpResult<OrderImportBatch>> ReadOrdersAsync(
+        int sid, Action<OrderReadProgress>? report, ErpAccessToken accessToken, CancellationToken ct)
     {
         const int shopPageSize = 100;
         var found = false;
-        var accessToken = await tokens.GetAsync(ct);
         for (var page = 1; ; page++)
         {
-            var (shops, _) = await GetShopListAsync(accessToken, page, shopPageSize, TemuPop, ct);
+            var (shops, _) = await GetShopsAsync(page, shopPageSize, TemuPop, accessToken, ct);
             if (shops.IsErr)
                 return shops.Error;
 
@@ -30,7 +30,7 @@ public sealed partial class WxwErpClient
         if (!found)
             return OpResults.Err("当前 ERP AccessToken 无法访问该 TemuPop 店铺。");
 
-        var scan = await ReadOrderIndexAsync(accessToken, sid, 20, report, ct);
+        var scan = await ReadOrderIndexAsync(sid, 20, report, accessToken, ct);
         if (scan.IsErr)
             return scan.Error;
 
@@ -58,19 +58,10 @@ public sealed partial class WxwErpClient
     }
 
     public async Task<OpResult<OrderIndex>> ReadOrderIndexAsync(
-        int sid, int pageSize, Action<OrderReadProgress>? report, CancellationToken ct)
+        int sid, int pageSize, Action<OrderReadProgress>? report, ErpAccessToken accessToken, CancellationToken ct)
     {
         if (sid <= 0 || pageSize is < 1 or > 500)
             return OpResults.Err("店铺或分页参数无效。");
-
-        return await ReadOrderIndexAsync(await tokens.GetAsync(ct), sid, pageSize, report, ct);
-    }
-
-    private async Task<OpResult<OrderIndex>> ReadOrderIndexAsync(
-        string accessToken, int sid, int pageSize, Action<OrderReadProgress>? report, CancellationToken ct)
-    {
-        if (accessToken.Length == 0)
-            return OpResults.Err("尚未配置私有 ERP AccessToken。");
 
         var filters = new
         {
@@ -143,7 +134,7 @@ public sealed partial class WxwErpClient
     }
 
     private async Task<OpResult<OrderReadItem>> ReadOrderAsync(
-        string accessToken, int sid, ErpOrderHeader header, CancellationToken ct)
+        ErpAccessToken accessToken, int sid, ErpOrderHeader header, CancellationToken ct)
     {
         var detail = await ReadOrderDetailAsync(accessToken, sid, header, ct);
         if (detail.IsErr || detail.Value.Order is not { } order || order.Times.Created is not null)
@@ -173,7 +164,7 @@ public sealed partial class WxwErpClient
     }
 
     private async Task<OpResult<OrderReadItem>> ReadOrderDetailAsync(
-        string accessToken, int sid, ErpOrderHeader header, CancellationToken ct)
+        ErpAccessToken accessToken, int sid, ErpOrderHeader header, CancellationToken ct)
     {
         var (response, _) = await PostAsync(accessToken, "/open-api/order_detail/get_base",
             new { id = header.ErpId, ask = false, showAllProduct = true }, ct);
