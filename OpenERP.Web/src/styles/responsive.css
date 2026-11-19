@@ -1,6 +1,0 @@
-/* ========== Responsive guard (desktop only) ========== */
-@media (max-width: 1500px) {
-  .dash-header-right .time-pill:nth-of-type(4) {
-    display: none;
-  }
-}

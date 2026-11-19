@@ -13,75 +13,90 @@ import InventoryOverviewCard from '../components/dashboard/InventoryOverviewCard
 import ReplenishmentCard from '../components/dashboard/ReplenishmentCard.vue'
 import LogisticsBoardCard from '../components/dashboard/LogisticsBoardCard.vue'
 import ProfitCard from '../components/dashboard/ProfitCard.vue'
+import AppButton from '../ui/AppButton.vue'
+import AppControl from '../ui/AppControl.vue'
+import AppIcon from '../ui/AppIcon.vue'
+
+const headerIconButtonClass =
+  'inline-flex size-28 items-center justify-center rounded-4 text-body hover:bg-page hover:text-primary'
 </script>
 
 <template>
-  <section id="page-dashboard" class="page page-dashboard active">
-    <h1 class="visually-hidden">工作台</h1>
-    <div class="dash-header">
-      <div class="dash-header-left">
-        <button class="control placeholder" type="button">
-          全部国家<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-        </button>
-        <button class="control placeholder" type="button">
-          全部店铺<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-        </button>
-        <button class="control placeholder" type="button">
-          Listing负责人<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-        </button>
-        <button class="control" type="button">
-          USD<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-        </button>
-        <button class="btn soft" type="button">重置</button>
-        <button class="btn text" type="button" style="padding: 0 8px; color: #303133">
+  <section
+    id="page-dashboard"
+    data-testid="page-dashboard"
+    class="flex h-full min-h-0 w-full flex-col bg-page"
+  >
+    <h1 class="sr-only">工作台</h1>
+    <div
+      data-testid="dash-header"
+      class="relative z-[5] flex h-52 min-w-0 flex-none items-center gap-6 bg-white px-20 shadow-header"
+    >
+      <div class="flex min-w-0 flex-none items-center gap-6">
+        <AppControl size="lg" muted>全部国家</AppControl>
+        <AppControl size="lg" muted>全部店铺</AppControl>
+        <AppControl size="lg" muted>Listing负责人</AppControl>
+        <AppControl size="lg">USD</AppControl>
+        <AppButton size="lg" variant="soft">重置</AppButton>
+        <button
+          type="button"
+          class="inline-flex h-32 shrink-0 items-center justify-center gap-5 rounded-4 border border-transparent bg-transparent px-8 text-12/30 whitespace-nowrap text-ink-muted hover:bg-primary-faint"
+        >
           核对说明
         </button>
       </div>
-      <div class="dash-header-right">
-        <span class="time-pill"
-          ><span class="label">北京</span><span class="tnum">11-12 15:47</span></span
+      <div class="ml-auto flex min-w-0 items-center gap-8">
+        <span
+          class="inline-flex h-28 items-center gap-5 rounded-4 bg-page px-10 text-12 whitespace-nowrap text-ink hover:bg-hover-pill"
+          ><span class="text-muted">北京</span><span class="tabular-nums">11-12 15:47</span></span
         >
-        <span class="time-pill"
-          ><span class="label">英国</span><span class="tnum">11-12 07:47</span></span
+        <span
+          class="inline-flex h-28 items-center gap-5 rounded-4 bg-page px-10 text-12 whitespace-nowrap text-ink hover:bg-hover-pill"
+          ><span class="text-muted">英国</span><span class="tabular-nums">11-12 07:47</span></span
         >
-        <span class="time-pill"
-          ><span class="label">美东</span><span class="tnum">11-12 02:47</span></span
+        <span
+          class="inline-flex h-28 items-center gap-5 rounded-4 bg-page px-10 text-12 whitespace-nowrap text-ink hover:bg-hover-pill"
+          ><span class="text-muted">美东</span><span class="tabular-nums">11-12 02:47</span></span
         >
-        <span class="time-pill"
-          ><span class="label">太平洋</span><span class="tnum">11-11 23:47</span></span
+        <span
+          class="inline-flex h-28 items-center gap-5 rounded-4 bg-page px-10 text-12 whitespace-nowrap text-ink hover:bg-hover-pill [@media(max-width:1500px)]:hidden"
+          ><span class="text-muted">太平洋</span><span class="tabular-nums">11-11 23:47</span></span
         >
-        <span class="header-divider"></span>
-        <button class="header-mini-btn blue" type="button">
-          时钟<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-        </button>
-        <span class="header-divider"></span>
+        <span class="mx-2 h-16 w-px flex-none bg-divider"></span>
         <button
-          class="btn soft"
           type="button"
-          style="height: 28px; line-height: 26px; padding: 0 10px"
+          class="inline-flex h-28 items-center gap-4 rounded-4 px-8 whitespace-nowrap text-primary hover:bg-page hover:text-primary"
         >
-          旧版
+          时钟<AppIcon name="i-chev-down" />
         </button>
-        <span class="header-divider"></span>
-        <button class="header-mini-btn" type="button">
-          初始化引导<svg aria-hidden="true" class="ic caret" style="transform: rotate(180deg)">
-            <use href="#i-chev-down" />
-          </svg>
+        <span class="mx-2 h-16 w-px flex-none bg-divider"></span>
+        <AppButton variant="soft">旧版</AppButton>
+        <span class="mx-2 h-16 w-px flex-none bg-divider"></span>
+        <button
+          type="button"
+          class="inline-flex h-28 items-center gap-4 rounded-4 px-8 whitespace-nowrap text-body hover:bg-page hover:text-primary"
+        >
+          初始化引导<AppIcon name="i-chev-down" class="rotate-180" />
         </button>
-        <span class="header-divider"></span>
-        <button class="header-icon-btn" type="button" title="刷新" aria-label="刷新">
-          <svg aria-hidden="true" class="ic"><use href="#i-refresh" /></svg>
+        <span class="mx-2 h-16 w-px flex-none bg-divider"></span>
+        <button type="button" title="刷新" aria-label="刷新" :class="headerIconButtonClass">
+          <AppIcon name="i-refresh" />
         </button>
-        <button class="header-icon-btn" type="button" title="帮助" aria-label="帮助">
-          <svg aria-hidden="true" class="ic"><use href="#i-help" /></svg>
+        <button type="button" title="帮助" aria-label="帮助" :class="headerIconButtonClass">
+          <AppIcon name="i-help" />
         </button>
-        <button class="header-icon-btn" type="button" title="自定义布局" aria-label="自定义布局">
-          <svg aria-hidden="true" class="ic"><use href="#i-layout" /></svg>
+        <button
+          type="button"
+          title="自定义布局"
+          aria-label="自定义布局"
+          :class="headerIconButtonClass"
+        >
+          <AppIcon name="i-layout" />
         </button>
       </div>
     </div>
-    <div class="dash-scroll">
-      <div class="dash-grid">
+    <div class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-page">
+      <div data-testid="dash-grid" class="grid grid-cols-12 items-stretch gap-12 p-16">
         <InitGuideCard />
         <RealtimeSalesCard />
         <RealtimeAdsCard />
