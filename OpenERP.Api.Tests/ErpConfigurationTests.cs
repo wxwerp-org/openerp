@@ -84,24 +84,22 @@ public sealed class ErpConfigurationTests
         Assert.DoesNotContain("test-secret", config.GetRawText());
         Assert.True(config.TryGetProperty("orderSyncEnabled", out var capability), "响应缺少订单同步能力字段。");
         Assert.Equal(expected, capability.GetBoolean());
-        using var status = await http.GetAsync("/api/erp/shops/30/order-sync", ct);
-        Assert.Equal(expected ? HttpStatusCode.NoContent : HttpStatusCode.NotFound, status.StatusCode);
 
+        // When 旧客户端访问已迁移到 Hub 的手动同步接口。
+        using var status = await http.GetAsync("/api/erp/shops/30/order-sync", ct);
         using var start = await http.PostAsync("/api/erp/shops/30/order-sync", null, ct);
-        Assert.Equal(expected ? HttpStatusCode.Accepted : HttpStatusCode.NotFound, start.StatusCode);
+
+        // Then 旧路由不再提供，设置 API 保留原有环境限制。
+        Assert.Equal(HttpStatusCode.NotFound, status.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, start.StatusCode);
+        using var settings = await http.GetAsync("/api/erp/order-sync-settings", ct);
+        Assert.Equal(expected ? HttpStatusCode.OK : HttpStatusCode.NotFound, settings.StatusCode);
         if (expected)
-        {
-            using var conflict = await http.PostAsync("/api/erp/shops/31/order-sync", null, ct);
-            Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
-        }
-        else
-        {
-            using var settings = await http.GetAsync("/api/erp/order-sync-settings", ct);
-            Assert.Equal(HttpStatusCode.NotFound, settings.StatusCode);
-            using var selection = await http.GetAsync("/api/erp/order-sync-settings/shops", ct);
-            Assert.Equal(HttpStatusCode.NotFound, selection.StatusCode);
-            using var save = await http.PutAsync("/api/erp/order-sync-settings", null, ct);
-            Assert.Equal(HttpStatusCode.NotFound, save.StatusCode);
-        }
+            return;
+
+        using var selection = await http.GetAsync("/api/erp/order-sync-settings/shops", ct);
+        Assert.Equal(HttpStatusCode.NotFound, selection.StatusCode);
+        using var save = await http.PutAsync("/api/erp/order-sync-settings", null, ct);
+        Assert.Equal(HttpStatusCode.NotFound, save.StatusCode);
     }
 }

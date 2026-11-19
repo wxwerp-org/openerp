@@ -10,6 +10,9 @@ internal sealed class TestErpClient : IErpClient
     public Func<int, ErpAccessToken, CancellationToken, Task<OpResult<OrderImportBatch>>> ReadOrders { get; init; } =
         (_, _, _) => Task.FromResult(OpResults.Ok(new OrderImportBatch(0, [], new Dictionary<string, int>())));
 
+    public Func<int, Action<OrderReadProgress>?, ErpAccessToken, CancellationToken, Task<OpResult<OrderImportBatch>>>?
+        ReadOrdersWithProgress { get; init; }
+
     public Func<string?, ErpAccessToken, CancellationToken, Task<OpResult<IReadOnlyList<ErpShop>>>> GetAllShops { get; init; } =
         (_, _, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([]));
 
@@ -37,7 +40,7 @@ internal sealed class TestErpClient : IErpClient
 
     public Task<OpResult<OrderImportBatch>> ReadOrdersAsync(
         int sid, Action<OrderReadProgress>? report, ErpAccessToken accessToken, CancellationToken cancellationToken) =>
-        ReadOrders(sid, accessToken, cancellationToken);
+        ReadOrdersWithProgress?.Invoke(sid, report, accessToken, cancellationToken) ?? ReadOrders(sid, accessToken, cancellationToken);
 }
 
 internal sealed class TestErpTokenStore(string value = "") : IErpTokenStore
