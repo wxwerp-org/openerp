@@ -1,0 +1,3 @@
+# Aspire 13.6 的卷模型未提供 bind.create_host_path；全新安装时由 Compose 创建数据目录。
+(.services.openerp.volumes[] | select(.type == "bind" and (.source == "./data" or .source == "./data/postgres"))).bind.create_host_path = true |
+.services.openerp.image |= sub("^ghcr[.]io/"; "ghcr.nju.edu.cn/")

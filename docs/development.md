@@ -142,13 +142,14 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 前端 workflow 的 `web-hosting` job 在独立目录验收单容器发布形态，覆盖 HTTPS 入口、管理员登录、附件读写和容器重建。本地 Aspire 开发及后端测试仍使用各自的服务资源。
 
-在仓库根目录使用前述固定版本的 Aspire CLI、Docker、Python 3 和 OpenSSL，可以复现发布验收：
+在仓库根目录使用前述固定版本的 Aspire CLI、Docker、yq v4（Mike Farah）、Python 3 和 OpenSSL，可以复现发布验收：
 
 ```bash
 dotnet tool restore
 aspire do build-openerp --non-interactive
 aspire publish --non-interactive -o "$PWD/aspire-output"
-python3 deploy/tests/smoke.py --compose ./aspire-output/docker-compose.yaml
+yq --from-file deploy/compose.yq ./aspire-output/docker-compose.yaml > ./aspire-output/compose.yaml
+python3 deploy/tests/smoke.py --compose ./aspire-output/compose.yaml
 ```
 
 默认验收本次构建的 `openerp:local`。已有两个本地版本时，通过 `--image <旧镜像> --upgrade-image <新镜像>` 检查升级后数据能否读回。Release 工作流先验收本次组装的镜像，再推送同一个镜像并上传版本化配置，服务器操作见[部署说明](deployment.md)。

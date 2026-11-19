@@ -52,7 +52,7 @@ jobs:
           compose_file="$RUNNER_TEMP/compose.yaml"
           release_image="ghcr.io/${GITHUB_REPOSITORY,,}/openerp:$ReleaseTag"
           test "$(docker compose -f "$source_file" config --images)" = "$release_image"
-          sed 's|ghcr\.io/|ghcr.nju.edu.cn/|g' "$source_file" > "$compose_file"
+          yq --from-file deploy/compose.yq "$source_file" > "$compose_file"
           if grep -oE '[$][{][^}]+[}]' "$compose_file" | grep -Fvx '${WEB_PORT:-8080}'; then
             echo 'Compose 包含未解析的部署变量' >&2
             exit 1

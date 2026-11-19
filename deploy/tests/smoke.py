@@ -164,6 +164,12 @@ class Deployment:
               all(binds[target]["type"] == "bind" and Path(binds[target]["source"]).resolve() == source
                   for target, source in expected.items()),
               "测试要求数据目录绑定到当前临时目录的 ./data")
+        # Given 空实例目录，When Compose 创建容器，Then 两个宿主机挂载源都须自动创建。
+        for mount in binds.values():
+            # Compose v5 在 config 输出中把 create_host_path: true 规范化为 bind: {}。
+            bind = mount.get("bind")
+            check(bind is not None and bind.get("create_host_path", True) is True,
+                  f"发布附件未启用宿主机目录自动创建：{mount['source']}")
 
     def container(self):
         ids = self.compose("ps", "-a", "-q", capture=True).splitlines()
