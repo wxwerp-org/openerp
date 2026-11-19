@@ -36,7 +36,7 @@ const variantClass: Record<'default' | 'primary' | 'soft' | 'text', string> = {
     'border-input bg-white hover:border-input-hover hover:bg-btn-hover-bg disabled:cursor-default disabled:border-line disabled:bg-btn-disabled-bg disabled:text-placeholder disabled:hover:border-line disabled:hover:bg-btn-disabled-bg',
   primary:
     'border-primary bg-primary text-white hover:border-primary-hover hover:bg-primary-hover disabled:cursor-default disabled:border-primary-disabled disabled:bg-primary-disabled disabled:text-white disabled:hover:border-primary-disabled disabled:hover:bg-primary-disabled',
-  soft: 'border-transparent bg-soft-bg hover:bg-soft-bg-hover disabled:cursor-default',
+  soft: 'border-transparent bg-soft-bg hover:bg-soft-bg-hover disabled:cursor-default disabled:text-placeholder',
   text: 'border-transparent bg-transparent text-primary hover:bg-primary-faint disabled:cursor-default',
 }
 

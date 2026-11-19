@@ -12,12 +12,11 @@
 @import '../styles/controls.css' layer(legacy);
 @import '../styles/dashboard.css' layer(legacy);
 @import '../styles/lists.css' layer(legacy);
-@import '../styles/forms.css' layer(legacy);
-@import '../styles/orders.css' layer(legacy);
-@import '../styles/account-dialogs.css' layer(legacy);
-@import '../styles/pages.css' layer(legacy);
 @import '../styles/responsive.css' layer(legacy);
 @import '../styles/utilities.css' layer(legacy);
+
+/* 旧报表页在窗口高度 ≤820px 时收紧工具条与面板密度；迁移期用变体保留该行为。 */
+@custom-variant short (@media (max-height: 820px));
 
 /**
  * 图标基础样式属于主题 reset 的一部分：AppIcon 与尚未迁移的原生 svg 共用 `.ic`。
@@ -247,6 +246,35 @@
   --shadow-notice: 0 4px 24px rgba(0, 0, 0, 0.18);
   --shadow-toast: 0 4px 14px rgba(0, 0, 0, 0.18);
   --shadow-layer: 0 0 0 100vmax var(--color-page), 0 4px 18px rgba(30, 48, 75, 0.08);
+
+  /* 业务配置页（settings 三栏）实测色值 */
+  --color-settings-help-border: #d9dee7;
+  --color-settings-help-icon: #6d7785;
+  --color-settings-user-icon: #7d8795;
+  --color-config-desc: #707987;
+
+  /* 业务配置内容切换时的旧入场动效（0.16s 淡入+2px 上移）。 */
+  --animate-config-fade: configFade 0.16s ease;
+
+  /* 弹窗（Phase 3c：表单/公告/账户弹窗）实测值 */
+  /* 弹窗标题 15px 与旧页面的行高继承比一致（1.5 -> 22.5px），因此不设 --line-height。 */
+  --text-dialog-title: 15px;
+  --color-dialog-notice-header: #0e5fe9;
+  --color-dialog-notice-footer-line: #ebebeb;
+  --color-dialog-notice-btn-hover: #f5f9ff;
+  --color-dialog-editor-border: #c9d8db;
+  --color-dialog-image-hover-bg: #fbfdff;
+  @keyframes configFade {
+    from {
+      opacity: 0.35;
+      transform: translateY(2px);
+    }
+
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 
 :root {

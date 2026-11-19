@@ -8,11 +8,14 @@ const props = withDefaults(
     sticky?: 'none' | 'left' | 'right'
     /** 少数字段（如用户名）沿用旧 `color: var(--text)` 而非正文色。 */
     tone?: 'body' | 'ink'
+    /** 展开行等需要整格换底色时沿用旧 `--page-soft`。 */
+    surface?: 'white' | 'page-soft'
   }>(),
   {
     numeric: false,
     sticky: 'none',
     tone: 'body',
+    surface: 'white',
   },
 )
 
@@ -22,7 +25,8 @@ const wrap = inject(
 )
 
 const classes = computed(() => [
-  'border-b border-b-line-soft bg-white text-12/18 text-ellipsis',
+  'border-b border-b-line-soft text-12/18 text-ellipsis',
+  props.surface === 'page-soft' ? 'bg-page-soft' : 'bg-white',
   props.tone === 'ink' ? 'text-ink' : 'text-body',
   wrap.value
     ? 'h-auto overflow-visible py-14 align-top [overflow-wrap:anywhere] whitespace-normal [text-overflow:clip]'

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useNativeDialog } from '../composables/useNativeDialog'
+import AppButton from '../ui/AppButton.vue'
+import AppDialog from '../ui/AppDialog.vue'
+import AppDialogClose from '../ui/AppDialogClose.vue'
 import PasswordChangeFields from './PasswordChangeFields.vue'
 
-const props = defineProps<{ open: boolean }>()
-const dialog = useNativeDialog(() => props.open)
+defineProps<{ open: boolean }>()
+
 const fields = ref<InstanceType<typeof PasswordChangeFields> | null>(null)
 
 const emit = defineEmits<{
@@ -12,54 +14,58 @@ const emit = defineEmits<{
   closed: []
 }>()
 
-function cancel(event?: Event): void {
-  event?.preventDefault()
-  if (dialog.value?.open && !fields.value?.submitting) emit('close')
+function cancel(): void {
+  if (!fields.value?.submitting) emit('close')
 }
 </script>
 
 <template>
-  <dialog
+  <AppDialog
     id="passwordLayer"
-    ref="dialog"
-    class="profile-layer"
-    :class="{ open }"
+    :open="open"
+    layer="profile"
+    backdrop="none"
     aria-labelledby="passwordTitle"
-    @cancel="cancel"
-    @close="emit('closed')"
+    class="bg-mask"
+    @close="cancel"
+    @closed="emit('closed')"
   >
-    <form class="profile-dialog password-dialog" novalidate @submit.prevent="fields?.save()">
-      <div class="profile-head">
-        <div id="passwordTitle" class="profile-title">修改密码</div>
-        <button
-          id="closePassword"
-          class="form-close"
-          type="button"
-          :disabled="fields?.submitting"
-          title="关闭"
-          aria-label="关闭"
-          @click="cancel"
-        >
-          <svg aria-hidden="true" class="ic"><use href="#i-close" /></svg>
-        </button>
-      </div>
-      <div class="profile-body">
-        <PasswordChangeFields ref="fields" :active="open" @saved="emit('close')" />
-      </div>
-      <div class="profile-foot">
-        <button
-          id="cancelPassword"
-          class="btn"
-          type="button"
-          :disabled="fields?.submitting"
-          @click="cancel"
-        >
-          取消
-        </button>
-        <button id="savePassword" class="btn primary" type="submit" :disabled="fields?.submitting">
-          确认修改
-        </button>
-      </div>
-    </form>
-  </dialog>
+    <div class="absolute inset-0 flex items-center justify-center">
+      <form
+        class="w-440 max-w-[calc(100%_-_40px)] overflow-hidden rounded-8 bg-white shadow-dialog"
+        novalidate
+        @submit.prevent="fields?.save()"
+      >
+        <div class="flex h-52 items-center justify-between border-b border-line pr-16 pl-20">
+          <div id="passwordTitle" class="text-dialog-title font-semibold text-ink">修改密码</div>
+          <AppDialogClose id="closePassword" :disabled="fields?.submitting" @click="cancel" />
+        </div>
+        <div class="max-h-[calc(100vh_-_220px)] overflow-y-auto px-24 pt-20 pb-4">
+          <PasswordChangeFields ref="fields" :active="open" @saved="emit('close')" />
+        </div>
+        <div class="flex h-60 items-center justify-end gap-8 border-t border-line px-20">
+          <AppButton
+            id="cancelPassword"
+            size="lg"
+            class="min-w-64 px-16"
+            type="button"
+            :disabled="fields?.submitting"
+            @click="cancel"
+          >
+            取消
+          </AppButton>
+          <AppButton
+            id="savePassword"
+            size="lg"
+            variant="primary"
+            type="submit"
+            :disabled="fields?.submitting"
+            class="min-w-64 px-16"
+          >
+            确认修改
+          </AppButton>
+        </div>
+      </form>
+    </div>
+  </AppDialog>
 </template>

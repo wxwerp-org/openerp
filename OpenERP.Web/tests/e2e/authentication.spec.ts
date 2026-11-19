@@ -314,7 +314,7 @@ test('Given 两个浏览器已登录 When 原密码校验失败后修改密码�
     await page.locator('#newPassword').fill(newPassword)
     await page.getByLabel('确认新密码').fill(newPassword)
     await page.getByRole('button', { name: '确认修改' }).click()
-    await expect(page.locator('#passwordLayer .account-error')).toBeVisible()
+    await expect(page.locator('#passwordLayer [data-testid="account-error"]')).toBeVisible()
 
     await page.getByLabel('原密码').fill(adminPassword)
     restore = () => restorePassword(page, newPassword)
@@ -375,7 +375,7 @@ test('Given 隔离宿主中的管理员已登录 When 保存关闭状态的定�
   await page.goto('/orders')
   await submitLogin(page, adminPassword)
   await page.getByRole('button', { name: '同步历史订单', exact: true }).first().click()
-  const settings = page.locator('.sync-settings-card')
+  const settings = page.locator('[data-testid="sync-settings-card"]')
   await expect(settings.getByText('未启用')).toBeVisible()
 
   const settingsUrl = '/api/erp/order-sync-settings'

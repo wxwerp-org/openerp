@@ -211,7 +211,7 @@ test('Given 产品和订单原型 When 打开表单与公告 Then 弹窗可见�
   await page.goto('/products')
   await page.locator('#openProductForm').click()
   await expect(page.locator('#productFormLayer')).toBeVisible()
-  await expect(page.locator('.form-nav-item')).toHaveCount(7)
+  await expect(page.locator('[aria-label="产品表单分区"] button')).toHaveCount(7)
   await page.locator('#saveProductForm').click()
   await expect(page.getByText('请输入产品名称')).toBeVisible()
   await page.locator('#closeProductForm').click()
@@ -220,7 +220,7 @@ test('Given 产品和订单原型 When 打开表单与公告 Then 弹窗可见�
   await page.locator('#openNotice').click()
   await expect(page.locator('#noticeLayer')).toBeVisible()
   await expect(page.locator('#noticeTitle')).toHaveText('【订单列表】优化公告')
-  await expect(page.locator('.notice-link')).toBeVisible()
+  await expect(page.locator('#noticeLayer a')).toBeVisible()
   await page.locator('#closeNotice').click()
 
   await page.setViewportSize({ width: 1440, height: 900 })

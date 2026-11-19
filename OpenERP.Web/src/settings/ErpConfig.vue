@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import AppButton from '../ui/AppButton.vue'
+import AppInput from '../ui/AppInput.vue'
 import { apiRequest } from '../account/session'
 
 const labels = {
@@ -60,73 +62,40 @@ onMounted(loadStatus)
 </script>
 
 <template>
-  <section class="config-group" aria-labelledby="erp-config-title">
-    <h2 id="erp-config-title" class="config-group-label">ERP 接入</h2>
-    <form class="erp-config-form" @submit.prevent="saveToken">
-      <div class="erp-config-status">
+  <section class="mt-20 first:mt-0" aria-labelledby="erp-config-title">
+    <h2 id="erp-config-title" class="mb-8 text-12/18 font-bold text-ink">ERP 接入</h2>
+    <form
+      class="grid gap-16 rounded-4 border border-line bg-white p-20"
+      @submit.prevent="saveToken"
+    >
+      <div class="flex items-center gap-12" data-testid="erp-config-status">
         <span>配置状态</span>
-        <span class="config-value" role="status">{{ labels[status] }}</span>
-        <button
-          v-if="status === 'error'"
-          class="btn"
-          type="button"
-          :disabled="saving"
-          @click="loadStatus"
-        >
-          重试
-        </button>
+        <span class="text-12/22 font-bold text-body-alt" role="status">{{ labels[status] }}</span>
+        <AppButton v-if="status === 'error'" :disabled="saving" @click="loadStatus">重试</AppButton>
       </div>
       <div>
-        <label class="config-label" for="erp-access-token">私有 ERP AccessToken</label>
-        <div class="form-control">
-          <input
-            id="erp-access-token"
-            v-model="token"
-            type="password"
-            autocomplete="new-password"
-            :disabled="saving"
-            :placeholder="status === 'configured' ? '填写新的 Token' : '填写 Token'"
-          />
-        </div>
+        <label class="pr-12 text-13/22 text-ink" for="erp-access-token">私有 ERP AccessToken</label>
+        <AppInput
+          id="erp-access-token"
+          v-model="token"
+          class="mt-6 max-w-400"
+          type="password"
+          autocomplete="new-password"
+          :disabled="saving"
+          :placeholder="status === 'configured' ? '填写新的 Token' : '填写 Token'"
+        />
       </div>
-      <div class="erp-config-actions">
-        <button
-          class="btn primary"
+      <div class="flex items-center gap-12">
+        <AppButton
+          variant="primary"
           type="submit"
           :disabled="saving || status === 'loading' || !token.trim()"
         >
           {{ saving ? '保存中…' : '保存' }}
-        </button>
+        </AppButton>
         <span aria-live="polite">{{ saveMessage }}</span>
       </div>
-      <p v-if="saveError" class="erp-config-error" role="alert">{{ saveError }}</p>
+      <p v-if="saveError" class="text-danger" role="alert">{{ saveError }}</p>
     </form>
   </section>
 </template>
-
-<style scoped>
-.erp-config-form {
-  display: grid;
-  gap: 16px;
-  padding: 20px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-}
-
-.erp-config-status,
-.erp-config-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.erp-config-form .form-control {
-  max-width: 400px;
-  margin-top: 6px;
-}
-
-.erp-config-error {
-  color: var(--danger);
-}
-</style>

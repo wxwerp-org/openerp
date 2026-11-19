@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { useNativeDialog } from '../composables/useNativeDialog'
+import AppButton from '../ui/AppButton.vue'
+import AppDialog from '../ui/AppDialog.vue'
+import AppDialogClose from '../ui/AppDialogClose.vue'
+import AppField from '../ui/AppField.vue'
+import AppIcon from '../ui/AppIcon.vue'
 import { saveProfile, type Account } from './session'
 
 const props = defineProps<{ open: boolean; account: Account }>()
-const dialog = useNativeDialog(() => props.open)
 
 const emit = defineEmits<{
   close: []
@@ -22,6 +25,19 @@ const nameInput = ref<HTMLInputElement | null>(null)
 const phoneInput = ref<HTMLInputElement | null>(null)
 const emailInput = ref<HTMLInputElement | null>(null)
 
+const inputBaseClass =
+  'h-30 w-full min-w-0 rounded-4 border-0 border-current bg-transparent px-11 py-0 text-12/30 outline-none placeholder:text-placeholder'
+const textInputClass = `${inputBaseClass} text-ink`
+const readonlyInputClass = `${inputBaseClass} cursor-default text-muted`
+const errorClass = 'absolute left-0 top-full pt-3 text-12/16 text-danger whitespace-nowrap'
+const hiddenClass = 'hidden'
+
+function controlClass(invalid: boolean): string {
+  return invalid
+    ? 'flex h-32 w-full items-center rounded-4 border border-danger bg-white hover:border-danger focus-within:border-danger'
+    : 'flex h-32 w-full items-center rounded-4 border border-input bg-white hover:border-input-hover focus-within:border-primary'
+}
+
 const lastLogin = computed(() => {
   const timestamp = props.account.lastLoginAt
   return timestamp ? new Date(timestamp).toLocaleString('zh-CN') : ''
@@ -36,6 +52,8 @@ watch(
     email.value = props.account.email ?? ''
     Object.assign(errors, { name: false, phone: false, email: false })
     serverError.value = ''
+    // AppDialog 在自身的下一拍才调用 showModal，因此再等一拍确保弹窗已打开。
+    await nextTick()
     await nextTick()
     nameInput.value?.focus()
     nameInput.value?.select()
@@ -43,9 +61,8 @@ watch(
   { immediate: true },
 )
 
-function cancel(event?: Event): void {
-  event?.preventDefault()
-  if (dialog.value?.open && !submitting.value) emit('close')
+function cancel(): void {
+  if (!submitting.value) emit('close')
 }
 
 async function save(): Promise<void> {
@@ -76,55 +93,60 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <dialog
+  <AppDialog
     id="profileLayer"
-    ref="dialog"
-    class="profile-layer"
-    :class="{ open }"
+    :open="open"
+    layer="profile"
+    backdrop="none"
     aria-labelledby="profileTitle"
-    @cancel="cancel"
-    @close="emit('closed')"
+    class="bg-mask"
+    @close="cancel"
+    @closed="emit('closed')"
   >
-    <form class="profile-dialog" novalidate @submit.prevent="save">
-      <div class="profile-head">
-        <div id="profileTitle" class="profile-title">修改个人信息</div>
-        <button
-          id="closeProfile"
-          class="form-close"
-          type="button"
-          :disabled="submitting"
-          title="关闭"
-          aria-label="关闭"
-          @click="cancel"
-        >
-          <svg aria-hidden="true" class="ic"><use href="#i-close" /></svg>
-        </button>
-      </div>
-      <div class="profile-body">
-        <div class="profile-avatar-row">
-          <span class="profile-avatar"
-            ><svg aria-hidden="true" class="ic"><use href="#i-avatar" /></svg
-          ></span>
-          <div class="profile-avatar-info">
-            <b>{{ account.name }}</b>
-            <span v-if="account.lastLoginAt"
-              >最近登录 <time :datetime="account.lastLoginAt">{{ lastLogin }}</time></span
-            >
-          </div>
+    <div class="absolute inset-0 flex items-center justify-center">
+      <form
+        class="w-520 max-w-[calc(100%_-_40px)] overflow-hidden rounded-8 bg-white shadow-dialog"
+        novalidate
+        @submit.prevent="save"
+      >
+        <div class="flex h-52 items-center justify-between border-b border-line pr-16 pl-20">
+          <div id="profileTitle" class="text-dialog-title font-semibold text-ink">修改个人信息</div>
+          <AppDialogClose id="closeProfile" :disabled="submitting" @click="cancel" />
         </div>
-        <div class="profile-form">
-          <div class="form-line form-item">
-            <label class="form-label" for="profileUsername">用户名</label>
-            <div class="form-control-wrap">
-              <div class="form-control is-readonly">
-                <input id="profileUsername" :value="account.username" readonly />
-              </div>
+        <div class="max-h-[calc(100vh_-_220px)] overflow-y-auto px-24 pt-20 pb-4">
+          <div class="mb-18 flex items-center gap-12 border-b border-line-soft pb-16">
+            <span
+              class="flex h-52 w-52 flex-none items-center justify-center rounded-full bg-nav-active text-primary"
+            >
+              <AppIcon name="i-avatar" :size="28" />
+            </span>
+            <div class="min-w-0">
+              <b class="block text-14/20 font-semibold text-ink">{{ account.name }}</b>
+              <span v-if="account.lastLoginAt" class="text-12/18 text-muted"
+                >最近登录 <time :datetime="account.lastLoginAt">{{ lastLogin }}</time></span
+              >
             </div>
           </div>
-          <div class="form-line form-item" :class="{ 'is-error': errors.name }">
-            <label class="form-label" for="profileName"><span class="req">*</span>姓名</label>
-            <div class="form-control-wrap">
-              <div class="form-control">
+          <div class="flex flex-col gap-14">
+            <AppField label="用户名" html-for="profileUsername">
+              <div
+                class="flex h-32 w-full items-center rounded-4 border border-input bg-tag-gray-bg hover:border-input-hover focus-within:border-primary"
+              >
+                <input
+                  id="profileUsername"
+                  :value="account.username"
+                  readonly
+                  :class="readonlyInputClass"
+                />
+              </div>
+            </AppField>
+            <AppField
+              label="姓名"
+              html-for="profileName"
+              required
+              :data-invalid="errors.name ? 'true' : undefined"
+            >
+              <div :class="controlClass(errors.name)">
                 <input
                   id="profileName"
                   ref="nameInput"
@@ -135,18 +157,24 @@ async function save(): Promise<void> {
                   placeholder="请输入姓名"
                   maxlength="20"
                   :disabled="submitting"
+                  :class="textInputClass"
                   @input="errors.name = false"
                 />
               </div>
-              <div id="profileNameError" class="form-error" role="alert">
+              <div
+                id="profileNameError"
+                role="alert"
+                :class="errors.name ? errorClass : hiddenClass"
+              >
                 请填写姓名，最多 20 个字符
               </div>
-            </div>
-          </div>
-          <div class="form-line form-item" :class="{ 'is-error': errors.phone }">
-            <label class="form-label" for="profilePhone">手机号</label>
-            <div class="form-control-wrap">
-              <div class="form-control">
+            </AppField>
+            <AppField
+              label="手机号"
+              html-for="profilePhone"
+              :data-invalid="errors.phone ? 'true' : undefined"
+            >
+              <div :class="controlClass(errors.phone)">
                 <input
                   id="profilePhone"
                   ref="phoneInput"
@@ -158,16 +186,24 @@ async function save(): Promise<void> {
                   placeholder="请输入手机号"
                   maxlength="20"
                   :disabled="submitting"
+                  :class="textInputClass"
                   @input="errors.phone = false"
                 />
               </div>
-              <div id="profilePhoneError" class="form-error" role="alert">手机号最多 20 个字符</div>
-            </div>
-          </div>
-          <div class="form-line form-item" :class="{ 'is-error': errors.email }">
-            <label class="form-label" for="profileEmail">邮箱</label>
-            <div class="form-control-wrap">
-              <div class="form-control">
+              <div
+                id="profilePhoneError"
+                role="alert"
+                :class="errors.phone ? errorClass : hiddenClass"
+              >
+                手机号最多 20 个字符
+              </div>
+            </AppField>
+            <AppField
+              label="邮箱"
+              html-for="profileEmail"
+              :data-invalid="errors.email ? 'true' : undefined"
+            >
+              <div :class="controlClass(errors.email)">
                 <input
                   id="profileEmail"
                   ref="emailInput"
@@ -178,23 +214,51 @@ async function save(): Promise<void> {
                   aria-describedby="profileEmailError"
                   placeholder="请输入邮箱"
                   :disabled="submitting"
+                  :class="textInputClass"
                   @input="errors.email = false"
                 />
               </div>
-              <div id="profileEmailError" class="form-error" role="alert">请输入有效的邮箱地址</div>
-            </div>
+              <div
+                id="profileEmailError"
+                role="alert"
+                :class="errors.email ? errorClass : hiddenClass"
+              >
+                请输入有效的邮箱地址
+              </div>
+            </AppField>
           </div>
+          <p
+            v-if="serverError"
+            role="alert"
+            data-testid="account-error"
+            class="px-16 py-8 text-12/18 text-danger"
+          >
+            {{ serverError }}
+          </p>
         </div>
-        <p v-if="serverError" class="account-error" role="alert">{{ serverError }}</p>
-      </div>
-      <div class="profile-foot">
-        <button id="cancelProfile" class="btn" type="button" :disabled="submitting" @click="cancel">
-          取消
-        </button>
-        <button id="saveProfile" class="btn primary" type="submit" :disabled="submitting">
-          保存
-        </button>
-      </div>
-    </form>
-  </dialog>
+        <div class="flex h-60 items-center justify-end gap-8 border-t border-line px-20">
+          <AppButton
+            id="cancelProfile"
+            size="lg"
+            class="min-w-64 px-16"
+            type="button"
+            :disabled="submitting"
+            @click="cancel"
+          >
+            取消
+          </AppButton>
+          <AppButton
+            id="saveProfile"
+            size="lg"
+            variant="primary"
+            type="submit"
+            :disabled="submitting"
+            class="min-w-64 px-16"
+          >
+            保存
+          </AppButton>
+        </div>
+      </form>
+    </div>
+  </AppDialog>
 </template>
