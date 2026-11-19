@@ -2,7 +2,14 @@
 import { computed, ref, watch } from 'vue'
 import AppIcon from '../components/navigation/AppIcon.vue'
 import { buildPageList } from '../components/controls/pager'
+import OrderSnapshotPlatformDistribution from '../components/reports/OrderSnapshotPlatformDistribution.vue'
+import OrderSnapshotShopRanking from '../components/reports/OrderSnapshotShopRanking.vue'
 import { platformLabel, type ReportOrder } from '../reports/orderSnapshot'
+import {
+  averageItemsPerOrder,
+  formatAverageItems,
+  formatSnapshotQuantity as formatQuantity,
+} from '../reports/orderSnapshotPresentation'
 import { useOrderSnapshotReport } from '../reports/useOrderSnapshotReport'
 
 const {
@@ -45,6 +52,13 @@ const localGeneratedAt = computed(() => {
 const scopeText =
   '按本地来源订单计数；件数为当前商品行数量合计，包含禁用/追加行。不判断付款或另行扣退款；同步未返回的旧记录可能仍保留。'
 
+const orderedShopCount = computed(() => report.value?.groups.length ?? 0)
+const averageItemsText = computed(() => {
+  if (!report.value) return '—'
+  const average = averageItemsPerOrder(report.value.summary)
+  return average === null ? '—' : formatAverageItems(average)
+})
+
 const pageCount = computed(() => Math.max(report.value?.pageCount ?? 1, 1))
 const paginationDisabled = computed(() => status.value === 'loading')
 const pagerItems = computed<PagerItem[]>(() =>
@@ -63,10 +77,6 @@ const pagerItems = computed<PagerItem[]>(() =>
 watch(currentPage, (page) => {
   jumpPage.value = String(page)
 })
-
-function formatQuantity(quantity: number): string {
-  return new Intl.NumberFormat('zh-CN').format(quantity)
-}
 
 function orderIdentity(order: ReportOrder): string {
   return JSON.stringify([order.shop.key, order.id])
@@ -109,7 +119,7 @@ function submitJumpPage(): void {
   >
     <h1 id="order-snapshot-report-title" class="visually-hidden">商品量报表</h1>
 
-    <div class="list-searchbar report-searchbar">
+    <div class="dash-header report-searchbar">
       <span class="field-box report-select">
         <select v-model="platform" aria-label="平台筛选" @change="updateFilters">
           <option value="">全部平台</option>
@@ -151,317 +161,359 @@ function submitJumpPage(): void {
         >
         <template v-else>查询本地来源订单的当前商品行快照</template>
       </span>
+
+      <span v-if="status === 'loading'" class="tag gray" role="status">正在加载商品量报表…</span>
+      <span v-else-if="status === 'success'" class="tag green" role="status">报表已更新</span>
+      <button
+        class="btn-icon"
+        type="button"
+        title="刷新"
+        aria-label="刷新"
+        :disabled="status === 'loading'"
+        @click="load(currentPage, pageSize)"
+      >
+        <AppIcon name="i-refresh" />
+      </button>
     </div>
 
-    <div class="list-toolbar report-toolbar">
-      <div class="report-toolbar-left">
-        <div class="report-metric">
-          <span class="report-metric-label">本地订单数</span>
-          <strong class="report-metric-value" aria-label="订单总数">{{
-            report ? formatQuantity(report.summary.orderCount) : '—'
-          }}</strong>
-        </div>
-        <div class="report-metric">
-          <span class="report-metric-label">商品件数</span>
-          <strong class="report-metric-value" aria-label="商品件数">{{
-            report ? formatQuantity(report.summary.itemQuantity) : '—'
-          }}</strong>
-        </div>
-        <p
-          class="notice report-scope"
-          role="note"
-          aria-label="报表统计口径"
-          :title="`统计口径：${scopeText}`"
-        >
-          <AppIcon name="i-info" icon-class="ic-12" />
-          <span><strong class="report-scope-title">统计口径</strong> {{ scopeText }}</span>
-        </p>
-      </div>
-      <div class="report-toolbar-right">
-        <span v-if="status === 'loading'" class="tag gray" role="status">正在加载商品量报表…</span>
-        <span v-else-if="status === 'success'" class="tag green" role="status">报表已更新</span>
-        <button
-          class="btn-icon"
-          type="button"
-          title="刷新"
-          aria-label="刷新"
-          :disabled="status === 'loading'"
-          @click="load(currentPage, pageSize)"
-        >
-          <AppIcon name="i-refresh" />
-        </button>
-      </div>
-    </div>
-
-    <div class="report-tables">
-      <div v-if="status === 'error'" class="notice red report-error" role="alert">
-        <AppIcon name="i-warning" icon-class="ic-16" />
-        <div class="report-error-body">
-          <strong class="notice-title">{{ errorMessage }}</strong>
-          <p class="notice-desc">请检查连接后重试。</p>
-        </div>
-        <button class="btn" type="button" aria-label="重试" @click="load(currentPage, pageSize)">
-          重试
-        </button>
-      </div>
-
-      <div class="table-box report-panel report-groups-panel">
-        <header class="report-panel-head">
-          <h2 id="report-groups-title">分店汇总</h2>
-          <p>统计当前筛选下的全部本地来源订单</p>
-        </header>
-        <div class="table-area">
-          <div class="table-scroll is-y" role="region" tabindex="0" aria-label="分店汇总表格">
-            <table class="grid-table report-groups-table">
-              <caption class="visually-hidden">
-                分店订单与商品件数汇总
-              </caption>
-              <colgroup>
-                <col style="width: 16%" />
-                <col style="width: 28%" />
-                <col style="width: 28%" />
-                <col style="width: 28%" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th scope="col">平台</th>
-                  <th scope="col">店铺</th>
-                  <th scope="col" class="num-cell">本地订单数</th>
-                  <th scope="col" class="num-cell">商品件数</th>
-                </tr>
-              </thead>
-              <tbody v-if="report?.groups.length">
-                <tr v-for="group in report.groups" :key="group.shop.key">
-                  <td>{{ platformLabel(group.shop.platform) }}</td>
-                  <td>{{ group.shop.label }}</td>
-                  <td class="num-cell">{{ formatQuantity(group.orderCount) }}</td>
-                  <td class="num-cell">{{ formatQuantity(group.itemQuantity) }}</td>
-                </tr>
-              </tbody>
-            </table>
+    <div class="dash-scroll">
+      <div
+        class="dash-grid report-analysis-grid"
+        :aria-busy="status === 'loading' ? 'true' : undefined"
+      >
+        <div v-if="status === 'error'" class="notice red report-error span-12" role="alert">
+          <AppIcon name="i-warning" icon-class="ic-16" />
+          <div class="report-error-body">
+            <strong class="notice-title">{{ errorMessage }}</strong>
+            <p class="notice-desc">请检查连接后重试。</p>
           </div>
-          <div v-if="!report?.groups.length" class="empty-overlay">
-            <span>{{ status === 'loading' ? '正在加载…' : '暂无分店汇总' }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="table-box report-panel report-orders-panel">
-        <header class="report-panel-head">
-          <h2 id="report-orders-title">订单明细</h2>
-          <p>一行对应一条本地来源订单；展开查看当前商品行和平台订单参考号。</p>
-        </header>
-        <div class="table-area">
-          <div class="table-scroll is-y" role="region" tabindex="0" aria-label="订单明细表格">
-            <table class="grid-table is-wrap report-orders-table">
-              <caption class="visually-hidden">
-                本地来源订单分页明细
-              </caption>
-              <colgroup>
-                <col style="width: 10%" />
-                <col style="width: 14%" />
-                <col style="width: 16%" />
-                <col style="width: 22%" />
-                <col style="width: 10%" />
-                <col style="width: 8%" />
-                <col style="width: 9%" />
-                <col style="width: 11%" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th scope="col">平台</th>
-                  <th scope="col">店铺</th>
-                  <th scope="col">本地订单号</th>
-                  <th scope="col">平台订单参考号</th>
-                  <th scope="col">本地订单状态</th>
-                  <th scope="col" class="num-cell">商品行</th>
-                  <th scope="col" class="num-cell">商品件数</th>
-                  <th scope="col">明细</th>
-                </tr>
-              </thead>
-              <tbody v-if="report?.orders.length">
-                <template v-for="order in report.orders" :key="orderIdentity(order)">
-                  <tr>
-                    <td>{{ platformLabel(order.shop.platform) }}</td>
-                    <td>{{ order.shop.label }}</td>
-                    <td>{{ order.number }}</td>
-                    <td>
-                      <span v-if="order.platformOrders.length">
-                        {{
-                          order.platformOrders
-                            .map((platformOrder) => platformOrder.number)
-                            .join('、')
-                        }}
-                      </span>
-                      <span v-else>—</span>
-                    </td>
-                    <td>{{ order.status || '—' }}</td>
-                    <td class="num-cell">{{ formatQuantity(order.items.length) }}</td>
-                    <td class="num-cell">{{ formatQuantity(order.itemQuantity) }}</td>
-                    <td>
-                      <button
-                        class="link-btn"
-                        type="button"
-                        :aria-label="`${expandedOrderIds.has(orderIdentity(order)) ? '收起' : '展开'}订单 ${order.number} 商品明细`"
-                        :aria-expanded="expandedOrderIds.has(orderIdentity(order))"
-                        @click="toggleOrder(orderIdentity(order))"
-                      >
-                        {{ expandedOrderIds.has(orderIdentity(order)) ? '收起' : '展开' }}
-                      </button>
-                    </td>
-                  </tr>
-                  <tr
-                    v-if="expandedOrderIds.has(orderIdentity(order))"
-                    class="report-order-details"
-                  >
-                    <td colspan="8">
-                      <div class="report-detail-sections">
-                        <section>
-                          <h3>平台订单参考号（不分配商品行）</h3>
-                          <ul v-if="order.platformOrders.length">
-                            <li
-                              v-for="platformOrder in order.platformOrders"
-                              :key="platformOrder.number"
-                            >
-                              <strong>{{ platformOrder.number }}</strong>
-                              <span v-if="platformOrder.statusCode"
-                                >状态码：{{ platformOrder.statusCode }}</span
-                              >
-                              <span v-if="platformOrder.statusText"
-                                >状态：{{ platformOrder.statusText }}</span
-                              >
-                            </li>
-                          </ul>
-                          <p v-else>无平台订单参考号</p>
-                        </section>
-                        <section>
-                          <h3>当前商品行</h3>
-                          <ul v-if="order.items.length">
-                            <li v-for="item in order.items" :key="item.lineId">
-                              <span>{{
-                                item.skuCode || item.skuId || item.productId || '未提供商品编码'
-                              }}</span>
-                              <strong>{{ formatQuantity(item.quantity) }} 件</strong>
-                              <span
-                                :class="
-                                  item.disabled === true
-                                    ? 'tag gray'
-                                    : item.disabled === false
-                                      ? 'tag green'
-                                      : 'tag amber'
-                                "
-                              >
-                                {{
-                                  item.disabled === true
-                                    ? '禁用'
-                                    : item.disabled === false
-                                      ? '未禁用'
-                                      : '禁用状态未知'
-                                }}
-                              </span>
-                              <span
-                                :class="
-                                  item.appended === true
-                                    ? 'tag amber'
-                                    : item.appended === false
-                                      ? 'tag gray'
-                                      : 'tag amber'
-                                "
-                              >
-                                {{
-                                  item.appended === true
-                                    ? '追加'
-                                    : item.appended === false
-                                      ? '未追加'
-                                      : '追加状态未知'
-                                }}
-                              </span>
-                            </li>
-                          </ul>
-                          <p v-else>无商品行</p>
-                        </section>
-                        <p class="report-order-total">
-                          本地订单件数 {{ formatQuantity(order.itemQuantity) }}
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
-          <div v-if="!report?.orders.length" class="empty-overlay">
-            <span>
-              {{
-                status === 'loading'
-                  ? '正在加载…'
-                  : status === 'error'
-                    ? '报表加载失败'
-                    : '暂无符合条件的本地订单'
-              }}
-            </span>
-          </div>
-        </div>
-        <footer class="table-pagination report-pagination">
-          <span>共 {{ pageCount }} 页</span>
-          <button
-            class="page-btn"
-            type="button"
-            aria-label="上一页"
-            :disabled="paginationDisabled || currentPage <= 1"
-            @click="changePage(currentPage - 1)"
-          >
-            <AppIcon name="i-chev-left" icon-class="ic-12" />
+          <button class="btn" type="button" aria-label="重试" @click="load(currentPage, pageSize)">
+            重试
           </button>
-          <template v-for="item in pagerItems" :key="item.key">
-            <span v-if="item.page === null" class="page-ellipsis">{{ item.label }}</span>
-            <span v-else-if="item.current" class="page-num" aria-current="page">{{
-              item.label
-            }}</span>
+        </div>
+
+        <section class="card report-overview-card span-12" aria-label="快照概览">
+          <div class="card-head report-overview-head">
+            <div class="card-head-left">
+              <div class="card-title">快照概览</div>
+            </div>
+          </div>
+          <div class="report-overview-body">
+            <div class="report-stat">
+              <div class="report-stat-label">本地订单数</div>
+              <strong class="report-stat-value" aria-label="订单总数">{{
+                report ? formatQuantity(report.summary.orderCount) : '—'
+              }}</strong>
+            </div>
+            <div class="report-stat">
+              <div class="report-stat-label">商品件数</div>
+              <strong class="report-stat-value" aria-label="商品件数">{{
+                report ? formatQuantity(report.summary.itemQuantity) : '—'
+              }}</strong>
+            </div>
+            <div class="report-stat">
+              <div class="report-stat-label">有订单店铺数</div>
+              <strong class="report-stat-value" aria-label="有订单店铺数">{{
+                report ? formatQuantity(orderedShopCount) : '—'
+              }}</strong>
+            </div>
+            <div class="report-stat">
+              <div class="report-stat-label">平均每单件数</div>
+              <strong class="report-stat-value" aria-label="平均每单件数">{{
+                report ? averageItemsText : '—'
+              }}</strong>
+            </div>
+          </div>
+        </section>
+
+        <OrderSnapshotShopRanking
+          class="report-rank-card"
+          :groups="report?.groups ?? []"
+          :loading="status === 'loading'"
+        />
+        <OrderSnapshotPlatformDistribution
+          class="report-dist-card"
+          :groups="report?.groups ?? []"
+          :total-orders="report?.summary.orderCount ?? 0"
+          :loading="status === 'loading'"
+        />
+
+        <section class="card report-panel report-groups-panel span-12">
+          <header class="card-head report-panel-head">
+            <div class="card-head-left">
+              <h2 id="report-groups-title" class="card-title">分店汇总</h2>
+            </div>
+            <p class="report-panel-desc">统计当前筛选下的全部本地来源订单</p>
+          </header>
+          <div class="table-area">
+            <div class="table-scroll is-y" role="region" tabindex="0" aria-label="分店汇总表格">
+              <table class="grid-table report-groups-table">
+                <caption class="visually-hidden">
+                  分店订单与商品件数汇总
+                </caption>
+                <colgroup>
+                  <col style="width: 16%" />
+                  <col style="width: 28%" />
+                  <col style="width: 28%" />
+                  <col style="width: 28%" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col">平台</th>
+                    <th scope="col">店铺</th>
+                    <th scope="col" class="num-cell">本地订单数</th>
+                    <th scope="col" class="num-cell">商品件数</th>
+                  </tr>
+                </thead>
+                <tbody v-if="report?.groups.length">
+                  <tr v-for="group in report.groups" :key="group.shop.key">
+                    <td>{{ platformLabel(group.shop.platform) }}</td>
+                    <td>{{ group.shop.label }}</td>
+                    <td class="num-cell">{{ formatQuantity(group.orderCount) }}</td>
+                    <td class="num-cell">{{ formatQuantity(group.itemQuantity) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="!report?.groups.length" class="empty-overlay">
+              <span>{{ status === 'loading' ? '正在加载…' : '暂无分店汇总' }}</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card report-panel report-orders-panel span-12">
+          <header class="card-head report-panel-head">
+            <div class="card-head-left">
+              <h2 id="report-orders-title" class="card-title">订单明细</h2>
+            </div>
+            <p class="report-panel-desc">
+              一行对应一条本地来源订单；展开查看当前商品行和平台订单参考号。
+            </p>
+          </header>
+          <div class="table-area">
+            <div class="table-scroll is-y" role="region" tabindex="0" aria-label="订单明细表格">
+              <table class="grid-table is-wrap report-orders-table">
+                <caption class="visually-hidden">
+                  本地来源订单分页明细
+                </caption>
+                <colgroup>
+                  <col style="width: 10%" />
+                  <col style="width: 14%" />
+                  <col style="width: 16%" />
+                  <col style="width: 22%" />
+                  <col style="width: 10%" />
+                  <col style="width: 8%" />
+                  <col style="width: 9%" />
+                  <col style="width: 11%" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col">平台</th>
+                    <th scope="col">店铺</th>
+                    <th scope="col">本地订单号</th>
+                    <th scope="col">平台订单参考号</th>
+                    <th scope="col">本地订单状态</th>
+                    <th scope="col" class="num-cell">商品行</th>
+                    <th scope="col" class="num-cell">商品件数</th>
+                    <th scope="col">明细</th>
+                  </tr>
+                </thead>
+                <tbody v-if="report?.orders.length">
+                  <template v-for="order in report.orders" :key="orderIdentity(order)">
+                    <tr>
+                      <td>{{ platformLabel(order.shop.platform) }}</td>
+                      <td>{{ order.shop.label }}</td>
+                      <td>{{ order.number }}</td>
+                      <td>
+                        <span v-if="order.platformOrders.length">
+                          {{
+                            order.platformOrders
+                              .map((platformOrder) => platformOrder.number)
+                              .join('、')
+                          }}
+                        </span>
+                        <span v-else>—</span>
+                      </td>
+                      <td>{{ order.status || '—' }}</td>
+                      <td class="num-cell">{{ formatQuantity(order.items.length) }}</td>
+                      <td class="num-cell">{{ formatQuantity(order.itemQuantity) }}</td>
+                      <td>
+                        <button
+                          class="link-btn"
+                          type="button"
+                          :aria-label="`${expandedOrderIds.has(orderIdentity(order)) ? '收起' : '展开'}订单 ${order.number} 商品明细`"
+                          :aria-expanded="expandedOrderIds.has(orderIdentity(order))"
+                          @click="toggleOrder(orderIdentity(order))"
+                        >
+                          {{ expandedOrderIds.has(orderIdentity(order)) ? '收起' : '展开' }}
+                        </button>
+                      </td>
+                    </tr>
+                    <tr
+                      v-if="expandedOrderIds.has(orderIdentity(order))"
+                      class="report-order-details"
+                    >
+                      <td colspan="8">
+                        <div class="report-detail-sections">
+                          <section>
+                            <h3>平台订单参考号（不分配商品行）</h3>
+                            <ul v-if="order.platformOrders.length">
+                              <li
+                                v-for="platformOrder in order.platformOrders"
+                                :key="platformOrder.number"
+                              >
+                                <strong>{{ platformOrder.number }}</strong>
+                                <span v-if="platformOrder.statusCode"
+                                  >状态码：{{ platformOrder.statusCode }}</span
+                                >
+                                <span v-if="platformOrder.statusText"
+                                  >状态：{{ platformOrder.statusText }}</span
+                                >
+                              </li>
+                            </ul>
+                            <p v-else>无平台订单参考号</p>
+                          </section>
+                          <section>
+                            <h3>当前商品行</h3>
+                            <ul v-if="order.items.length">
+                              <li v-for="item in order.items" :key="item.lineId">
+                                <span>{{
+                                  item.skuCode || item.skuId || item.productId || '未提供商品编码'
+                                }}</span>
+                                <strong>{{ formatQuantity(item.quantity) }} 件</strong>
+                                <span
+                                  :class="
+                                    item.disabled === true
+                                      ? 'tag gray'
+                                      : item.disabled === false
+                                        ? 'tag green'
+                                        : 'tag amber'
+                                  "
+                                >
+                                  {{
+                                    item.disabled === true
+                                      ? '禁用'
+                                      : item.disabled === false
+                                        ? '未禁用'
+                                        : '禁用状态未知'
+                                  }}
+                                </span>
+                                <span
+                                  :class="
+                                    item.appended === true
+                                      ? 'tag amber'
+                                      : item.appended === false
+                                        ? 'tag gray'
+                                        : 'tag amber'
+                                  "
+                                >
+                                  {{
+                                    item.appended === true
+                                      ? '追加'
+                                      : item.appended === false
+                                        ? '未追加'
+                                        : '追加状态未知'
+                                  }}
+                                </span>
+                              </li>
+                            </ul>
+                            <p v-else>无商品行</p>
+                          </section>
+                          <p class="report-order-total">
+                            本地订单件数 {{ formatQuantity(order.itemQuantity) }}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="!report?.orders.length" class="empty-overlay">
+              <span>
+                {{
+                  status === 'loading'
+                    ? '正在加载…'
+                    : status === 'error'
+                      ? '报表加载失败'
+                      : '暂无符合条件的本地订单'
+                }}
+              </span>
+            </div>
+          </div>
+          <footer class="table-pagination report-pagination">
+            <span>共 {{ pageCount }} 页</span>
             <button
-              v-else
               class="page-btn"
               type="button"
-              :aria-label="`第 ${item.label} 页`"
-              :disabled="paginationDisabled"
-              @click="goToPage(item)"
+              aria-label="上一页"
+              :disabled="paginationDisabled || currentPage <= 1"
+              @click="changePage(currentPage - 1)"
             >
-              {{ item.label }}
+              <AppIcon name="i-chev-left" icon-class="ic-12" />
             </button>
-          </template>
-          <button
-            class="page-btn"
-            type="button"
-            aria-label="下一页"
-            :disabled="paginationDisabled || currentPage >= pageCount"
-            @click="changePage(currentPage + 1)"
-          >
-            <AppIcon name="i-chev-right" icon-class="ic-12" />
-          </button>
-          <label class="page-size" :class="{ 'is-disabled': paginationDisabled }">
-            <select
-              :value="pageSize"
-              :disabled="paginationDisabled"
-              aria-label="每页条数"
-              @change="changePageSize"
+            <template v-for="item in pagerItems" :key="item.key">
+              <span v-if="item.page === null" class="page-ellipsis">{{ item.label }}</span>
+              <span v-else-if="item.current" class="page-num" aria-current="page">{{
+                item.label
+              }}</span>
+              <button
+                v-else
+                class="page-btn"
+                type="button"
+                :aria-label="`第 ${item.label} 页`"
+                :disabled="paginationDisabled"
+                @click="goToPage(item)"
+              >
+                {{ item.label }}
+              </button>
+            </template>
+            <button
+              class="page-btn"
+              type="button"
+              aria-label="下一页"
+              :disabled="paginationDisabled || currentPage >= pageCount"
+              @click="changePage(currentPage + 1)"
             >
-              <option v-for="size in pageSizeOptions" :key="size" :value="size">
-                {{ size }}条/页
-              </option>
-            </select>
-            <AppIcon name="i-chev-down" />
-          </label>
-          <span class="page-jump">
-            前往<input
-              v-model="jumpPage"
-              :disabled="paginationDisabled"
-              aria-label="前往页码"
-              inputmode="numeric"
-              @keyup.enter="submitJumpPage"
-              @blur="submitJumpPage"
-            />页
-          </span>
-        </footer>
+              <AppIcon name="i-chev-right" icon-class="ic-12" />
+            </button>
+            <label class="page-size" :class="{ 'is-disabled': paginationDisabled }">
+              <select
+                :value="pageSize"
+                :disabled="paginationDisabled"
+                aria-label="每页条数"
+                @change="changePageSize"
+              >
+                <option v-for="size in pageSizeOptions" :key="size" :value="size">
+                  {{ size }}条/页
+                </option>
+              </select>
+              <AppIcon name="i-chev-down" />
+            </label>
+            <span class="page-jump">
+              前往<input
+                v-model="jumpPage"
+                :disabled="paginationDisabled"
+                aria-label="前往页码"
+                inputmode="numeric"
+                @keyup.enter="submitJumpPage"
+                @blur="submitJumpPage"
+              />页
+            </span>
+          </footer>
+        </section>
+
+        <section class="card report-scope-panel span-12">
+          <p
+            class="notice report-scope"
+            role="note"
+            aria-label="报表统计口径"
+            :title="`统计口径：${scopeText}`"
+          >
+            <AppIcon name="i-info" icon-class="ic-12" />
+            <span><strong class="report-scope-title">统计口径</strong> {{ scopeText }}</span>
+          </p>
+        </section>
       </div>
     </div>
   </section>
@@ -469,10 +521,9 @@ function submitJumpPage(): void {
 
 <style scoped>
 .page-order-snapshot-report {
-  display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--surface);
+  background: var(--page);
 }
 
 .report-searchbar {
@@ -489,7 +540,7 @@ function submitJumpPage(): void {
   margin-left: auto;
   color: var(--muted);
   font-size: 12px;
-  line-height: 18px;
+  line-height: 32px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -561,95 +612,10 @@ function submitJumpPage(): void {
   color: var(--muted);
 }
 
-.report-toolbar {
-  align-items: center;
-  gap: 16px;
-  padding: 0 16px;
-}
-
-.report-toolbar-left {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  align-items: center;
-  gap: 24px;
-}
-
-.report-toolbar-right {
-  display: flex;
-  flex: none;
+.report-error {
   align-items: center;
   gap: 8px;
-}
-
-.report-metric {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0;
-}
-
-.report-metric-label {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.report-metric-value {
-  color: var(--text);
-  font-size: 20px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-  line-height: 24px;
-}
-
-.report-scope {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--body);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.report-scope .ic {
-  width: 14px;
-  height: 14px;
-  flex: none;
-  color: var(--muted);
-}
-
-.report-scope > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.report-scope-title {
-  margin-right: 2px;
-  color: var(--text);
-  font-weight: 600;
-}
-
-.report-tables {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 10px;
-  padding: 0 12px 12px;
-  background: var(--surface);
-}
-
-.report-error {
-  flex: none;
-  margin-top: 12px;
+  padding: 10px 12px;
 }
 
 .report-error-body {
@@ -662,52 +628,86 @@ function submitJumpPage(): void {
   margin-left: auto;
 }
 
-.report-panel {
-  height: auto;
+.report-overview-card {
+  padding-bottom: 16px;
+}
+
+.report-overview-head {
+  height: 46px;
+  padding-top: 12px;
+}
+
+.report-overview-body {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 16px;
+  padding: 6px 16px 0;
+}
+
+.report-stat {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+  padding-right: 12px;
 }
 
-.report-panel-head {
-  display: flex;
-  min-height: 40px;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  background: var(--surface);
+.report-stat + .report-stat {
+  padding-left: 16px;
+  border-left: 1px solid #f0f2f5;
 }
 
-.report-panel-head h2 {
-  flex: none;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 20px;
-}
-
-.report-panel-head p {
-  min-width: 0;
+.report-stat-label {
   overflow: hidden;
   color: var(--muted);
   font-size: 12px;
-  line-height: 18px;
+  line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.report-groups-panel {
-  min-height: 120px;
-  flex: 0 1 226px;
+.report-stat-value {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  line-height: 26px;
 }
 
-.report-orders-panel {
-  min-height: 150px;
-  flex: 1 1 0;
+.report-panel {
+  min-width: 0;
+}
+
+/* 分析区：店铺排行 8 列、平台分布 4 列（工作台全局仅提供 12/6/3 跨度）。 */
+.report-analysis-grid > .report-rank-card {
+  grid-column: span 8;
+}
+
+.report-analysis-grid > .report-dist-card {
+  grid-column: span 4;
+}
+
+.report-panel-head {
+  height: 46px;
+  padding-top: 12px;
+}
+
+.report-panel-desc {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-groups-panel .table-scroll {
+  max-height: min(240px, 32dvh);
+}
+
+.report-orders-panel .table-scroll {
+  max-height: min(520px, 62dvh);
 }
 
 .report-groups-table,
@@ -761,51 +761,212 @@ function submitJumpPage(): void {
   background: var(--page-soft);
 }
 
+.report-scope-panel {
+  padding: 12px 16px;
+}
+
+.report-scope {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--body);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.report-scope .ic {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.report-scope > span {
+  min-width: 0;
+}
+
+.report-scope-title {
+  margin-right: 2px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* 路由作用域：仅本页解除桌面最小宽度，离开后恢复 1440px 约束。 */
+:global(body:has(.page-order-snapshot-report)) {
+  min-width: 0;
+}
+
+:global(body:has(.page-order-snapshot-report) .app) {
+  min-width: 0;
+}
+
+/* 主区域作为卡片布局的容器查询上下文，组件按自身宽度而不是视口回退。 */
+.dash-scroll {
+  container-type: inline-size;
+}
+
+@container (inline-size < 640px) {
+  .report-analysis-grid > .report-rank-card,
+  .report-analysis-grid > .report-dist-card {
+    grid-column: span 12;
+  }
+
+  /* 表格保持可读列宽，在自身滚动区内横向滚动，页面不横向溢出。 */
+  .report-groups-panel .report-groups-table {
+    min-width: 480px;
+  }
+
+  .report-orders-panel .report-orders-table {
+    min-width: 720px;
+  }
+}
+
+@container (inline-size < 480px) {
+  .report-overview-body {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 12px;
+  }
+
+  .report-overview-body .report-stat + .report-stat {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .report-detail-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 窄屏：侧边栏收敛为 56px 导航轨道；展开的分组以浮层呈现子项，不丢失入口。 */
+@media (max-width: 768px) {
+  :global(body:has(.page-order-snapshot-report) .sidebar) {
+    width: 56px;
+  }
+
+  :global(body:has(.page-order-snapshot-report) .sidebar .brand) {
+    padding: 0;
+    justify-content: center;
+  }
+
+  :global(body:has(.page-order-snapshot-report) .sidebar .brand-name) {
+    display: none;
+  }
+
+  :global(body:has(.page-order-snapshot-report) .sidebar .nav-link),
+  :global(body:has(.page-order-snapshot-report) .sidebar .nav-group-head) {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+    margin: 0 auto;
+  }
+
+  :global(body:has(.page-order-snapshot-report) .sidebar .nav-link > span),
+  :global(body:has(.page-order-snapshot-report) .sidebar .nav-group-label),
+  :global(body:has(.page-order-snapshot-report) .sidebar .nav-caret) {
+    display: none;
+  }
+
+  :global(body:has(.page-order-snapshot-report) .sidebar .sidebar-foot) {
+    justify-content: center;
+    padding-right: 0;
+  }
+
+  :global(body:has(.page-order-snapshot-report) .sidebar .side-nav) {
+    overflow: visible;
+  }
+
+  :global(body:has(.page-order-snapshot-report) .sidebar .nav-group) {
+    position: relative;
+  }
+
+  :global(body:has(.page-order-snapshot-report) .sidebar .nav-sub) {
+    display: none;
+  }
+
+  :global(body:has(.page-order-snapshot-report) .sidebar .nav-group:hover .nav-sub),
+  :global(body:has(.page-order-snapshot-report) .sidebar .nav-group:focus-within .nav-sub) {
+    position: absolute;
+    top: 0;
+    left: 48px;
+    z-index: 300;
+    display: grid;
+    width: max-content;
+    min-width: 120px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fff;
+    box-shadow: 0 2px 8px rgb(16 24 40 / 10%);
+  }
+
+  :global(body:has(.page-order-snapshot-report) .sidebar .nav-sub-item) {
+    white-space: nowrap;
+  }
+
+  /* 触屏下把轨道目标从 40px 补到 44px；仅限窄屏，宽视口桌面侧栏不受影响。 */
+  @media (pointer: coarse) {
+    :global(body:has(.page-order-snapshot-report) .sidebar .nav-link),
+    :global(body:has(.page-order-snapshot-report) .sidebar .nav-group-head) {
+      width: 44px;
+      height: 44px;
+    }
+  }
+
+  .report-searchbar {
+    height: auto;
+    min-height: 52px;
+    flex-wrap: wrap;
+    padding-block: 8px;
+  }
+}
+
+/* 触屏：按 WCAG 2.5.5 把交互目标放大到至少 44px，功能不缩减。 */
+@media (pointer: coarse) {
+  .report-searchbar :is(.btn, .btn-icon, .control, select),
+  .report-pagination :is(.page-btn, select, input),
+  .report-orders-table .link-btn {
+    min-block-size: 44px;
+  }
+
+  .report-orders-table .link-btn {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .report-pagination {
+    height: auto;
+    min-block-size: 44px;
+    flex-wrap: wrap;
+    padding-block: 4px;
+  }
+
+  .report-shop-option {
+    min-block-size: 44px;
+  }
+}
+
 .report-searchbar .control:focus-visible,
 .report-searchbar .btn:focus-visible,
 .report-searchbar select:focus-visible,
-.report-toolbar .btn-icon:focus-visible,
+.report-searchbar .btn-icon:focus-visible,
 .report-shop-option .checkbox:focus-visible,
 .report-error .btn:focus-visible,
-.report-tables .table-scroll:focus-visible,
-.report-tables .page-btn:focus-visible,
-.report-tables .page-size select:focus-visible,
-.report-tables .page-jump input:focus-visible {
+.report-analysis-grid .page-btn:focus-visible,
+.report-analysis-grid .page-size select:focus-visible,
+.report-analysis-grid .page-jump input:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
-.report-tables .table-scroll:focus-visible {
+/* 表格滚动区紧贴 .table-area/.card 边界，向内描边避免被 overflow 裁剪。 */
+.report-analysis-grid .table-scroll:focus-visible {
+  outline: 2px solid var(--primary);
   outline-offset: -2px;
-}
-
-@media (max-height: 820px) {
-  .report-toolbar-left {
-    gap: 18px;
-  }
-
-  .report-metric-value {
-    font-size: 18px;
-    line-height: 22px;
-  }
-
-  .report-groups-panel {
-    flex-basis: 222px;
-  }
-
-  .report-panel-head {
-    min-height: 36px;
-  }
-}
-
-@media (max-height: 440px) {
-  .page-order-snapshot-report {
-    overflow-y: auto;
-  }
-
-  .report-tables {
-    flex: 0 0 auto;
-    min-height: 300px;
-  }
 }
 </style>

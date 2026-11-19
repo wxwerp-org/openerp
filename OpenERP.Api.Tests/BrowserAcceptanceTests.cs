@@ -20,7 +20,7 @@ public sealed class BrowserAcceptanceTests(ITestOutputHelper output)
         await using var fixture = new AspireIntegrationFixture(initializeAdmin: false);
         await fixture.InitializeAsync();
         var endpoint = await fixture.StartWebAsync(timeout.Token);
-        // Given 本地一张主单含两个不同状态的平台订单，宿主没有配置上游 Token。
+        // Given 本地两张主单覆盖两个平台店铺，宿主没有配置上游 Token。
         await SeedOrderAsync(fixture, timeout.Token);
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (root is not null && !File.Exists(Path.Combine(root.FullName, "OpenERP.slnx")))
@@ -94,13 +94,18 @@ public sealed class BrowserAcceptanceTests(ITestOutputHelper output)
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(await fixture.GetPostgresConnectionStringAsync(ct)).Options;
         await using var db = new AppDbContext(options);
+        // 两张主单覆盖两个平台店铺，供商品量报表的平台分布和店铺排行验收。
         var order = new OrderSnapshot("browser-local-order", "erp-internal-order", 30, "TemuPop", "处理中",
             new(new("2026-11-17 08:30", "list"), null, null, null),
             [new("TM-72801-A", 30, "shipped", "已发货"), new("TM-72801-B", 30, "pending", "待发货")],
             [new(null, null, null, "SKU-1", 2, null, null), new(null, null, null, "SKU-2", 3, null, null)]);
-        var saved = await new OrderStore(db).SaveAsync([order], ct);
+        var secondShopOrder = new OrderSnapshot("browser-second-shop-order", "erp-second-order", 31, "Temu", "已完成",
+            new(null, null, new("2026-11-18 10:00", "list"), null),
+            [new("TM-90021", 31, "completed", "已完成")],
+            [new(null, null, "SKU-B1", null, 3, false, false)]);
+        var saved = await new OrderStore(db).SaveAsync([order, secondShopOrder], ct);
         if (saved.IsErr)
             throw new XunitException(saved.Error.Message);
-        Assert.Equal(1, saved.Value.Added);
+        Assert.Equal(2, saved.Value.Added);
     }
 }

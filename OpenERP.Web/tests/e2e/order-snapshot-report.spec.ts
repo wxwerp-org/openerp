@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test'
-import { enterWorkspace } from './authentication'
+import { devices, expect, test } from '@playwright/test'
+import { bearerHeaders, enterWorkspace } from './authentication'
 
 // 浏览器截图使用固定接口样本，真实业务数据由后端验收覆盖。
 const sampleShop = {
@@ -80,31 +80,44 @@ test('Given 商品量报表有平台店铺和订单样本 When 从统计导航�
   await expect(page.locator('.report-scope use')).toHaveAttribute('href', '#i-info')
   await expect(page.locator('[aria-label="订单总数"]')).toHaveText('1')
   await expect(page.locator('[aria-label="商品件数"]')).toHaveText('5')
+  await expect(page.locator('[aria-label="有订单店铺数"]')).toHaveText('1')
+  await expect(page.locator('[aria-label="平均每单件数"]')).toHaveText('5')
 
-  // 页签列表页骨架：白底通铺、共享筛选条与工具栏、紧凑表格区，不再出现灰底浮卡。
-  await expect(page.locator('.report-searchbar')).toHaveClass(/list-searchbar/)
-  await expect(page.locator('.report-toolbar')).toHaveClass(/list-toolbar/)
-  await expect(page.locator('.report-toolbar .report-scope')).toHaveCount(1)
-  await expect(page.locator('.report-groups-panel')).toHaveClass(/table-box/)
-  await expect(page.locator('.report-orders-panel')).toHaveClass(/table-box/)
+  // 工作台骨架：筛选区复用 dash-header，卡片位于 dash-grid 内获得工作台白底与圆角。
+  await expect(page.locator('.report-searchbar')).toHaveClass(/dash-header/)
+  const grid = page.locator('.report-analysis-grid')
+  await expect(grid).toHaveClass(/dash-grid/)
   const chrome = await page.locator('.page-order-snapshot-report').evaluate((shell) => {
-    const groupsPanel = shell.querySelector('.report-groups-panel') as HTMLElement
-    const ordersHeader = shell.querySelector('.report-orders-table thead th') as HTMLElement
-    const groupsStyle = getComputedStyle(groupsPanel)
-    const headerStyle = getComputedStyle(ordersHeader)
+    const overview = shell.querySelector('.report-overview-card') as HTMLElement
+    const gridEl = shell.querySelector('.report-analysis-grid') as HTMLElement
+    const scroll = shell.querySelector('.dash-scroll') as HTMLElement
+    const rank = shell.querySelector('.snapshot-rank-card') as HTMLElement
+    const dist = shell.querySelector('.snapshot-dist-card') as HTMLElement
     return {
-      background: getComputedStyle(shell).backgroundColor,
-      panelBorder: groupsStyle.borderTopWidth,
-      panelRadius: groupsStyle.borderTopLeftRadius,
-      headerBackground: headerStyle.backgroundColor,
-      headerHeight: headerStyle.height,
+      canvas: getComputedStyle(scroll).backgroundColor,
+      gap: getComputedStyle(gridEl).columnGap,
+      overviewBackground: getComputedStyle(overview).backgroundColor,
+      overviewRadius: getComputedStyle(overview).borderTopLeftRadius,
+      rankColumnStart: getComputedStyle(rank).gridColumnStart,
+      distColumnStart: getComputedStyle(dist).gridColumnStart,
     }
   })
-  expect(chrome.background).toBe('rgb(255, 255, 255)')
-  expect(chrome.panelBorder).toBe('1px')
-  expect(chrome.panelRadius).toBe('4px')
-  expect(chrome.headerBackground).toBe('rgb(255, 255, 255)')
-  expect(chrome.headerHeight).toBe('40px')
+  expect(chrome.canvas).toBe('rgb(242, 245, 250)')
+  expect(chrome.gap).toBe('12px')
+  expect(chrome.overviewBackground).toBe('rgb(255, 255, 255)')
+  expect(chrome.overviewRadius).toBe('6px')
+  expect(chrome.rankColumnStart).toBe('span 8')
+  expect(chrome.distColumnStart).toBe('span 4')
+
+  // 图表组件渲染真实快照数值：排行按商品件数取前 5，分布按平台聚合占比。
+  await expect(page.locator('.snapshot-rank-card')).toContainText('按商品件数取前 5 家店铺')
+  await expect(page.locator('.snapshot-rank-card')).toContainText('店铺 30')
+  await expect(page.locator('.snapshot-dist-card')).toContainText('总订单数')
+  await expect(page.locator('.snapshot-dist-card')).toContainText('100.0%')
+  await expect(page.locator('.snapshot-dist-card')).toContainText('Temu 半托管')
+
+  // 图表之外仍保留完整分店汇总表。
+  await expect(page.locator('.report-groups-panel .report-groups-table tbody tr')).toHaveCount(1)
 
   // 表格复用列表页外壳：滚动区可聚焦并带区域语义，表格有显式列宽。
   const ordersRegion = page.getByRole('region', { name: '订单明细表格' })
@@ -136,17 +149,14 @@ test('Given 商品量报表有平台店铺和订单样本 When 从统计导航�
     await page.getByLabel('平台筛选').evaluate((element) => getComputedStyle(element).appearance),
   ).toBe('none')
 
-  // 分页固定在表格卡片底部：页面自身不滚动，滚动交给表格区。
+  // 工作台外壳：页面自身不滚动，滚动交给 dash-scroll；分页位于订单卡底部且在视口内。
   const paginationBox = await page.locator('.report-pagination').boundingBox()
   expect(paginationBox).not.toBeNull()
   expect(paginationBox!.y + paginationBox!.height).toBeLessThanOrEqual(900)
   const pageShell = await page.locator('.page-order-snapshot-report').evaluate((element) => ({
     overflowY: getComputedStyle(element).overflowY,
-    scrollHeight: element.scrollHeight,
-    clientHeight: element.clientHeight,
   }))
   expect(pageShell.overflowY).toBe('hidden')
-  expect(pageShell.scrollHeight).toBe(pageShell.clientHeight)
 
   await page.getByLabel('平台筛选').selectOption('TemuPop')
   await page.locator('summary[aria-label="店铺筛选"]').click()
@@ -250,7 +260,7 @@ function manyReport() {
   }
 }
 
-test('Given 视口高度仅 500px When 打开多分组报表 Then 分页仍在视口内且两个表格区可滚动到末尾', async ({
+test('Given 视口高度仅 500px When 打开多分组报表 Then 滚动主区域可到达分页且表格区可滚动到末尾', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 500 })
@@ -260,18 +270,16 @@ test('Given 视口高度仅 500px When 打开多分组报表 Then 分页仍在�
 
   await openReport(page)
 
-  const pagination = await page.locator('.report-pagination').boundingBox()
-  expect(pagination).not.toBeNull()
-  expect(pagination!.y + pagination!.height).toBeLessThanOrEqual(500)
-
-  const shell = await page.locator('.page-order-snapshot-report').evaluate((element) => ({
+  // 工作台外壳：dash-scroll 承担页面纵向滚动。
+  const scrollMetrics = await page.locator('.dash-scroll').evaluate((element) => ({
     overflowY: getComputedStyle(element).overflowY,
     scrollHeight: element.scrollHeight,
     clientHeight: element.clientHeight,
   }))
-  expect(shell.overflowY).toBe('hidden')
-  expect(shell.scrollHeight).toBe(shell.clientHeight)
+  expect(scrollMetrics.overflowY).toBe('auto')
+  expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight)
 
+  // 两个表格区在自身可聚焦区域内滚动。
   for (const selector of [
     '.report-groups-panel .table-scroll',
     '.report-orders-panel .table-scroll',
@@ -287,6 +295,14 @@ test('Given 视口高度仅 500px When 打开多分组报表 Then 分页仍在�
     expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight)
     expect(metrics.scrollTop + metrics.clientHeight).toBe(metrics.scrollHeight)
   }
+
+  // 主区域滚动到底后分页仍完整可见。
+  await page.locator('.dash-scroll').evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  const pagination = await page.locator('.report-pagination').boundingBox()
+  expect(pagination).not.toBeNull()
+  expect(pagination!.y + pagination!.height).toBeLessThanOrEqual(500)
 })
 
 test('Given 跳页请求尚未返回 When 输入框因加载禁用而失焦 Then 仍停留在目标页且不重复请求', async ({
@@ -307,4 +323,321 @@ test('Given 跳页请求尚未返回 When 输入框因加载禁用而失焦 Then
   await expect(page.locator('.page-num')).toHaveText('3')
 
   expect(requestedPages).toEqual(['1', '3'])
+})
+
+// 按请求页码回显的分页 mock，供窄屏与触屏用例翻页。
+async function routePagedReport(page: Parameters<typeof enterWorkspace>[0]): Promise<void> {
+  await page.route('**/api/reports/order-snapshot?**', async (route) => {
+    const requested = Number(new URL(route.request().url()).searchParams.get('page') ?? '1')
+    await route.fulfill({ json: { ...manyReport(), page: requested } })
+  })
+}
+
+test('Given 375×812 窄屏视口 When 打开商品量报表 Then 卡片单列、表格区内滚动且页面无横向溢出', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await routePagedReport(page)
+
+  await openReport(page)
+
+  // 报表路由解除桌面最小宽度，页面本身不出现横向溢出。
+  const pageMetrics = await page.evaluate(() => ({
+    bodyMinWidth: getComputedStyle(document.body).minWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }))
+  expect(pageMetrics.bodyMinWidth).toBe('0px')
+  expect(pageMetrics.scrollWidth).toBeLessThanOrEqual(pageMetrics.innerWidth)
+
+  // 窄屏收敛为 56px 导航轨道（侧边栏宽度带过渡，轮询到稳定值）。
+  await expect
+    .poll(async () =>
+      page.locator('.sidebar').evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBe(56)
+
+  const layout = await page.evaluate(() => {
+    const rank = document.querySelector('.report-rank-card') as HTMLElement
+    const dist = document.querySelector('.report-dist-card') as HTMLElement
+    const overview = document.querySelector('.report-overview-body') as HTMLElement
+    const ordersScroll = document.querySelector('.report-orders-panel .table-scroll') as HTMLElement
+    const groupsScroll = document.querySelector('.report-groups-panel .table-scroll') as HTMLElement
+    return {
+      rankColumn: getComputedStyle(rank).gridColumnStart,
+      distColumn: getComputedStyle(dist).gridColumnStart,
+      distBelowRank: dist.getBoundingClientRect().top >= rank.getBoundingClientRect().bottom - 1,
+      overviewColumns: getComputedStyle(overview).gridTemplateColumns.split(' ').length,
+      ordersScrollableX: ordersScroll.scrollWidth > ordersScroll.clientWidth,
+      groupsScrollableX: groupsScroll.scrollWidth > groupsScroll.clientWidth,
+    }
+  })
+  expect(layout.rankColumn).toBe('span 12')
+  expect(layout.distColumn).toBe('span 12')
+  expect(layout.distBelowRank).toBe(true)
+  expect(layout.overviewColumns).toBe(2)
+  expect(layout.ordersScrollableX).toBe(true)
+  expect(layout.groupsScrollableX).toBe(true)
+
+  // 筛选、展开、分页在窄屏仍完整可用。
+  await page.getByLabel('平台筛选').selectOption('TemuPop')
+  await page.getByRole('button', { name: '展开订单 ERP-ORDER-0 商品明细' }).click()
+  await expect(page.locator('.report-order-details')).toBeVisible()
+  await page.getByRole('button', { name: '下一页' }).click()
+  await expect(page.locator('.page-num')).toHaveText('2')
+})
+
+test('Given 375px 下打开过报表 When 离开报表路由 Then 恢复桌面最小宽度约束', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.route('**/api/reports/order-snapshot?**', async (route) => {
+    await route.fulfill({ json: reportSample })
+  })
+
+  await openReport(page)
+  expect(await page.evaluate(() => getComputedStyle(document.body).minWidth)).toBe('0px')
+
+  // 单页应用内离开报表路由：回到工作台即恢复桌面最小宽度约束。
+  await page.locator('.side-nav .nav-link[data-nav-page="dashboard"]').click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.locator('.page-order-snapshot-report')).toHaveCount(0)
+  const restored = await page.evaluate(() => ({
+    bodyMinWidth: getComputedStyle(document.body).minWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }))
+  expect(restored.bodyMinWidth).toBe('1440px')
+  expect(restored.scrollWidth).toBeGreaterThan(restored.innerWidth)
+})
+
+test('Given 1440px 桌面视口 When 打开报表 Then 保持双列卡片且页面无横向溢出', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.route('**/api/reports/order-snapshot?**', async (route) => {
+    await route.fulfill({ json: manyReport() })
+  })
+
+  await openReport(page)
+  const pageMetrics = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }))
+  expect(pageMetrics.scrollWidth).toBeLessThanOrEqual(pageMetrics.innerWidth)
+
+  const layout = await page.evaluate(() => ({
+    rankColumn: getComputedStyle(document.querySelector('.report-rank-card') as HTMLElement)
+      .gridColumnStart,
+    distColumn: getComputedStyle(document.querySelector('.report-dist-card') as HTMLElement)
+      .gridColumnStart,
+    overviewColumns: getComputedStyle(
+      document.querySelector('.report-overview-body') as HTMLElement,
+    ).gridTemplateColumns.split(' ').length,
+  }))
+  expect(layout.rankColumn).toBe('span 8')
+  expect(layout.distColumn).toBe('span 4')
+  expect(layout.overviewColumns).toBe(4)
+})
+
+test.describe('触屏窄屏', () => {
+  // describe 内 test.use 不允许切换浏览器，因此只取 iPhone X 的视口与触控字段。
+  test.use({
+    viewport: devices['iPhone X'].viewport,
+    isMobile: devices['iPhone X'].isMobile,
+    hasTouch: devices['iPhone X'].hasTouch,
+    deviceScaleFactor: devices['iPhone X'].deviceScaleFactor,
+    userAgent: devices['iPhone X'].userAgent,
+  })
+
+  test('Given 触屏窄屏 When 操作报表 Then 交互目标至少 44px 且筛选分页可用', async ({ page }) => {
+    await routePagedReport(page)
+
+    await openReport(page)
+    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true)
+
+    const targets = page.evaluate(() => {
+      const box = (selector: string) => {
+        const element = document.querySelector(selector) as HTMLElement | null
+        return element ? element.getBoundingClientRect().height : 0
+      }
+      return {
+        expand: box('.report-orders-table .link-btn'),
+        pageButton: box('.report-pagination .page-btn'),
+        refresh: box('.report-searchbar .btn-icon'),
+        navLink: box('.sidebar .nav-link'),
+        navGroupHead: box('.sidebar .nav-group-head'),
+      }
+    })
+    expect((await targets).expand).toBeGreaterThanOrEqual(44)
+    expect((await targets).pageButton).toBeGreaterThanOrEqual(44)
+    expect((await targets).refresh).toBeGreaterThanOrEqual(44)
+    expect((await targets).navLink).toBeGreaterThanOrEqual(44)
+    expect((await targets).navGroupHead).toBeGreaterThanOrEqual(44)
+
+    await page.getByLabel('平台筛选').selectOption('TemuPop')
+    await page.getByRole('button', { name: '下一页' }).click()
+    await expect(page.locator('.page-num')).toHaveText('2')
+  })
+})
+
+test.describe('宽视口触屏', () => {
+  // 粗指针但视口大于窄屏断点：桌面侧栏不得被 44px 规则压窄。
+  test.use({
+    viewport: { width: 1024, height: 768 },
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 2,
+  })
+
+  test('Given 宽视口粗指针 When 打开报表 Then 桌面侧栏项目保持 100%×38px', async ({ page }) => {
+    await page.route('**/api/reports/order-snapshot?**', async (route) => {
+      await route.fulfill({ json: reportSample })
+    })
+
+    await openReport(page)
+    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true)
+
+    const nav = await page.evaluate(() => {
+      const sidebar = document.querySelector('.sidebar') as HTMLElement
+      const link = document.querySelector('.sidebar .nav-link') as HTMLElement
+      const linkBox = link.getBoundingClientRect()
+      return {
+        sidebarWidth: sidebar.getBoundingClientRect().width,
+        linkWidth: linkBox.width,
+        linkHeight: linkBox.height,
+      }
+    })
+    expect(nav.sidebarWidth).toBe(200)
+    // nav-link 宽度为侧栏内容区 100%（含内边距的整行），只要求不被压成 44px 方块。
+    expect(nav.linkWidth).toBeGreaterThan(100)
+    expect(nav.linkHeight).toBe(38)
+  })
+})
+
+test('Given 报表已加载 When 用键盘遍历 Then 焦点按筛选图表表格分页顺序移动且表格区焦点可见', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.route('**/api/reports/order-snapshot?**', async (route) => {
+    await route.fulfill({ json: manyReport() })
+  })
+
+  await openReport(page)
+
+  // 从平台筛选出发，逐次 Tab 记录焦点目标；键盘触发的焦点必须命中 :focus-visible。
+  await page.getByLabel('平台筛选').focus()
+  const readStep = () =>
+    page.evaluate(() => {
+      const element = document.activeElement as HTMLElement
+      const style = getComputedStyle(element)
+      return {
+        label:
+          element.getAttribute('aria-label') ??
+          element.closest('[aria-label]')?.getAttribute('aria-label') ??
+          element.textContent?.trim().slice(0, 8) ??
+          element.tagName,
+        visible: element.matches(':focus-visible'),
+        outlineWidth: style.outlineWidth,
+        outlineOffset: style.outlineOffset,
+      }
+    })
+  const steps: Array<Awaited<ReturnType<typeof readStep>>> = []
+  for (let index = 0; index < 9; index += 1) {
+    await page.keyboard.press('Tab')
+    steps.push(await readStep())
+  }
+
+  expect(steps.map((step) => step.label)).toEqual([
+    '店铺筛选',
+    '清除筛选',
+    '刷新',
+    '排行指标',
+    '排行指标',
+    '分店汇总表格',
+    '订单明细表格',
+    '展开订单 ERP-ORDER-0 商品明细',
+    '展开订单 ERP-ORDER-1 商品明细',
+  ])
+  // 原生控件可保留浏览器描边；表格滚动区使用 2px 向内描边，避免被卡片裁剪。
+  for (const step of steps) {
+    expect(step.visible).toBe(true)
+    expect(step.outlineWidth).not.toBe('0px')
+  }
+  expect(steps[5]!.outlineWidth).toBe('2px')
+  expect(steps[5]!.outlineOffset).toBe('-2px')
+  expect(steps[6]!.outlineWidth).toBe('2px')
+  expect(steps[6]!.outlineOffset).toBe('-2px')
+
+  // 当前样本还有 18 个展开按钮；上一页在首页禁用，因此下一个分页目标是第 2 页。
+  for (let index = 0; index < 19; index += 1) {
+    await page.keyboard.press('Tab')
+  }
+  expect((await readStep()).label).toBe('第 2 页')
+
+  const tail: string[] = []
+  for (let index = 0; index < 5; index += 1) {
+    await page.keyboard.press('Tab')
+    tail.push((await readStep()).label)
+  }
+  expect(tail).toEqual(['第 3 页', '第 7 页', '下一页', '每页条数', '前往页码'])
+})
+
+test('Given 真实宿主本地订单 When 打开商品量报表 Then 页面与接口的订单数件数一致且覆盖平台店铺图', async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    process.env.OPENERP_TEST_LOCAL_ORDERS !== '1',
+    '真实报表断言依赖隔离宿主种子订单，不注册报表路由拦截。',
+  )
+
+  await openReport(page)
+  await expect(page.locator('.report-orders-table tbody tr')).not.toHaveCount(0)
+
+  // 真实模式：不注册报表路由拦截，直接比对真实 API 与页面渲染。
+  const response = await page.request.get('/api/reports/order-snapshot?page=1&pageSize=20', {
+    headers: await bearerHeaders(page.request),
+  })
+  expect(response.ok()).toBe(true)
+  const report = (await response.json()) as {
+    summary: { orderCount: number; itemQuantity: number }
+    groups: unknown[]
+    orders: unknown[]
+  }
+
+  const statText = async (label: string) =>
+    Number((await page.locator(`[aria-label="${label}"]`).innerText()).replace(/,/g, ''))
+  expect(await statText('订单总数')).toBe(report.summary.orderCount)
+  expect(await statText('商品件数')).toBe(report.summary.itemQuantity)
+  await expect(page.locator('.report-orders-table tbody tr')).toHaveCount(report.orders.length)
+  await expect(page.locator('.report-groups-table tbody tr')).toHaveCount(report.groups.length)
+
+  // 种子覆盖两个平台店铺：平台分布与店铺排行均有独立条目（占比在可视列表和无障碍表各一次，只数可视行）。
+  const distList = page.locator('.snapshot-dist-list')
+  await expect(distList.getByText('50.0%')).toHaveCount(2)
+  await expect(distList).toContainText('Temu 半托管')
+  await expect(distList.getByText('Temu', { exact: true })).toHaveCount(1)
+  await expect(page.locator('.snapshot-rank-card')).toContainText('店铺 30')
+  await expect(page.locator('.snapshot-rank-card')).toContainText('店铺 31')
+
+  await page.screenshot({
+    path: testInfo.outputPath('order-report-real-desktop.png'),
+    fullPage: true,
+  })
+
+  await page.setViewportSize({ width: 375, height: 812 })
+  // 侧栏宽度带过渡，等收敛到 56px 轨道再截图；移开鼠标避免悬停浮层遮挡。
+  await expect
+    .poll(async () =>
+      page.locator('.sidebar').evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBe(56)
+  await page.mouse.move(320, 700)
+  // 点击导航后焦点留在子项，focus-within 会保持浮层，截图前移除焦点。
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  })
+  await expect
+    .poll(async () => page.evaluate(() => document.documentElement.scrollWidth))
+    .toBeLessThanOrEqual(375)
+  await page.screenshot({
+    path: testInfo.outputPath('order-report-real-mobile.png'),
+    fullPage: true,
+  })
 })
