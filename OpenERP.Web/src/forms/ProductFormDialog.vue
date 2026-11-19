@@ -638,7 +638,7 @@ function save(): void {
 </template>
 
 <style scoped>
-/* Phase 3c 例外项：分节标题伪元素装饰、字段标签冒号、富文本占位符。 */
+/* 例外项：分节标题伪元素装饰、字段标签冒号、富文本占位符。 */
 .product-field-label::after {
   content: '：';
   position: absolute;

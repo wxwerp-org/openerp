@@ -22,7 +22,7 @@ function closeOnOutsideClick(event: MouseEvent): void {
   if (!tabAdd.value?.contains(target) && !tabMenu.value?.contains(target)) menuOpen.value = false
 }
 
-/** 旧样式用相邻选择器画未激活页签之间的分隔线，迁移后按同一条件渲染分隔元素。 */
+/** 未激活页签之间的分隔线按同一条件渲染，避免依赖相邻选择器。 */
 function showSeparator(index: number): boolean {
   const current = props.items[index]
   const previous = props.items[index - 1]

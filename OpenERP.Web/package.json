@@ -15,8 +15,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "visual:capture": "VISUAL_PROBE=1 playwright test tests/e2e/visual-probe.spec.ts",
-    "legacy:usage": "node scripts/legacy-usage.mjs"
+    "visual:capture": "VISUAL_PROBE=1 playwright test tests/e2e/visual-probe.spec.ts"
   },
   "dependencies": {
     "@microsoft/signalr": "^11.0.0",
