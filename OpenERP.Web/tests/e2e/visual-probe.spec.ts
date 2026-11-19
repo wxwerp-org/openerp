@@ -248,12 +248,12 @@ const scenarios: Scenario[] = [
   {
     name: 'products-1440',
     path: '/products',
-    waitFor: async (page) => page.getByRole('region', { name: '产品列表' }).waitFor(),
+    waitFor: async (page) => page.getByRole('table', { name: '产品列表' }).waitFor(),
   },
   {
     name: 'products-dialog-1440',
     path: '/products',
-    waitFor: async (page) => page.getByRole('region', { name: '产品列表' }).waitFor(),
+    waitFor: async (page) => page.getByRole('table', { name: '产品列表' }).waitFor(),
     afterGoto: async (page) => {
       await page.locator('#openProductForm').click()
       await page.locator('#productFormLayer[open]').waitFor()
@@ -262,7 +262,7 @@ const scenarios: Scenario[] = [
   {
     name: 'products-dialog-error-1440',
     path: '/products',
-    waitFor: async (page) => page.getByRole('region', { name: '产品列表' }).waitFor(),
+    waitFor: async (page) => page.getByRole('table', { name: '产品列表' }).waitFor(),
     afterGoto: async (page) => {
       await page.locator('#openProductForm').click()
       await page.locator('#productFormLayer[open]').waitFor()

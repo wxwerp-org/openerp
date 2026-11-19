@@ -27,7 +27,7 @@ const joinedControlStart =
 const joinedDateRange =
   'inline-flex h-[var(--control-h)] shrink-0 items-center gap-8 border-y border-l border-input bg-white px-10 text-12/28 whitespace-nowrap text-placeholder hover:border-input-hover'
 const fieldBox =
-  'inline-flex h-[var(--control-h)] shrink-0 items-center rounded-4 border border-input bg-white'
+  'inline-flex h-[var(--control-h)] shrink-0 items-center rounded-4 border border-input bg-white focus-within:border-primary'
 const fieldBoxInput =
   'h-28 min-w-0 border-0 border-current bg-transparent px-10 py-0 text-12/18 text-ink outline-none placeholder:text-placeholder'
 const fieldBoxInputMuted =
