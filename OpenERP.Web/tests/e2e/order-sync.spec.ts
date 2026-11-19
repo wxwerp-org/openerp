@@ -1,7 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import { enterWorkspace } from './authentication'
 
-async function prepareSync(page: Page) {
+const syncShop = { sid: '1', name: '测试店铺 1', platform: 'TemuPop', region: 'US' }
+
+async function prepareSync(page: Page, shops = [syncShop]) {
   await enterWorkspace(page)
   await page.route('**/api/erp/config', (route) =>
     route.fulfill({
@@ -21,11 +23,11 @@ async function prepareSync(page: Page) {
   await page.route('**/api/erp/shops?**', (route) =>
     route.fulfill({
       json: {
-        items: [{ sid: '1', name: '测试店铺 1', platform: 'TemuPop', region: 'US' }],
+        items: shops,
         page: 1,
         pageSize: 20,
-        totalCount: 1,
-        pageCount: 1,
+        totalCount: shops.length,
+        pageCount: shops.length ? 1 : 0,
       },
     }),
   )
@@ -73,4 +75,12 @@ test('Given ERP 凭证已被移除 When 在面板发起同步 Then Hub 返回原
   await expect(row.getByRole('alert')).toContainText('尚未配置私有 ERP AccessToken')
   await page.keyboard.press('Escape')
   await expect(page.getByRole('row').filter({ hasText: 'TM-72801-A' })).toBeVisible()
+})
+
+test('Given 本地店铺目录为空 When 点击前往授权店铺 Then 进入店铺目录', async ({ page }) => {
+  await prepareSync(page, [])
+  const panel = page.getByRole('dialog', { name: '同步历史订单' })
+  await panel.getByRole('link', { name: '前往授权店铺' }).click()
+  await expect(page).toHaveURL(/\/shops$/)
+  await expect(page.getByRole('heading', { name: '授权店铺', exact: true })).toBeVisible()
 })
