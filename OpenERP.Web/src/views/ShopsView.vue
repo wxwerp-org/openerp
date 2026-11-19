@@ -1,8 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { apiRequest } from '../account/session'
+import AppButton from '../ui/AppButton.vue'
+import AppEmptyState from '../ui/AppEmptyState.vue'
 import AppIcon from '../ui/AppIcon.vue'
-import { buildPageList } from '../ui/pager'
+import AppIconButton from '../ui/AppIconButton.vue'
+import AppNotice from '../ui/AppNotice.vue'
+import AppPager from '../ui/AppPager.vue'
+import AppTable from '../ui/AppTable.vue'
+import AppTag from '../ui/AppTag.vue'
+import AppTd from '../ui/AppTd.vue'
+import AppTh from '../ui/AppTh.vue'
 import ShopDetailDialog from '../components/shops/ShopDetailDialog.vue'
 import ShopSummaryCards from '../components/shops/ShopSummaryCards.vue'
 import type {
@@ -27,6 +35,18 @@ type ShopsResponse = {
 
 const authorizationUrl = 'https://v3.wxwerp.com/system/authorize'
 const pageSizeOptions = [20, 50, 100]
+
+/** 旧样式里的控件几何按实测值显式书写，避免组合类互相覆盖。 */
+const filterSelectClass =
+  'h-[var(--control-h)] min-w-130 rounded-4 border border-input bg-white px-8 text-12/18 text-ink outline-none focus-visible:border-primary'
+const rowActionClass =
+  'inline-flex h-[var(--control-h)] min-h-[var(--control-h)] shrink-0 items-center justify-center gap-5 whitespace-nowrap rounded-4 border border-transparent bg-transparent px-4 text-12/28 text-primary hover:bg-primary-faint'
+const pageSizeClass =
+  'inline-flex h-28 min-w-100 shrink-0 cursor-pointer items-center justify-between gap-10 rounded-4 border border-input bg-white px-9 text-ink focus-within:border-primary'
+const pageSizeClassDisabled =
+  'inline-flex h-28 min-w-100 shrink-0 cursor-default items-center justify-between gap-10 rounded-4 border border-input bg-btn-disabled-bg px-9 text-muted'
+const jumpInputClass =
+  'h-28 w-46 rounded-4 border border-input bg-white px-4 py-0 text-center text-12/18 text-ink outline-none focus:border-primary disabled:cursor-default disabled:bg-btn-disabled-bg disabled:text-muted'
 
 const configStatus = ref<ConfigStatus>('loading')
 const configured = ref(false)
@@ -92,11 +112,10 @@ const hubLabel = computed(() => {
       return '实时连接未建立'
   }
 })
-const hubTagClass = computed(() => (hubState.value === 'connected' ? 'green' : 'gray'))
+const hubTagClass = computed<'green' | 'gray'>(() =>
+  hubState.value === 'connected' ? 'green' : 'gray',
+)
 const lastSyncedLabel = computed(() => relativeTime(summary.value.lastSyncedAt))
-const pagerItems = computed(() => buildPageList(currentPage.value, pageCount.value))
-const canPrev = computed(() => currentPage.value > 1 && !isLoading.value)
-const canNext = computed(() => currentPage.value < pageCount.value && !isLoading.value)
 const detailPlatformName = computed(() =>
   detailShop.value ? platformLabel(detailShop.value.platform) : '',
 )
@@ -328,7 +347,7 @@ function statusLabel(isTokenOk: boolean | null): string {
   return '未知'
 }
 
-function statusClass(isTokenOk: boolean | null): string {
+function statusClass(isTokenOk: boolean | null): 'green' | 'red' | 'gray' {
   if (isTokenOk === true) return 'green'
   if (isTokenOk === false) return 'red'
   return 'gray'
@@ -455,76 +474,93 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
 </script>
 
 <template>
-  <section class="page page-shops active" aria-labelledby="shops-title">
-    <header class="shops-head">
+  <section
+    id="page-shops"
+    class="flex h-full w-full min-h-0 flex-col overflow-hidden bg-page p-16"
+    aria-labelledby="shops-title"
+  >
+    <header class="flex shrink-0 items-start justify-between gap-12 pb-12" data-testid="shops-head">
       <div>
-        <h1 id="shops-title">授权店铺</h1>
-        <p class="description">查看上游 ERP 可见店铺的平台授权状态；授权在 wxw ERP 完成。</p>
+        <h1 id="shops-title" class="text-20/28 font-semibold text-ink">授权店铺</h1>
+        <p class="mt-4 text-12/18 text-muted">
+          查看上游 ERP 可见店铺的平台授权状态；授权在 wxw ERP 完成。
+        </p>
       </div>
-      <span v-if="configStatus === 'ready'" class="tag" :class="configured ? 'green' : 'gray'">
+      <AppTag
+        v-if="configStatus === 'ready'"
+        data-testid="upstream-tag"
+        :tone="configured ? 'green' : 'gray'"
+        class="mt-5 shrink-0"
+      >
         上游连接：{{ configured ? '已配置' : '未配置' }}
-      </span>
+      </AppTag>
     </header>
 
-    <div v-if="configStatus === 'error'" class="shops-notice">
-      <div class="notice red" role="alert">
-        <AppIcon name="i-warning" />
-        <p class="notice-title">{{ configError }}</p>
-        <button class="btn" type="button" @click="loadConfig">重试</button>
-      </div>
+    <div v-if="configStatus === 'error'" class="shrink-0 pb-12">
+      <AppNotice tone="red" icon="i-warning" :title="configError" role="alert">
+        <template #trailing>
+          <AppButton class="ml-auto" @click="loadConfig">重试</AppButton>
+        </template>
+      </AppNotice>
     </div>
 
-    <div v-else-if="configStatus === 'ready' && !configured" class="shops-notice">
-      <div class="notice amber" role="alert">
-        <AppIcon name="i-warning" />
-        <div>
-          <p class="notice-title">尚未配置私有 ERP AccessToken</p>
-          <p class="notice-desc">请前往系统设置 → 基础 → ERP 接入填写 Token 后重试。</p>
-        </div>
-        <a class="btn" href="/service-connection">去服务连接</a>
-      </div>
+    <div v-else-if="configStatus === 'ready' && !configured" class="shrink-0 pb-12">
+      <AppNotice
+        tone="amber"
+        icon="i-warning"
+        title="尚未配置私有 ERP AccessToken"
+        description="请前往系统设置 → 基础 → ERP 接入填写 Token 后重试。"
+        role="alert"
+      >
+        <template #trailing>
+          <AppButton href="/service-connection" class="ml-auto">去服务连接</AppButton>
+        </template>
+      </AppNotice>
     </div>
 
-    <div v-if="listError" class="shops-notice">
-      <div class="notice red" role="alert">
-        <AppIcon name="i-warning" />
-        <p class="notice-title">{{ listError }}</p>
-        <button class="btn" type="button" :disabled="isLoading" @click="retry">重试</button>
-      </div>
+    <div v-if="listError" class="shrink-0 pb-12">
+      <AppNotice tone="red" icon="i-warning" :title="listError" role="alert">
+        <template #trailing>
+          <AppButton class="ml-auto" :disabled="isLoading" @click="retry">重试</AppButton>
+        </template>
+      </AppNotice>
     </div>
 
-    <div v-else-if="syncError" class="shops-notice">
-      <div class="notice red" role="alert">
-        <AppIcon name="i-warning" />
-        <p class="notice-title">{{ syncError }}</p>
-        <button class="btn" type="button" :disabled="syncDisabled" @click="syncNow">
-          重试同步
-        </button>
-      </div>
+    <div v-else-if="syncError" class="shrink-0 pb-12">
+      <AppNotice tone="red" icon="i-warning" :title="syncError" role="alert">
+        <template #trailing>
+          <AppButton class="ml-auto" :disabled="syncDisabled" @click="syncNow">重试同步</AppButton>
+        </template>
+      </AppNotice>
     </div>
 
-    <div v-else-if="syncStatus?.error && !syncRunning" class="shops-notice">
-      <div class="notice amber" role="alert">
-        <AppIcon name="i-warning" />
-        <div>
-          <p class="notice-title">上次同步失败：{{ syncStatus.error }}</p>
-          <p class="notice-desc">仍显示上次成功同步的数据；修复后点击「立即同步」重试。</p>
-        </div>
-        <button class="btn" type="button" :disabled="syncDisabled" @click="syncNow">
-          立即同步
-        </button>
-      </div>
+    <div v-else-if="syncStatus?.error && !syncRunning" class="shrink-0 pb-12">
+      <AppNotice
+        tone="amber"
+        icon="i-warning"
+        :title="`上次同步失败：${syncStatus.error}`"
+        description="仍显示上次成功同步的数据；修复后点击「立即同步」重试。"
+        role="alert"
+      >
+        <template #trailing>
+          <AppButton class="ml-auto" :disabled="syncDisabled" @click="syncNow">立即同步</AppButton>
+        </template>
+      </AppNotice>
     </div>
 
-    <div v-else-if="hubNotice" class="shops-notice">
-      <div class="notice amber" role="status">
-        <AppIcon name="i-warning" />
-        <div>
-          <p class="notice-title">实时连接已断开</p>
-          <p class="notice-desc">本地店铺仍可浏览；恢复连接后才能触发同步。</p>
-        </div>
-        <button class="btn" type="button" @click="hub.connect">重连</button>
-      </div>
+    <div v-else-if="hubNotice" class="shrink-0 pb-12">
+      <AppNotice
+        tone="amber"
+        icon="i-warning"
+        title="实时连接已断开"
+        description="本地店铺仍可浏览；恢复连接后才能触发同步。"
+        role="status"
+        data-testid="hub-notice"
+      >
+        <template #trailing>
+          <AppButton class="ml-auto" @click="hub.connect">重连</AppButton>
+        </template>
+      </AppNotice>
     </div>
 
     <ShopSummaryCards
@@ -534,15 +570,22 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
       @select="selectStatus"
     />
 
-    <div class="shops-card">
-      <div class="list-toolbar shops-toolbar">
-        <div class="toolbar-left">
-          <label class="shop-filter">
+    <div
+      class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-6 border border-line bg-white"
+      data-testid="shops-card"
+    >
+      <div
+        class="flex h-46 flex-none items-center gap-6 overflow-hidden border-b border-b-line-soft bg-white px-12"
+        data-testid="shops-toolbar"
+      >
+        <div class="flex min-w-0 flex-1 items-center gap-6 overflow-hidden">
+          <label class="inline-flex flex-none items-center gap-6 text-12 text-body">
             <span>平台</span>
             <select
               v-model="platform"
               aria-label="平台筛选"
               :disabled="isLoading"
+              :class="filterSelectClass"
               @change="applyFilters"
             >
               <option value="">全部平台</option>
@@ -552,182 +595,168 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
             </select>
           </label>
 
-          <form class="shop-search" role="search" @submit.prevent="applyKeyword">
+          <form
+            class="flex h-[var(--control-h)] min-w-210 max-w-300 flex-1 items-center overflow-hidden rounded-4 border border-input bg-white"
+            role="search"
+            @submit.prevent="applyKeyword"
+          >
             <input
               v-model="keywordDraft"
               type="search"
               placeholder="搜索店铺名称 / SID"
               aria-label="搜索店铺名称或 SID"
+              class="h-28 min-w-0 flex-1 border-0 border-current bg-transparent px-10 py-0 text-12/18 text-ink outline-none"
             />
-            <button class="search-btn" type="submit" title="搜索" aria-label="搜索">
-              <AppIcon name="i-search" icon-class="ic-16" />
+            <button
+              class="flex h-28 w-30 shrink-0 items-center justify-center text-search-icon hover:bg-search-hover-bg hover:text-primary"
+              type="submit"
+              title="搜索"
+              aria-label="搜索"
+            >
+              <AppIcon name="i-search" :size="16" />
             </button>
           </form>
 
-          <button
-            v-if="hasFilters"
-            class="btn text"
-            type="button"
-            :disabled="isLoading"
-            @click="clearFilters"
-          >
+          <AppButton v-if="hasFilters" variant="text" :disabled="isLoading" @click="clearFilters">
             清除筛选
-          </button>
+          </AppButton>
         </div>
 
-        <div class="toolbar-right">
-          <span class="toolbar-summary" aria-live="polite">
+        <div class="ml-auto flex shrink-0 items-center gap-6">
+          <span
+            class="min-w-0 overflow-hidden text-12/18 text-muted text-ellipsis whitespace-nowrap"
+            aria-live="polite"
+          >
             共 {{ totalCount }} 家店铺<span v-if="pageCount > 0"
               >，第 {{ currentPage }}/{{ pageCount }} 页</span
             >
           </span>
-          <span class="tag" :class="hubTagClass">{{ hubLabel }}</span>
-          <button
-            class="btn primary"
-            type="button"
+          <AppTag :tone="hubTagClass">{{ hubLabel }}</AppTag>
+          <AppButton
+            variant="primary"
             :disabled="syncDisabled"
             :aria-busy="syncRunning ? 'true' : undefined"
             :title="syncRunning ? '正在同步店铺与授权状态' : '同步店铺列表与平台授权状态'"
             @click="syncNow"
           >
             {{ syncButtonLabel }}
-          </button>
-          <button
-            class="btn-icon"
-            type="button"
-            title="刷新本地数据"
-            aria-label="刷新本地数据"
+          </AppButton>
+          <AppIconButton
+            label="刷新本地数据"
+            tone="toolbar"
             :disabled="isLoading"
             :aria-busy="isLoading ? 'true' : undefined"
             @click="retry"
           >
             <AppIcon name="i-refresh" />
-          </button>
+          </AppIconButton>
         </div>
       </div>
 
-      <div class="table-region">
-        <div class="table-box">
-          <div class="table-area">
-            <div class="table-scroll is-y" role="region" aria-label="授权店铺表格" tabindex="0">
-              <table class="grid-table shops-table is-wrap">
-                <caption class="visually-hidden">
-                  授权店铺列表
-                </caption>
-                <colgroup>
-                  <col style="width: 26%" />
-                  <col style="width: 18%" />
-                  <col style="width: 20%" />
-                  <col style="width: 14%" />
-                  <col style="width: 22%" />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th scope="col">店铺</th>
-                    <th scope="col">平台 / 站点</th>
-                    <th scope="col">授权状态</th>
-                    <th scope="col">最后检查</th>
-                    <th scope="col" class="col-action">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="shop in shops" :key="shop.sid">
-                    <td>
-                      <div class="shop-name">{{ displayName(shop) }}</div>
-                      <div class="shop-sid">SID {{ shop.sid }}</div>
-                    </td>
-                    <td>
-                      <div>{{ platformLabel(shop.platform) }}</div>
-                      <div class="shop-region">{{ regionLabel(shop.region) }}</div>
-                    </td>
-                    <td>
-                      <div class="shop-status">
-                        <span class="tag" :class="statusClass(shop.isTokenOk)">{{
-                          statusLabel(shop.isTokenOk)
-                        }}</span>
-                        <p v-if="shop.tokenError" class="shop-status-error">
-                          {{ shop.tokenError }}
-                        </p>
-                      </div>
-                    </td>
-                    <td>{{ formatDateTime(shop.syncedAt) }}</td>
-                    <td class="col-action">
-                      <div class="shop-actions">
-                        <button class="btn text" type="button" @click="openAuthorization(shop)">
-                          去 wxw 授权
-                        </button>
-                        <button class="btn text" type="button" @click="showDetail(shop)">
-                          详情
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div v-if="isLoading" class="empty-overlay" role="status">正在加载本地店铺…</div>
-            <div v-else-if="shops.length === 0" class="empty-overlay">
-              <span v-if="hasFilters">没有符合条件的店铺</span>
-              <span v-else-if="!configured">配置上游连接后可同步店铺</span>
-              <span v-else>本地暂无店铺数据，请点击「立即同步」</span>
-            </div>
-          </div>
-
-          <div class="table-pagination">
-            <span>共 {{ totalCount }} 条</span>
-            <button
-              class="page-btn"
-              type="button"
-              :disabled="!canPrev"
-              aria-label="上一页"
-              @click="handlePageChange(currentPage - 1)"
+      <AppTable variant="plain" caption="授权店铺列表" label="授权店铺表格" wrap scroll-y>
+        <colgroup>
+          <col style="width: 26%" />
+          <col style="width: 18%" />
+          <col style="width: 20%" />
+          <col style="width: 14%" />
+          <col style="width: 22%" />
+        </colgroup>
+        <thead>
+          <tr>
+            <AppTh surface="page">店铺</AppTh>
+            <AppTh surface="page">平台 / 站点</AppTh>
+            <AppTh surface="page">授权状态</AppTh>
+            <AppTh surface="page">最后检查</AppTh>
+            <AppTh surface="page" sticky="right">操作</AppTh>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="shop in shops" :key="shop.sid">
+            <AppTd>
+              <div class="font-medium text-ink">{{ displayName(shop) }}</div>
+              <div class="mt-2 text-11/16 text-muted">SID {{ shop.sid }}</div>
+            </AppTd>
+            <AppTd>
+              <div>{{ platformLabel(shop.platform) }}</div>
+              <div class="mt-2 text-11/16 text-muted">{{ regionLabel(shop.region) }}</div>
+            </AppTd>
+            <AppTd>
+              <div class="flex flex-wrap items-center gap-x-8 gap-y-4">
+                <AppTag :tone="statusClass(shop.isTokenOk)">{{
+                  statusLabel(shop.isTokenOk)
+                }}</AppTag>
+                <p
+                  v-if="shop.tokenError"
+                  class="m-0 w-full text-12 leading-[1.45] text-body [overflow-wrap:anywhere]"
+                >
+                  {{ shop.tokenError }}
+                </p>
+              </div>
+            </AppTd>
+            <AppTd>{{ formatDateTime(shop.syncedAt) }}</AppTd>
+            <AppTd sticky="right">
+              <div class="flex flex-wrap gap-4">
+                <button :class="rowActionClass" type="button" @click="openAuthorization(shop)">
+                  去 wxw 授权
+                </button>
+                <button :class="rowActionClass" type="button" @click="showDetail(shop)">
+                  详情
+                </button>
+              </div>
+            </AppTd>
+          </tr>
+        </tbody>
+        <template #overlay>
+          <AppEmptyState v-if="isLoading" role="status">正在加载本地店铺…</AppEmptyState>
+          <AppEmptyState v-else-if="shops.length === 0">
+            <span v-if="hasFilters">没有符合条件的店铺</span>
+            <span v-else-if="!configured">配置上游连接后可同步店铺</span>
+            <span v-else>本地暂无店铺数据，请点击「立即同步」</span>
+          </AppEmptyState>
+        </template>
+        <template #footer>
+          <AppPager
+            :page="currentPage"
+            :page-count="pageCount"
+            :show-page-list="pageCount > 0"
+            :disabled="isLoading"
+            label="授权店铺分页"
+            :padding-x="12"
+            class="border-t border-t-line-soft"
+            @update:page="goToPage"
+          >
+            <template #prefix
+              ><span>共 {{ totalCount }} 条</span></template
             >
-              <AppIcon name="i-chev-left" icon-class="ic-12" />
-            </button>
-            <template v-for="(item, index) in pagerItems" :key="`${item}-${index}`">
-              <span v-if="item === 'ellipsis'" class="page-ellipsis">…</span>
-              <span v-else-if="item === currentPage" class="page-num" aria-current="page">{{
-                item
-              }}</span>
-              <button v-else class="page-btn" type="button" @click="goToPage(item)">
-                {{ item }}
-              </button>
+            <template #suffix>
+              <label :class="isLoading ? pageSizeClassDisabled : pageSizeClass">
+                <select
+                  :value="pageSize"
+                  :disabled="isLoading"
+                  aria-label="每页条数"
+                  class="h-26 min-w-0 cursor-[inherit] appearance-none border-0 border-current bg-transparent p-0 text-12 text-inherit outline-none"
+                  @change="handlePageSizeChange(Number(($event.target as HTMLSelectElement).value))"
+                >
+                  <option v-for="size in pageSizeOptions" :key="size" :value="size">
+                    {{ size }}条/页
+                  </option>
+                </select>
+              </label>
+              <span class="inline-flex items-center gap-7 pl-3 text-body">
+                前往<input
+                  v-model="jumpPage"
+                  inputmode="numeric"
+                  aria-label="前往页码"
+                  :disabled="isLoading || pageCount < 1"
+                  :class="jumpInputClass"
+                  @keydown.enter.prevent="submitJumpPage"
+                  @blur="submitJumpPage"
+                />页
+              </span>
             </template>
-            <button
-              class="page-btn"
-              type="button"
-              :disabled="!canNext"
-              aria-label="下一页"
-              @click="handlePageChange(currentPage + 1)"
-            >
-              <AppIcon name="i-chev-right" icon-class="ic-12" />
-            </button>
-            <label class="page-size" :class="{ 'is-disabled': isLoading }">
-              <select
-                :value="pageSize"
-                :disabled="isLoading"
-                aria-label="每页条数"
-                @change="handlePageSizeChange(Number(($event.target as HTMLSelectElement).value))"
-              >
-                <option v-for="size in pageSizeOptions" :key="size" :value="size">
-                  {{ size }}条/页
-                </option>
-              </select>
-            </label>
-            <span class="page-jump">
-              前往<input
-                v-model="jumpPage"
-                inputmode="numeric"
-                aria-label="前往页码"
-                :disabled="isLoading || pageCount < 1"
-                @keydown.enter.prevent="submitJumpPage"
-                @blur="submitJumpPage"
-              />页
-            </span>
-          </div>
-        </div>
-      </div>
+          </AppPager>
+        </template>
+      </AppTable>
     </div>
 
     <ShopDetailDialog
@@ -740,238 +769,3 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
     />
   </section>
 </template>
-
-<style scoped>
-.page-shops {
-  overflow-y: hidden;
-}
-
-.shops-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 0 12px;
-}
-
-.shops-head h1 {
-  color: var(--text);
-  font-size: 20px;
-  line-height: 28px;
-  font-weight: 600;
-}
-
-.shops-head .description {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.shops-head .tag {
-  flex: none;
-  margin-top: 5px;
-}
-
-.shops-notice {
-  flex: none;
-  padding: 0 0 12px;
-}
-
-.shops-notice .notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.shops-notice .btn {
-  margin-left: auto;
-  flex: none;
-  text-decoration: none;
-}
-
-.shops-card {
-  display: flex;
-  flex: 1 1 0;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #fff;
-}
-
-.shops-toolbar {
-  height: 46px;
-  flex: none;
-  align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line-soft);
-  background: var(--surface);
-}
-
-.shop-filter {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  color: var(--body);
-  font-size: 12px;
-}
-
-.shop-filter select {
-  height: 30px;
-  min-width: 130px;
-  padding: 0 8px;
-  border: 1px solid var(--input-border);
-  border-radius: 4px;
-  outline: none;
-  background: #fff;
-  color: var(--text);
-  font-size: 12px;
-}
-
-.shop-filter select:focus-visible {
-  border-color: var(--primary);
-}
-
-.shop-search {
-  display: flex;
-  height: 30px;
-  min-width: 210px;
-  max-width: 300px;
-  flex: 1;
-  align-items: center;
-  overflow: hidden;
-  border: 1px solid var(--input-border);
-  border-radius: 4px;
-  background: #fff;
-}
-
-.shop-search input {
-  height: 28px;
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  outline: none;
-  padding: 0 10px;
-  background: transparent;
-  color: var(--text);
-  font-size: 12px;
-}
-
-.shop-search .search-btn {
-  display: flex;
-  height: 28px;
-  width: 30px;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  color: #586474;
-}
-
-.shop-search .search-btn:hover {
-  background: #f5f8fd;
-  color: var(--primary);
-}
-
-.page-shops .table-region {
-  flex: 1;
-  min-height: 0;
-  padding: 0;
-  background: #fff;
-}
-
-.page-shops .table-box {
-  border: 0;
-  border-radius: 0;
-}
-
-.page-shops .grid-table th {
-  background: var(--page);
-}
-
-.page-shops .table-pagination {
-  padding: 0 12px;
-  border-top: 1px solid var(--line-soft);
-}
-
-.toolbar-summary {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.shops-table td {
-  vertical-align: top;
-}
-
-.shop-name {
-  color: var(--text);
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-
-.shop-sid,
-.shop-region {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 16px;
-  overflow-wrap: anywhere;
-}
-
-.shop-status {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-}
-
-.shop-status-error {
-  width: 100%;
-  margin: 0;
-  color: var(--body);
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.shop-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.shop-actions .btn {
-  height: 24px;
-  padding: 0 4px;
-}
-
-@media (max-width: 1280px) {
-  .shop-search {
-    min-width: 160px;
-  }
-}
-
-@media (max-width: 1100px) {
-  .shops-toolbar {
-    height: auto;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .shops-toolbar .toolbar-left,
-  .shops-toolbar .toolbar-right {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-
-  .shops-toolbar .toolbar-right {
-    justify-content: flex-end;
-  }
-}
-</style>

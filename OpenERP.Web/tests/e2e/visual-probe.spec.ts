@@ -110,6 +110,8 @@ async function mockReport(page: Page, body: unknown = reportSample): Promise<voi
   await page.route('**/api/reports/order-snapshot?**', (route) => route.fulfill({ json: body }))
 }
 
+const shopsTable = (page: Page) => page.getByRole('table', { name: '授权店铺列表' })
+
 async function mockShopsDirectory(
   page: Page,
   options: {
@@ -422,14 +424,14 @@ const scenarios: Scenario[] = [
     name: 'shops-default-1440',
     path: '/shops',
     prepare: mockShopsDirectory,
-    waitFor: async (page) => page.locator('.shops-table tbody tr').first().waitFor(),
+    waitFor: async (page) => shopsTable(page).locator('tbody tr').first().waitFor(),
   },
   {
     name: 'shops-default-1920',
     path: '/shops',
     ...wide,
     prepare: mockShopsDirectory,
-    waitFor: async (page) => page.locator('.shops-table tbody tr').first().waitFor(),
+    waitFor: async (page) => shopsTable(page).locator('tbody tr').first().waitFor(),
   },
   {
     name: 'shops-loading-1440',
@@ -453,13 +455,13 @@ const scenarios: Scenario[] = [
     name: 'shops-error-1440',
     path: '/shops',
     prepare: async (page) => mockShopsDirectory(page, { shopsError: true }),
-    waitFor: async (page) => page.locator('.page-shops .notice.red').first().waitFor(),
+    waitFor: async (page) => page.getByRole('alert').first().waitFor(),
   },
   {
     name: 'shops-detail-1440',
     path: '/shops',
     prepare: mockShopsDirectory,
-    waitFor: async (page) => page.locator('.shops-table tbody tr').first().waitFor(),
+    waitFor: async (page) => shopsTable(page).locator('tbody tr').first().waitFor(),
     afterGoto: async (page) => {
       await page.getByRole('button', { name: '详情' }).first().click()
       await page.locator('#shopDetailLayer[open]').waitFor()
@@ -474,10 +476,10 @@ const scenarios: Scenario[] = [
         totalCount: 45,
       })
     },
-    waitFor: async (page) => page.locator('.shops-table tbody tr').first().waitFor(),
+    waitFor: async (page) => shopsTable(page).locator('tbody tr').first().waitFor(),
     afterGoto: async (page) => {
       await page.getByRole('button', { name: '下一页' }).click()
-      await page.locator('.page-num').filter({ hasText: '2' }).waitFor()
+      await page.locator('[aria-current="page"]').filter({ hasText: '2' }).waitFor()
     },
   },
   {

@@ -18,23 +18,35 @@ const cards = computed(() => [
     label: '有效',
     value: props.summary.valid,
     hint: '平台授权有效',
-    tone: 'valid',
+    tone: 'valid' as const,
   },
   {
     key: 'invalid' as const,
     label: '无效',
     value: props.summary.invalid,
     hint: '平台授权失效',
-    tone: 'invalid',
+    tone: 'invalid' as const,
   },
   {
     key: 'unknown' as const,
     label: '未知',
     value: props.summary.unknown,
     hint: '尚未检查或读取失败',
-    tone: 'unknown',
+    tone: 'unknown' as const,
   },
 ])
+
+const cardBaseClass =
+  'flex min-w-0 flex-col items-start gap-4 rounded-6 border bg-white px-16 py-14 text-left'
+const cardIdleClass = 'border-line'
+const cardActiveClass = 'border-primary bg-shop-card-active'
+const interactiveClass =
+  'cursor-pointer transition duration-150 ease-[ease] hover:border-shop-card-hover-border hover:shadow-shop-card-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary'
+const valueClass: Record<'valid' | 'invalid' | 'unknown', string> = {
+  valid: 'text-success',
+  invalid: 'text-danger',
+  unknown: 'text-status-unknown',
+}
 
 function format(value: number): string {
   return new Intl.NumberFormat('zh-CN').format(value)
@@ -42,122 +54,37 @@ function format(value: number): string {
 </script>
 
 <template>
-  <div class="shop-summary" aria-label="授权状态汇总">
+  <div class="mb-12 grid grid-cols-4 gap-12" aria-label="授权状态汇总">
     <button
       v-for="card in cards"
       :key="card.key"
-      class="shop-summary-card"
-      :class="{ 'is-active': statusFilter === card.key }"
       type="button"
+      data-testid="shop-summary-card"
       :aria-pressed="statusFilter === card.key"
       :aria-label="`${card.label} ${format(card.value)} 家，点击筛选`"
+      :class="[
+        cardBaseClass,
+        interactiveClass,
+        statusFilter === card.key ? cardActiveClass : cardIdleClass,
+      ]"
       @click="emit('select', card.key)"
     >
-      <span class="shop-summary-label">{{ card.label }}</span>
-      <strong class="shop-summary-value" :class="card.tone">{{ format(card.value) }}</strong>
-      <span class="shop-summary-hint">{{ card.hint }}</span>
+      <span class="text-12/18 text-muted">{{ card.label }}</span>
+      <strong class="text-24/30 font-medium tabular-nums" :class="valueClass[card.tone]">{{
+        format(card.value)
+      }}</strong>
+      <span
+        class="max-w-full overflow-hidden text-11/16 text-ellipsis whitespace-nowrap text-muted"
+        >{{ card.hint }}</span
+      >
     </button>
 
-    <div class="shop-summary-card is-static">
-      <span class="shop-summary-label">最后同步</span>
-      <strong class="shop-summary-value is-time">{{ lastSyncedLabel }}</strong>
-      <span class="shop-summary-hint">最近一次成功同步</span>
+    <div :class="[cardBaseClass, cardIdleClass]" data-testid="shop-summary-card" data-static="true">
+      <span class="text-12/18 text-muted">最后同步</span>
+      <strong class="text-18/26 font-medium text-ink tabular-nums">{{ lastSyncedLabel }}</strong>
+      <span class="max-w-full overflow-hidden text-11/16 text-ellipsis whitespace-nowrap text-muted"
+        >最近一次成功同步</span
+      >
     </div>
   </div>
 </template>
-
-<style scoped>
-.shop-summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.shop-summary-card {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card, 6px);
-  background: #fff;
-  text-align: left;
-}
-
-button.shop-summary-card {
-  cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-button.shop-summary-card:hover {
-  border-color: #b7d1ff;
-  box-shadow: 0 4px 10px rgba(81, 133, 192, 0.1);
-}
-
-button.shop-summary-card:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 1px;
-}
-
-.shop-summary-card.is-active {
-  border-color: var(--primary);
-  background: #f4f8ff;
-}
-
-.shop-summary-card.is-static {
-  cursor: default;
-}
-
-.shop-summary-label {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.shop-summary-value {
-  color: var(--text);
-  font-size: 24px;
-  font-weight: 500;
-  line-height: 30px;
-  font-variant-numeric: tabular-nums;
-}
-
-.shop-summary-value.valid {
-  color: #00941e;
-}
-
-.shop-summary-value.invalid {
-  color: #e52e2e;
-}
-
-.shop-summary-value.unknown {
-  color: #606a78;
-}
-
-.shop-summary-value.is-time {
-  font-size: 18px;
-  line-height: 26px;
-}
-
-.shop-summary-hint {
-  overflow: hidden;
-  max-width: 100%;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 16px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (max-width: 1100px) {
-  .shop-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-</style>

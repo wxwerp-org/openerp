@@ -46,5 +46,6 @@ const iconClass = computed(
       <slot />
       <slot name="actions" />
     </div>
+    <slot name="trailing" />
   </div>
 </template>
