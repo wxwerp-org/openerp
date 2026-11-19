@@ -101,7 +101,6 @@ const groups: NavGroup[] = [
       { label: '用户管理', page: 'users' },
       { label: '服务连接', page: 'service-connection' },
       { label: '授权店铺', page: 'shops' },
-      { label: '订单同步（临时）', page: 'orders-sync' },
     ],
   },
 ]

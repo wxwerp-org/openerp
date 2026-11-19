@@ -26,7 +26,6 @@ export type NavigationPage = {
 export const standalonePages: NavigationPage[] = [
   { id: 'service-connection', label: '服务连接', path: '/service-connection' },
   { id: 'shops', label: '授权店铺', path: '/shops' },
-  { id: 'orders-sync', label: '订单同步（临时）', path: '/orders/sync' },
 ]
 
 export const navigationPages: NavigationPage[] = [...workspacePages, ...standalonePages]
