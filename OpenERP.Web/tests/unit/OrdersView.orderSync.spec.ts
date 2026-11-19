@@ -119,7 +119,7 @@ function ordersPage(number?: string, page = 1) {
 }
 
 async function openPanel(wrapper: VueWrapper): Promise<void> {
-  await wrapper.get('.order-toolbar [aria-haspopup="dialog"]').trigger('click')
+  await wrapper.get('[data-testid="orders-toolbar"] [aria-haspopup="dialog"]').trigger('click')
   await flushPromises()
 }
 

@@ -24,7 +24,7 @@ describe('原型列表与配置组件', () => {
   it('Given 产品列表 When 打开添加产品并空值保存 Then 全屏表单展示七分区且品名校验失败', async () => {
     const wrapper = mount(ProductListView)
 
-    expect(wrapper.find('.empty-overlay').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="product-empty"]').exists()).toBe(true)
     await wrapper.get('#openProductForm').trigger('click')
     expect(wrapper.get('#productFormLayer').classes()).toContain('open')
     expect(wrapper.findAll('.form-nav-item')).toHaveLength(7)

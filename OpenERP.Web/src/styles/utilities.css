@@ -28,17 +28,3 @@ dialog::backdrop {
   white-space: nowrap !important;
   border: 0 !important;
 }
-
-.grid-table button.sort-head {
-  min-height: 24px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-}
-
-.grid-table button.sort-head:disabled {
-  cursor: default;
-}

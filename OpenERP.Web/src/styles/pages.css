@@ -328,13 +328,6 @@
   }
 }
 
-/* 用户管理 */
-.page-users {
-  flex-direction: column;
-  background: #fff;
-  overflow: hidden;
-}
-
 /* 授权店铺 */
 .page-shops {
   flex-direction: column;
@@ -342,108 +335,9 @@
   overflow-y: auto;
   padding: 16px;
 }
-.user-filter .search-box {
-  max-width: 237px;
-}
-.user-table .user-name {
-  color: var(--text);
-}
-.user-table .status-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 18px;
-  line-height: 16px;
-  padding: 0 5px;
-  border: 1px solid #b9e6c4;
-  background: #f3fdf5;
-  color: #00941e;
-  border-radius: 2px;
-  font-size: 11px;
-}
-.user-table .status-pill.off {
-  border-color: #e3e6eb;
-  background: #f7f8fa;
-  color: #888c94;
-}
-.user-table .security-cell {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--body);
-}
-.user-table .security-cell .ic {
-  width: 12px;
-  height: 12px;
-  color: #6b7786;
-}
-.user-table .oper-cell {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.user-table .oper-link {
-  color: var(--primary);
-  font-size: 12px;
-  white-space: nowrap;
-}
-.user-table .oper-link:hover {
-  text-decoration: underline;
-}
-.user-action-caret {
-  color: #a6abb4;
-  width: 10px;
-  height: 10px;
-}
-.user-table td.col-check {
-  padding-left: 10px;
-}
-.user-filter .date-group {
-  display: flex;
-  align-items: stretch;
-}
-.user-filter .date-group .control {
-  border-right: 0;
-  border-radius: 4px 0 0 4px;
-}
-.user-filter .date-group .control + .field-box {
-  border-left: 0;
-  border-radius: 0 4px 4px 0;
-}
-.user-filter .date-group .field-box {
-  width: 96px;
-}
-.user-filter .date-group .field-box input {
-  font-size: 12px;
-}
-.user-filter .date-group .field-box .ic {
-  width: 14px;
-  height: 14px;
-  color: #a6abb4;
-  margin-right: 8px;
-}
-.user-filter .realname-field .field-box {
-  width: 82px;
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-.user-filter .mode-field .field-box {
-  width: 59px;
-  border-left: 0;
-  border-radius: 0 4px 4px 0;
-  margin-left: -1px;
-}
 
 .form-item:not(.is-error) .form-error {
   display: none;
-}
-.split-select {
-  display: inline-flex;
-  align-items: stretch;
-  flex: none;
-}
-.split-select .btn {
-  height: 30px;
 }
 /* 浮层提示 */
 .toast {

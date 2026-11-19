@@ -9,11 +9,19 @@ const props = withDefaults(
     wrap?: boolean
     scrollY?: boolean
     width?: number | string
+    minWidth?: number
+    /** 旧列表页外壳（下承圆角）与订单卡片外壳（整块圆角、内缩一圈）两种几何。 */
+    variant?: 'list' | 'card'
+    /** 订单卡片内的聚焦环落在滚动区上：2px 主色、内缩 2px。 */
+    focusRing?: boolean
   }>(),
   {
     wrap: false,
     scrollY: false,
     width: undefined,
+    minWidth: undefined,
+    variant: 'list',
+    focusRing: false,
   },
 )
 
@@ -22,21 +30,32 @@ provide(
   computed(() => props.wrap),
 )
 
+const isCard = computed(() => props.variant === 'card')
+
 const tableStyle = computed(() => {
-  if (props.width == null) return undefined
-  return { width: typeof props.width === 'number' ? `${props.width}px` : props.width }
+  const style: { width?: string; minWidth?: string } = {}
+  if (props.width != null)
+    style.width = typeof props.width === 'number' ? `${props.width}px` : props.width
+  if (props.minWidth != null) style.minWidth = `${props.minWidth}px`
+  return Object.keys(style).length ? style : undefined
 })
 </script>
 
 <template>
-  <div class="min-h-0 flex-1 bg-white px-12 pb-18">
+  <div class="min-h-0 flex-1 bg-white" :class="isCard ? 'px-16 pt-12 pb-16' : 'px-12 pb-18'">
     <div
-      class="flex h-full min-h-0 flex-col overflow-hidden rounded-b-4 border border-line bg-white"
+      class="flex h-full min-h-0 flex-col overflow-hidden border border-line bg-white"
+      :class="isCard ? 'rounded-4' : 'rounded-b-4'"
     >
       <div class="relative min-h-0 flex-1 overflow-hidden bg-white">
         <div
           class="app-table-scroll relative h-full overflow-x-auto bg-white"
-          :class="scrollY ? 'is-y overflow-y-auto' : 'overflow-y-hidden'"
+          :class="[
+            scrollY ? 'is-y overflow-y-auto' : 'overflow-y-hidden',
+            focusRing
+              ? 'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary'
+              : '',
+          ]"
           :data-scroll-y="String(scrollY)"
           tabindex="0"
           role="region"
@@ -55,6 +74,7 @@ const tableStyle = computed(() => {
             </caption>
             <slot />
           </table>
+          <slot name="scroll-end" />
         </div>
         <slot name="overlay" />
       </div>

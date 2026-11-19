@@ -105,6 +105,7 @@
   --color-tag-amber-border: #f6deb5;
   --color-tag-gray-bg: #f7f8fa;
   --color-tag-gray-border: #e1e4e9;
+  --color-status-off-border: #e3e6eb;
 
   --color-nav-hover: #eff1f4;
   --color-nav-active: #eaf2ff;
@@ -127,6 +128,12 @@
   --color-soft-bg-hover: rgba(11, 16, 25, 0.16);
   --color-icon-hover: rgba(11, 16, 25, 0.06);
   --color-caret: #a9b0ba;
+  --color-toolbar-icon: #4d5968;
+  --color-search-icon: #586474;
+  --color-search-hover-bg: #f5f8fd;
+  --color-sort-icon: #bfc7d2;
+  --color-order-mark-bg: #fff2cc;
+  --color-order-mark-text: #654200;
   --color-notice-bg: #fafbfc;
   --color-progress-track: #eef3fa;
   --color-page-btn-hover: #f5f8ff;
