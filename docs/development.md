@@ -148,7 +148,7 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 ### 本地初始化与密码重置
 
-Development 环境启动 API 时自动应用 EF Core 迁移。API 每次启动生成临时 RS256 签名密钥。空库首次启动后，在应用的 HTTPS 页面设置管理员密码，再使用 `admin` 登录。已有登录的浏览器可以在 API 重启后使用持久刷新 Cookie 静默恢复。正式环境的配置、初始化和升级见[部署说明](deployment.md)。
+Development 环境启动 API 时自动应用 EF Core 迁移。对于已创建的数据库，启动代码先通过 EF 准备迁移历史表，避免 Npgsql 10.0.3 在空库首次启动时查询缺失的表（[上游问题 #3407](https://github.com/npgsql/efcore.pg/issues/3407)）。API 每次启动生成临时 RS256 签名密钥。空库首次启动后，在应用的 HTTPS 页面设置管理员密码，再使用 `admin` 登录。已有登录的浏览器可以在 API 重启后使用持久刷新 Cookie 静默恢复。正式环境的配置、初始化和升级见[部署说明](deployment.md)。
 
 启动时只在管理员行缺失时创建占位行。设置密码通过数据库条件更新完成，并发请求只能有一方成功。初始化成功记录 UTC 时间、连接来源 IP 和 User-Agent，不记录密码，也不签发令牌或更新最近登录时间。
 

@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using OpenERP.Api;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Deployment;
@@ -65,7 +64,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 {
     var stopping = app.Lifetime.ApplicationStopping;
     if (app.Environment.IsDevelopment())
-        await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync(stopping);
+        await scope.ServiceProvider.GetRequiredService<AppDbContext>().MigrateDevelopmentDatabaseAsync(stopping);
     await scope.ServiceProvider.GetRequiredService<AccountStore>().SeedAsync(stopping);
 }
 
