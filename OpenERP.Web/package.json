@@ -10,11 +10,13 @@
     "build": "vite build",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
-    "format": "prettier --write --experimental-cli src/ tests/ '*.config.{js,ts}' index.html package.json tsconfig.json .prettierrc.json",
-    "format:check": "prettier --check --experimental-cli src/ tests/ '*.config.{js,ts}' index.html package.json tsconfig.json .prettierrc.json",
+    "format": "prettier --write --experimental-cli src/ tests/ scripts/ '*.config.{js,ts}' index.html package.json tsconfig.json .prettierrc.json",
+    "format:check": "prettier --check --experimental-cli src/ tests/ scripts/ '*.config.{js,ts}' index.html package.json tsconfig.json .prettierrc.json",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "visual:capture": "VISUAL_PROBE=1 playwright test tests/e2e/visual-probe.spec.ts",
+    "legacy:usage": "node scripts/legacy-usage.mjs"
   },
   "dependencies": {
     "@microsoft/signalr": "^11.0.0",
