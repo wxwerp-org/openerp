@@ -3,14 +3,6 @@
   .dash-header-right .time-pill:nth-of-type(4) {
     display: none;
   }
-  .trend-periods .mini-seg button {
-    padding: 0 6px;
-    min-width: 32px;
-  }
-  .rank-controls .mini-seg button {
-    min-width: 33px;
-    padding: 0 6px;
-  }
 }
 @media (min-width: 1601px) {
   .form-grid {

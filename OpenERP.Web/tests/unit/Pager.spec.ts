@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPageList } from '../../src/components/controls/pager'
+import { buildPageList } from '../../src/ui/pager'
 
 describe('分页页码列表', () => {
   it('Given 只有一页 When 构建页码 Then 仅包含第 1 页', () => {

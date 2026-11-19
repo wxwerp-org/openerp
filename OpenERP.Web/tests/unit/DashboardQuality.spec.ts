@@ -35,9 +35,13 @@ describe('工作台数据控件与无障碍质量', () => {
       const target = group.findAll('button').find((button) => button.text() === option)!
 
       return target.trigger('click').then(() => {
-        expect(target.classes()).toContain('active')
         expect(target.attributes('aria-pressed')).toBe('true')
-        expect(group.findAll('button.active')).toHaveLength(1)
+        const pressed = wrapper
+          .get(`[role="group"][aria-label="${label}"]`)
+          .findAll('button')
+          .filter((button) => button.attributes('aria-pressed') === 'true')
+        expect(pressed).toHaveLength(1)
+        expect(pressed[0]!.text()).toBe(option)
       })
     },
   )

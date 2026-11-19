@@ -17,8 +17,7 @@
 }
 .list-searchbar .control,
 .list-searchbar .field-box,
-.list-searchbar .btn,
-.list-searchbar .toggle-group {
+.list-searchbar .btn {
   height: 30px;
 }
 .list-searchbar .control {
@@ -452,13 +451,6 @@ label.page-size.is-disabled {
 }
 
 /* 产品列表 */
-.product-filter .toggle-sku button {
-  min-width: 52px;
-  padding: 0 10px;
-}
-.product-filter .toggle-type button {
-  padding: 0 10px;
-}
 .product-filter .date-field {
   display: flex;
   align-items: center;

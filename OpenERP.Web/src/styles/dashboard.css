@@ -320,13 +320,6 @@
 .realtime-sales-controls .tiny-info {
   font-size: 12px;
 }
-.realtime-sales-controls .mini-seg {
-  height: 30px;
-}
-.realtime-sales-controls .mini-seg button {
-  height: 28px;
-  min-width: 44px;
-}
 .realtime-body {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -415,14 +408,6 @@
   align-items: center;
   gap: 8px;
   white-space: nowrap;
-}
-.trend-periods .mini-seg {
-  height: 28px;
-}
-.trend-periods .mini-seg button {
-  height: 26px;
-  padding: 0 7px;
-  min-width: 36px;
 }
 .date-range-btn {
   height: 28px;
@@ -650,14 +635,6 @@
   min-width: 0;
   flex: 1;
   overflow: hidden;
-}
-.rank-controls .toggle-group {
-  height: 28px;
-}
-.rank-controls .toggle-group button {
-  height: 26px;
-  padding: 0 8px;
-  font-size: 12px;
 }
 .rank-controls .control {
   height: 28px;

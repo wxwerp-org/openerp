@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import AppIcon from '../components/navigation/AppIcon.vue'
+import AppIcon from '../ui/AppIcon.vue'
 import BaseConfig from '../settings/BaseConfig.vue'
 import ErpConfig from '../settings/ErpConfig.vue'
 import GenericConfig from '../settings/GenericConfig.vue'
