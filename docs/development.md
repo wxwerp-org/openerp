@@ -51,7 +51,7 @@ aspire start --isolated
 | [OpenERP.ServiceDefaults](../OpenERP.ServiceDefaults/) | 健康检查、遥测与服务发现 |
 | [OpenERP.Api.Tests](../OpenERP.Api.Tests/) | 后端单元测试和集成测试 |
 
-[router/index.ts](../OpenERP.Web/src/router/index.ts) 定义工作台、授权店铺、产品、订单、业务配置、用户与新品开发路由，[views](../OpenERP.Web/src/views/) 存放页面，[components](../OpenERP.Web/src/components/) 提供可复用工作台卡片、导航和控件。[styles](../OpenERP.Web/src/styles/) 按区域组织共享样式，列表、控件与页面类按用途拆分。
+[router/index.ts](../OpenERP.Web/src/router/index.ts) 定义工作台、授权店铺、产品、订单、业务配置、用户与新品开发路由，[views](../OpenERP.Web/src/views/) 存放页面，[components](../OpenERP.Web/src/components/) 提供可复用工作台卡片、导航和控件，[ui](../OpenERP.Web/src/ui/) 提供 Tailwind 主题 token 与 `App*` 通用组件。前端无按页面拆分的全局样式目录，样式由工具类与 [theme.css](../OpenERP.Web/src/ui/theme.css) 统一承载，约定见[前端样式架构](#前端样式架构)。
 
 ## 构建与测试
 
@@ -95,6 +95,18 @@ pnpm --dir OpenERP.Web format
 `lint` 和 `format:check` 只读检查，不修改文件；`lint:fix` 和 `format` 分别自动修复 ESLint 支持的问题与 Prettier 排版。两个 ESLint 入口都使用 `--max-warnings 0`，发现问题时返回非零退出码；`lint` 与 `format:check` 均接入本地和前端 CI。
 
 类型检查由 `pnpm --dir OpenERP.Web typecheck`（`vue-tsc --noEmit`）执行。遇到 lint 报错或警告，按对应规则的官方文档修正成因，不用行内禁用或放宽配置绕过检查。
+
+### 前端样式架构
+
+前端样式使用 Tailwind CSS v4（[Vite 插件](../OpenERP.Web/vite.config.ts) 中的 `@tailwindcss/vite`）与 [src/ui](../OpenERP.Web/src/ui/) 下的 `App*` 组件，不再维护按页面拆分的全局 CSS 目录。[theme.css](../OpenERP.Web/src/ui/theme.css) 是唯一的样式入口：它按固定层序导入 Tailwind，关闭 preflight，并在 `@layer base` 提供全站 reset（盒子模型、按钮/链接/列表/标题重置、正文排版、滚动条、图标基础样式），在 `@theme static` 提供全部设计 token。
+
+- 设计值只有一处来源：颜色、字号、行高、圆角、阴影都定义在 `@theme static` 的 token 中，命名空间决定工具类前缀（`--color-*` → `text-*`/`bg-*`/`border-*`/`stroke-*`，`--text-*` → `text-12/22` 等）。新增视觉值先按实测值补 token，禁止在模板里散落十六进制色值或自造近似值。
+- `--spacing: 1px`，因此 `h-54`、`px-16`、`gap-12` 直接等于像素值；字号工具类的斜杠后为行高（`text-14/22`）。
+- 优先复用 [src/ui](../OpenERP.Web/src/ui/) 的组件及其 props 表达上下文差异（尺寸档、色调、变体），页面和卡片只组合工具类，不复制组件内部结构。
+- 类名必须是可静态扫描的字面量：不要在模板里拼接类名，按状态用互斥分支选择字面量。同一元素避免出现同属性冲突的工具类（如 `h-32` 与 `h-40` 并存），把公共部分与状态差异拆开。
+- 不使用 `!important`。Tailwind 的 `max-[…]:` 变体是严格小于，需要“小于等于”语义时使用 `[@media(max-width:…)]:` 任意变体。
+- `<style scoped>` 仅用于伪元素、滚动条、粘性表格、复杂组合选择器、图表内部与原生 `<dialog>` 定位等工具类无法干净表达的场景，且只能引用 token；其余样式一律走工具类。
+- 测试钩子使用 `data-testid`、role 与 ARIA，不依赖视觉类名；样式迁移时同步迁移选择器，不弱化断言。
 
 ### 测试环境
 

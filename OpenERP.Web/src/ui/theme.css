@@ -1,22 +1,78 @@
-@layer theme, base, components, legacy, utilities;
+@layer theme, base, components, utilities;
 
 @import 'tailwindcss/theme.css' layer(theme);
 @import 'tailwindcss/utilities.css' layer(utilities) source('../');
 
-/**
- * 旧全局样式在迁移期统一进入 legacy 层兜底；页面/组件迁移后逐块删除对应规则。
- * 工作台迁移完成后只剩 base reset 待 Phase 4 搬入本文件，届时删除该 import 与 src/styles。
- */
-@import '../styles/base.css' layer(legacy);
-
-/* 旧报表页在窗口高度 ≤820px 时收紧工具条与面板密度；迁移期用变体保留该行为。 */
+/* 报表页在窗口高度 ≤820px 时收紧工具条与面板密度。 */
 @custom-variant short (@media (max-height: 820px));
 
 /**
- * 图标基础样式属于主题 reset 的一部分：AppIcon 与尚未迁移的原生 svg 共用 `.ic`。
- * 页面迁移完成后由 AppIcon 的尺寸/描边 props 接管，并随旧 CSS 一并删除。
+ * 全局 reset 与图标基础样式。
+ *
+ * 项目不启用 Tailwind preflight：元素默认样式（盒子模型、按钮/链接/列表/标题重置、
+ * 正文排版、滚动条）由本层承担，因此新增页面组件不需要重复声明这些规则。
+ * `.ic` 是 AppIcon 与原生 <svg> 共用的图标 reset，不是迁移残留。
  */
 @layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    min-width: 1440px;
+    overflow: hidden;
+    background: var(--color-surface);
+    color: var(--color-body);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    border: 0;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  ul,
+  ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  p,
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin: 0;
+  }
+
   svg {
     display: block;
   }
@@ -33,11 +89,34 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f2f5fa;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #c8d4e3;
+    border: 2px solid #f2f5fa;
+    border-radius: 8px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #aebdd0;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: #f2f5fa;
+  }
 }
 
 /**
  * 唯一设计 token 源。数值来自迁移前 src/styles 与 SFC scoped 样式的实测值，
- * 迁移期间不允许重新设计视觉值。
+ * 这些数值来自迁移前的页面实测值，改动前先用视觉探针复核。
  */
 @theme static {
   /* 清空 Tailwind 默认设计变量，避免误用默认色板/字号/圆角/阴影。 */
@@ -177,7 +256,7 @@
   --color-review-bar-track: #f0f3f8;
   --color-review-bar-fill: #8fc0ff;
 
-  /* 工作台（Phase 3d：顶部工具条与 14 张卡片）实测色值 */
+  /* 工作台顶部工具条与 14 张卡片实测色值 */
   --color-title-caret: #8b929c;
   --color-date-icon: #7b8491;
   --color-ink-muted: #303133;
@@ -280,7 +359,7 @@
   /* 业务配置内容切换时的旧入场动效（0.16s 淡入+2px 上移）。 */
   --animate-config-fade: configFade 0.16s ease;
 
-  /* 弹窗（Phase 3c：表单/公告/账户弹窗）实测值 */
+  /* 表单/公告/账户弹窗实测值 */
   /* 弹窗标题 15px 与旧页面的行高继承比一致（1.5 -> 22.5px），因此不设 --line-height。 */
   --text-dialog-title: 15px;
   --color-dialog-notice-header: #0e5fe9;

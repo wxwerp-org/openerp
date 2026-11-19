@@ -657,7 +657,7 @@ function handleClosed(): void {
 }
 
 /**
- * 迁移后的几何/颜色类按旧样式实测值显式书写：spacing 为 1px，字号/行高使用 theme.css token。
+ * 几何/颜色类按实测设计值显式书写：spacing 为 1px，字号/行高使用 theme.css token。
  * 定时同步卡片与店铺多选行用 data-testid 作为测试钩子（不承载样式）。
  */
 const focusRing =

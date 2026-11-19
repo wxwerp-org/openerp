@@ -38,9 +38,9 @@
 </template>
 
 <style scoped>
-/* 登录/初始化页允许窄屏：布局组件挂载时解除桌面固定最小宽度。
-   该覆盖必须保持未分层（unlayered），否则会被 legacy 层的 body 规则压回；
-   body 无法用工具类命中，故按布局例外保留在此。 */
+/* 登录/初始化页允许窄屏：布局组件挂载时解除桌面固定最小宽度与滚动限制。
+   body 无法用工具类命中；该覆盖必须保持未分层（unlayered），主题里的 body reset
+   位于 @layer base，未分层声明优先级更高，不会因层顺序被压回。 */
 :global(body:has([data-layout='auth'])) {
   min-width: 0;
   overflow: auto;
