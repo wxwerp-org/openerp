@@ -10,7 +10,6 @@ import HomeView from '../views/HomeView.vue'
 import NewDevView from '../views/NewDevView.vue'
 import NotFoundView from '../views/NotFoundView.vue'
 import OrdersView from '../views/OrdersView.vue'
-import OrderSyncView from '../views/OrderSyncView.vue'
 import OrderSnapshotReportView from '../views/OrderSnapshotReportView.vue'
 import ProductListView from '../views/ProductListView.vue'
 import ShopsView from '../views/ShopsView.vue'
@@ -55,12 +54,6 @@ const router = createRouter({
       meta: { title: '服务连接' },
     },
     { path: '/shops', name: 'shops', component: ShopsView, meta: { title: '授权店铺' } },
-    {
-      path: '/orders/sync',
-      name: 'orders-sync',
-      component: OrderSyncView,
-      meta: { title: '订单同步（临时）' },
-    },
     {
       path: '/:pathMatch(.*)*',
       name: 'not-found',

@@ -1,6 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createMemoryHistory, createRouter } from 'vue-router'
+import { installNativeDialogShim } from './installNativeDialogShim'
 import OrdersView from '../../src/views/OrdersView.vue'
 
 const order = {
@@ -25,7 +25,10 @@ function orderPage(overrides = {}) {
     page: 1,
     pageSize: 20,
     options: {
-      shops: [{ sid: 42, name: '东南亚店铺' }, { sid: 43, name: null }],
+      shops: [
+        { sid: 42, name: '东南亚店铺' },
+        { sid: 43, name: null },
+      ],
       platforms: ['TemuPop'],
       statuses: ['已发货', '待发货'],
     },
@@ -34,11 +37,14 @@ function orderPage(overrides = {}) {
 }
 
 function stubOrders(handler: (query: URLSearchParams) => Response) {
-  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
-    const url = new URL(input, 'http://localhost')
-    expect(url.pathname).toBe('/api/orders')
-    return handler(url.searchParams)
-  }))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) => {
+      const url = new URL(input, 'http://localhost')
+      if (url.pathname !== '/api/orders') return new Response(null, { status: 404 })
+      return handler(url.searchParams)
+    }),
+  )
 }
 
 describe('订单列表', () => {
@@ -59,12 +65,19 @@ describe('订单列表', () => {
     wrapper = mount(OrdersView, { global: { stubs: ['RouterLink'] } })
     await flushPromises()
 
-    expect(queries.map((query) => Object.fromEntries(query))).toEqual([{ page: '1', pageSize: '20' }])
+    expect(queries.map((query) => Object.fromEntries(query))).toEqual([
+      { page: '1', pageSize: '20' },
+    ])
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
     const row = wrapper.get('tbody tr')
     expect(row.findAll('td').map((cell) => cell.text())).toEqual([
-      '东南亚店铺', 'Temu 半托管', 'PO-001已发货PO-002待发货',
-      '2026-11-05 15:00:00', '—', '2', '7',
+      '东南亚店铺',
+      'Temu 半托管',
+      'PO-001已发货PO-002待发货',
+      '2026-11-05 15:00:00',
+      '—',
+      '2',
+      '7',
     ])
     expect(row.text()).not.toContain('internal-key')
     expect(wrapper.text()).toContain('共1条')
@@ -91,8 +104,14 @@ describe('订单列表', () => {
 
     expect(queries).toHaveLength(2)
     expect(queries[1]).toEqual({
-      shopSid: '42', platform: 'TemuPop', status: '待发货', number: 'PO-002',
-      createdFrom: '2026-11-01', createdTo: '2026-11-05', page: '1', pageSize: '20',
+      shopSid: '42',
+      platform: 'TemuPop',
+      status: '待发货',
+      number: 'PO-002',
+      createdFrom: '2026-11-01',
+      createdTo: '2026-11-05',
+      page: '1',
+      pageSize: '20',
     })
     const row = wrapper.get('tbody tr')
     expect(row.findAll('li').map((item) => item.text())).toEqual(['PO-001已发货', 'PO-002待发货'])
@@ -105,11 +124,13 @@ describe('订单列表', () => {
     stubOrders((query) => {
       queries.push(Object.fromEntries(query))
       if (query.get('page') === '2') {
-        return Response.json(orderPage({
-          items: [{ ...order, id: 'another-key', sid: 43, shopName: null }],
-          page: 2,
-          total: 21,
-        }))
+        return Response.json(
+          orderPage({
+            items: [{ ...order, id: 'another-key', sid: 43, shopName: null }],
+            page: 2,
+            total: 21,
+          }),
+        )
       }
       return Response.json(orderPage({ total: 21 }))
     })
@@ -137,31 +158,27 @@ describe('订单列表', () => {
     expect(wrapper.get('tbody tr').text()).toContain('东南亚店铺')
   })
 
-  it('Given 尚未同步任何订单 When 打开订单页 Then 空态提供现有授权店铺入口', async () => {
+  it('Given 尚未同步订单 When 从空态同步 Then 打开具名面板并保留订单公告', async () => {
     stubOrders(() => Response.json(orderPage({ items: [], total: 0 })))
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes: [
-        { path: '/orders', component: OrdersView },
-        { path: '/shops', component: { template: '<div>授权店铺</div>' } },
-      ],
-    })
-    await router.push('/orders')
-    wrapper = mount(OrdersView, { global: { plugins: [router] } })
+    installNativeDialogShim()
+    wrapper = mount(OrdersView, { global: { stubs: ['RouterLink'] } })
     await flushPromises()
 
     expect(wrapper.get('[role="status"]').text()).toContain('暂无同步订单')
-    const syncLink = wrapper.get('a[href="/shops"]')
-    expect(syncLink.text()).toBe('前往授权店铺')
-    await syncLink.trigger('click')
+    await wrapper.get('.order-message button').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/shops')
+
+    const dialog = wrapper.get('dialog[open][aria-labelledby]')
+    expect(dialog.text()).toContain('同步历史订单')
+    expect(wrapper.get('#openNotice').text()).toContain('订单公告')
   })
 
   it('Given 有已同步订单 When 筛选无结果并重置 Then 区分无结果状态且恢复全历史订单', async () => {
-    stubOrders((query) => query.has('number')
-      ? Response.json(orderPage({ items: [], total: 0 }))
-      : Response.json(orderPage()))
+    stubOrders((query) =>
+      query.has('number')
+        ? Response.json(orderPage({ items: [], total: 0 }))
+        : Response.json(orderPage()),
+    )
     wrapper = mount(OrdersView)
     await flushPromises()
 
@@ -183,9 +200,9 @@ describe('订单列表', () => {
 
   it('Given 订单接口暂时失败 When 用户重试 Then 失败状态消失并显示订单', async () => {
     let unavailable = true
-    stubOrders(() => unavailable
-      ? new Response(null, { status: 503 })
-      : Response.json(orderPage()))
+    stubOrders(() =>
+      unavailable ? new Response(null, { status: 503 }) : Response.json(orderPage()),
+    )
     wrapper = mount(OrdersView)
     await flushPromises()
 

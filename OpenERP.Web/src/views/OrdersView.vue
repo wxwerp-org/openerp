@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { RouterLink } from 'vue-router'
 import { apiRequest } from '../account/session'
 import OrderNoticeDialog from '../forms/OrderNoticeDialog.vue'
+import OrderSyncDialog from '../forms/OrderSyncDialog.vue'
+import { useErpHub } from '../composables/useErpHub'
 import { platformLabel } from '../reports/orderSnapshot'
 
 type Order = {
@@ -30,6 +31,11 @@ type OrderPage = {
 }
 
 const noticeOpen = ref(false)
+const syncOpen = ref(false)
+const hub = useErpHub({
+  shopSync: false,
+  onOrdersChanged: () => void load(currentPage.value, true),
+})
 const defaultPageSize = 20
 const currentPage = ref(1)
 const result = ref<OrderPage | null>(null)
@@ -56,11 +62,11 @@ function sourceTime(value: string | null): string {
   return value ? value.slice(0, 19).replace('T', ' ') : '—'
 }
 
-async function load(page = currentPage.value): Promise<void> {
+async function load(page = currentPage.value, keepOrders = false): Promise<void> {
   activeRequest?.abort()
   const request = new AbortController()
   activeRequest = request
-  result.value = null
+  if (!keepOrders) result.value = null
   loadFailed.value = false
   currentPage.value = page
 
@@ -95,8 +101,14 @@ function reset(): void {
   search()
 }
 
-onMounted(load)
-onUnmounted(() => activeRequest?.abort())
+onMounted(() => {
+  void load()
+  void hub.connect()
+})
+onUnmounted(() => {
+  activeRequest?.abort()
+  void hub.disconnect()
+})
 </script>
 
 <template>
@@ -107,6 +119,15 @@ onUnmounted(() => activeRequest?.abort())
         <div class="toolbar-right">
           <button type="button" class="btn-icon" title="刷新" aria-label="刷新" @click="load()">
             <svg aria-hidden="true" class="ic"><use href="#i-refresh" /></svg>
+          </button>
+          <button
+            class="btn"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="order-sync-panel"
+            @click="syncOpen = true"
+          >
+            同步历史订单
           </button>
           <button id="openNotice" class="btn notice-entry" type="button" @click="noticeOpen = true">
             <svg aria-hidden="true" class="ic"><use href="#i-bell" /></svg>
@@ -137,7 +158,9 @@ onUnmounted(() => activeRequest?.abort())
           订单状态
           <select v-model="filters.status" class="control" name="status">
             <option value="">全部状态</option>
-            <option v-for="status in options.statuses" :key="status" :value="status">{{ status }}</option>
+            <option v-for="status in options.statuses" :key="status" :value="status">
+              {{ status }}
+            </option>
           </select>
         </label>
         <label>
@@ -172,7 +195,9 @@ onUnmounted(() => activeRequest?.abort())
           <div class="table-area">
             <div class="table-scroll is-y" tabindex="0" role="region" aria-label="订单列表">
               <table class="grid-table is-wrap order-table">
-                <caption class="visually-hidden">订单列表</caption>
+                <caption class="visually-hidden">
+                  订单列表
+                </caption>
                 <colgroup>
                   <col class="order-shop-column" />
                   <col class="order-platform-column" />
@@ -201,7 +226,12 @@ onUnmounted(() => activeRequest?.abort())
                       <ul v-if="order.platformOrders.length" class="order-platform-list">
                         <li v-for="(platformOrder, index) in order.platformOrders" :key="index">
                           <component
-                            :is="platformOrder.matched && (appliedFilters.number || appliedFilters.status) ? 'mark' : 'span'"
+                            :is="
+                              platformOrder.matched &&
+                              (appliedFilters.number || appliedFilters.status)
+                                ? 'mark'
+                                : 'span'
+                            "
                             class="order-platform-entry"
                           >
                             <span>{{ platformOrder.number || '—' }}</span>
@@ -234,9 +264,16 @@ onUnmounted(() => activeRequest?.abort())
                         : '暂无同步订单'
                   }}
                 </p>
-                <RouterLink v-if="result && !isFiltered" class="order-sync-link" to="/shops">
-                  前往授权店铺
-                </RouterLink>
+                <button
+                  v-if="result && !isFiltered"
+                  class="btn"
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-controls="order-sync-panel"
+                  @click="syncOpen = true"
+                >
+                  同步历史订单
+                </button>
               </div>
             </div>
           </div>
@@ -268,5 +305,6 @@ onUnmounted(() => activeRequest?.abort())
       </div>
     </div>
   </section>
+  <OrderSyncDialog :open="syncOpen" :hub="hub" @close="syncOpen = false" />
   <OrderNoticeDialog :open="noticeOpen" @close="noticeOpen = false" />
 </template>
