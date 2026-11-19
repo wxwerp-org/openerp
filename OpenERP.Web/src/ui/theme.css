@@ -5,15 +5,9 @@
 
 /**
  * 旧全局样式在迁移期统一进入 legacy 层兜底；页面/组件迁移后逐块删除对应规则。
- * 迁移完成后本段 import 与 src/styles 一起删除，只保留 theme token 与 base reset。
+ * 工作台迁移完成后只剩 base reset 待 Phase 4 搬入本文件，届时删除该 import 与 src/styles。
  */
 @import '../styles/base.css' layer(legacy);
-@import '../styles/layout.css' layer(legacy);
-@import '../styles/controls.css' layer(legacy);
-@import '../styles/dashboard.css' layer(legacy);
-@import '../styles/lists.css' layer(legacy);
-@import '../styles/responsive.css' layer(legacy);
-@import '../styles/utilities.css' layer(legacy);
 
 /* 旧报表页在窗口高度 ≤820px 时收紧工具条与面板密度；迁移期用变体保留该行为。 */
 @custom-variant short (@media (max-height: 820px));
@@ -183,6 +177,32 @@
   --color-review-bar-track: #f0f3f8;
   --color-review-bar-fill: #8fc0ff;
 
+  /* 工作台（Phase 3d：顶部工具条与 14 张卡片）实测色值 */
+  --color-title-caret: #8b929c;
+  --color-date-icon: #7b8491;
+  --color-ink-muted: #303133;
+  /* 时间胶囊与物流激活卡边框共用同一实测色。 */
+  --color-hover-pill: #eaf0f8;
+  --color-divider: rgba(0, 0, 0, 0.12);
+  --color-init-step-hover: #ebf2fe;
+  --color-init-must-bg: #fff0f0;
+  --color-init-must-text: #e44242;
+  --color-init-more: #606873;
+  --color-todo-hover-border: #dce5f2;
+  --color-todo-warn: #e98c00;
+  --color-todo-warn-bg: #fff7e8;
+  --color-week-active-bg: #f0f5ff;
+  --color-trend-divider: #f2f4f7;
+  --color-legend-alt: #7bb3ff;
+  --color-chart-order-bar: #bfd8ff;
+  --color-thumb-icon: #728197;
+  --color-warning-deep: #c67900;
+  --color-urgency-high-bg: #fff8ec;
+  --color-urgency-normal-bg: #f2faf4;
+  --color-stock-track: #eaf1fb;
+  --color-stock-segment-4: #d8e7ff;
+  --color-black: #000;
+
   --color-mask: rgba(16, 24, 40, 0.45);
   --color-mask-strong: rgba(11, 16, 25, 0.38);
   --color-mask-notice: rgba(15, 23, 42, 0.52);
@@ -226,6 +246,7 @@
   --leading-32: 32px;
   --leading-56: 56px;
 
+  --radius-1: 1px;
   --radius-2: 2px;
   --radius-3: 3px;
   --radius-4: 4px;
@@ -245,6 +266,9 @@
   --shadow-dialog-lg: 0 18px 50px rgba(11, 16, 25, 0.24);
   --shadow-notice: 0 4px 24px rgba(0, 0, 0, 0.18);
   --shadow-toast: 0 4px 14px rgba(0, 0, 0, 0.18);
+  /* 工作台图表提示框滤镜（旧 drop-shadow(0 2px 4px rgba(16,24,40,.1))）。 */
+  --drop-shadow-chart-tooltip: 0 2px 4px rgba(16, 24, 40, 0.1);
+
   --shadow-layer: 0 0 0 100vmax var(--color-page), 0 4px 18px rgba(30, 48, 75, 0.08);
 
   /* 业务配置页（settings 三栏）实测色值 */

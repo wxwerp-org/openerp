@@ -6,6 +6,8 @@ const props = withDefaults(
   defineProps<{
     as?: 'button' | 'summary'
     variant?: 'default' | 'date-range'
+    /** md = 30px（页面工具条），lg = 32px（工作台顶部筛选条）。 */
+    size?: 'md' | 'lg'
     muted?: boolean
     caret?: boolean
     icon?: string
@@ -13,6 +15,7 @@ const props = withDefaults(
   {
     as: 'button',
     variant: 'default',
+    size: 'md',
     muted: false,
     caret: true,
     icon: undefined,
@@ -26,8 +29,13 @@ const iconName = computed(
 )
 const iconSize = computed(() => (isDateRange.value ? 14 : 10))
 const iconClass = computed(() => (isDateRange.value ? 'text-placeholder' : 'text-caret'))
+const sizeClasses: Record<'md' | 'lg', string> = {
+  md: 'h-[var(--control-h)] text-12/28',
+  lg: 'h-[var(--control-h-lg)] text-12/30',
+}
 const classes = computed(() => [
-  'inline-flex h-[var(--control-h)] shrink-0 items-center rounded-4 border border-input bg-white px-10 text-12/28 whitespace-nowrap hover:border-input-hover',
+  'inline-flex shrink-0 items-center rounded-4 border border-input bg-white px-10 whitespace-nowrap hover:border-input-hover',
+  sizeClasses[props.size],
   isDateRange.value ? 'gap-8' : 'gap-6',
   mutedState.value ? 'text-placeholder' : 'text-ink',
 ])

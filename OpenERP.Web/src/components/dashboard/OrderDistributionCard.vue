@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AppCard from '../../ui/AppCard.vue'
+import AppIcon from '../../ui/AppIcon.vue'
 import AppSegmented from '../../ui/AppSegmented.vue'
 import {
   distributionSegments,
@@ -34,68 +36,92 @@ const period = ref(props.periods[2] ?? props.periods[0] ?? '')
 </script>
 
 <template>
-  <section class="card span-6 order-dist-card">
-    <div class="order-dist-head">
-      <div class="card-title">
-        订单分布<svg class="ic title-caret" aria-hidden="true"><use href="#i-chev-right" /></svg>
+  <AppCard data-testid="dashboard-card-order-distribution" class="col-span-6 flex h-400 flex-col">
+    <div class="flex h-54 flex-none items-start justify-between gap-8 px-16 pt-16">
+      <div class="flex items-center gap-4 text-14/22 font-bold whitespace-nowrap text-ink">
+        订单分布<AppIcon
+          name="i-chev-right"
+          :size="12"
+          class="text-title-caret [stroke-width:1.8]"
+        />
       </div>
-      <div class="order-dist-head-right">
+      <div class="flex items-center gap-8">
         <AppSegmented v-model="orderType" :options="types" aria-label="订单类型" />
         <AppSegmented v-model="period" :options="periods" aria-label="订单周期" />
       </div>
     </div>
-    <div class="order-dist-body">
-      <div class="donut-wrap">
+    <div class="flex min-h-0 flex-1 gap-14 px-16 pt-2 pb-16">
+      <div class="relative flex w-218 flex-none flex-col items-center justify-center">
         <svg
-          class="donut-chart"
+          data-testid="order-distribution-chart"
+          class="block size-166"
           viewBox="0 0 166 166"
           role="img"
           aria-label="各站点订单分布环形图"
           aria-describedby="order-distribution-description"
         >
-          <circle cx="83" cy="83" r="63" fill="none" stroke="#EFF4FB" stroke-width="17"></circle>
+          <circle
+            cx="83"
+            cy="83"
+            r="63"
+            class="fill-none stroke-donut-track [stroke-width:17]"
+          ></circle>
           <circle
             v-for="segment in segments"
             :key="segment.name"
             cx="83"
             cy="83"
             r="63"
-            fill="none"
+            class="fill-none [stroke-width:17]"
             :stroke="segment.color"
-            stroke-width="17"
             pathLength="100"
             :stroke-dasharray="`${segment.percentage} ${100 - segment.percentage}`"
             :stroke-dashoffset="segment.offset"
             transform="rotate(-90 83 83)"
           ></circle>
         </svg>
-        <div class="donut-center">
-          <strong class="tnum">{{ total }}</strong
-          ><span>总订单量</span>
+        <div
+          class="pointer-events-none absolute top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-center"
+        >
+          <strong class="block text-20/26 font-medium text-ink tabular-nums">{{ total }}</strong>
+          <span class="mt-1 block text-11/15 text-muted">总订单量</span>
         </div>
       </div>
-      <div id="order-distribution-description" class="dist-list">
-        <div v-for="segment in segments" :key="segment.name" class="dist-row">
-          <div class="dist-row-top">
+      <div
+        id="order-distribution-description"
+        class="flex min-w-0 flex-1 flex-col justify-center gap-12 py-4"
+      >
+        <div v-for="segment in segments" :key="segment.name" class="flex flex-col gap-5">
+          <div class="flex justify-between gap-8 text-12 text-body">
             <span
-              ><span class="legend-color" :style="{ background: segment.color }"></span>
+              ><span
+                class="inline-block size-7 flex-none rounded-2 bg-primary"
+                :style="{ background: segment.color }"
+              ></span>
               {{ segment.name }}</span
-            ><b>{{ segment.percentage }}% · {{ segment.count }}</b>
+            ><b class="font-medium text-ink tabular-nums"
+              >{{ segment.percentage }}% · {{ segment.count }}</b
+            >
           </div>
-          <div class="dist-bar">
-            <span :style="{ width: `${segment.percentage}%`, background: segment.color }"></span>
+          <div class="h-6 overflow-hidden rounded-3 bg-progress-track">
+            <span
+              class="block h-full rounded-3 bg-primary"
+              :style="{ width: `${segment.percentage}%`, background: segment.color }"
+            ></span>
           </div>
         </div>
-        <div class="dist-footer">
+        <div
+          class="mt-4 flex items-center justify-between border-t border-line-soft pt-10 text-11/[16.5px] text-muted"
+        >
           <span
-            >退货订单 <b>{{ returnCount }}</b> 笔</span
+            >退货订单 <b class="text-12 font-medium text-ink">{{ returnCount }}</b> 笔</span
           ><span
-            >退货率 <b>{{ returnRate }}</b></span
+            >退货率 <b class="text-12 font-medium text-ink">{{ returnRate }}</b></span
           ><span
-            >平均客单价 <b>{{ averageOrderValue }}</b></span
+            >平均客单价 <b class="text-12 font-medium text-ink">{{ averageOrderValue }}</b></span
           >
         </div>
       </div>
     </div>
-  </section>
+  </AppCard>
 </template>

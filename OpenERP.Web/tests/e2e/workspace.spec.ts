@@ -159,10 +159,10 @@ test('Given 原型工作台 When 打开首页并进入用户管理 Then 全部�
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.goto('/')
 
-  await expect(page.locator('.page-dashboard')).toBeVisible()
-  await expect(page.locator('.rank-table tbody tr')).toHaveCount(5)
-  await expect(page.locator('.trend-chart')).toBeVisible()
-  await expect(page.locator('.donut-chart')).toBeVisible()
+  await expect(page.locator('[data-testid="page-dashboard"]')).toBeVisible()
+  await expect(page.locator('[data-testid="ranking-table"] tbody tr')).toHaveCount(5)
+  await expect(page.locator('[data-testid="trend-chart"]')).toBeVisible()
+  await expect(page.locator('[data-testid="order-distribution-chart"]')).toBeVisible()
 
   await page.locator('[data-group="settings"] button[aria-expanded]').click()
   await page.locator('[data-nav-page="users"]').click()

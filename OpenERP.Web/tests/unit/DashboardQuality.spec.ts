@@ -92,9 +92,9 @@ describe('工作台数据控件与无障碍质量', () => {
 
   it('Given 复杂图表 When 辅助技术读取 Then 图表具有名称和可见数据描述', () => {
     for (const [component, selector] of [
-      [PerformanceTrendCard, '.trend-chart'],
-      [OrderDistributionCard, '.donut-chart'],
-      [ProfitCard, '.profit-chart svg'],
+      [PerformanceTrendCard, '[data-testid="trend-chart"]'],
+      [OrderDistributionCard, '[data-testid="order-distribution-chart"]'],
+      [ProfitCard, '[data-testid="profit-chart"]'],
     ] as const) {
       const wrapper = mount(component)
       const chart = wrapper.get(selector)
@@ -108,8 +108,8 @@ describe('工作台数据控件与无障碍质量', () => {
 
   it('Given 工作台数据表 When 键盘和辅助技术浏览 Then 表格有标题和可聚焦滚动区域', () => {
     for (const [component, selector] of [
-      [RankingCard, '.rank-scroll'],
-      [InventoryOverviewCard, '.inventory-table-wrap'],
+      [RankingCard, '[data-testid="ranking-scroll"]'],
+      [InventoryOverviewCard, '[data-testid="inventory-scroll"]'],
     ] as const) {
       const wrapper = mount(component)
       const region = wrapper.get(selector)

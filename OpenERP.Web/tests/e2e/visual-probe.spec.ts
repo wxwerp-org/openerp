@@ -225,18 +225,18 @@ const scenarios: Scenario[] = [
   {
     name: 'dashboard-1440',
     path: '/',
-    waitFor: async (page) => page.locator('.dash-grid .card').first().waitFor(),
+    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
   },
   {
     name: 'dashboard-1920',
     path: '/',
     ...wide,
-    waitFor: async (page) => page.locator('.dash-grid .card').first().waitFor(),
+    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
   },
   {
     name: 'dashboard-sidebar-collapsed-1440',
     path: '/',
-    waitFor: async (page) => page.locator('.dash-grid .card').first().waitFor(),
+    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
     afterGoto: async (page) => {
       await page.locator('[data-testid="collapse-nav"]').click()
       await page.locator('[data-testid="sidebar"][data-rail="true"]').waitFor()
@@ -534,7 +534,7 @@ const scenarios: Scenario[] = [
   {
     name: 'account-menu-1440',
     path: '/',
-    waitFor: async (page) => page.locator('.dash-grid .card').first().waitFor(),
+    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
     afterGoto: async (page) => {
       await page.locator('[data-testid="account-button"]').click()
       await page.locator('#accountMenu').waitFor({ state: 'visible' })
@@ -543,7 +543,7 @@ const scenarios: Scenario[] = [
   {
     name: 'profile-dialog-1440',
     path: '/',
-    waitFor: async (page) => page.locator('.dash-grid .card').first().waitFor(),
+    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
     afterGoto: async (page) => {
       await page.locator('[data-testid="account-button"]').click()
       await page.locator('[data-account-action="profile"]').click()
@@ -553,7 +553,7 @@ const scenarios: Scenario[] = [
   {
     name: 'password-dialog-1440',
     path: '/',
-    waitFor: async (page) => page.locator('.dash-grid .card').first().waitFor(),
+    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
     afterGoto: async (page) => {
       await page.locator('[data-testid="account-button"]').click()
       await page.locator('[data-account-action="password"]').click()

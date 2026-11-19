@@ -25,9 +25,9 @@ describe('工作台组件', () => {
       expect(wrapper.text()).toContain(title)
     }
 
-    expect(wrapper.find('.trend-chart').exists()).toBe(true)
-    expect(wrapper.find('.donut-chart').exists()).toBe(true)
-    expect(wrapper.findAll('.rank-table tbody tr')).toHaveLength(5)
+    expect(wrapper.find('[data-testid="trend-chart"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="order-distribution-chart"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="ranking-table"] tbody tr')).toHaveLength(5)
     expect(wrapper.text()).toContain('$24,860.00')
   })
 })
