@@ -106,6 +106,12 @@
   --color-tag-gray-bg: #f7f8fa;
   --color-tag-gray-border: #e1e4e9;
   --color-status-off-border: #e3e6eb;
+  --color-status-unknown: #606a78;
+  --color-danger-deep: #b42318;
+  /* 店铺详情里的失效提示是旧页面自定的琥珀强调色，与通用 tag amber 不同。 */
+  --color-notice-amber-text: #8a5a00;
+  --color-notice-amber-bg: #fff8ea;
+  --color-notice-amber-border: #f5d9a8;
 
   --color-nav-hover: #eff1f4;
   --color-nav-active: #eaf2ff;
@@ -156,6 +162,8 @@
   --color-row-soft-alt: #f7f9fd;
   --color-check-border: #c3cbd8;
   --color-num-muted: #b0b7c3;
+  --color-shop-card-hover-border: #b7d1ff;
+  --color-shop-card-active: #f4f8ff;
 
   --color-chart-grid: #ecf0f5;
   --color-chart-axis: #a6abb4;
@@ -229,6 +237,7 @@
   --shadow-header: 0 4px 14px rgba(177, 199, 226, 0.2);
   --shadow-card-hover: 0 4px 8px rgba(81, 133, 192, 0.11);
   --shadow-card-hover-lg: 0 6px 12px rgba(81, 133, 192, 0.09);
+  --shadow-shop-card-hover: 0 4px 10px rgba(81, 133, 192, 0.1);
   --shadow-stat: 0 4px 10px rgba(81, 133, 192, 0.11);
   --shadow-menu: 0 2px 8px rgba(16, 24, 40, 0.1);
   --shadow-menu-lg: 0 4px 12px rgba(16, 24, 40, 0.12);

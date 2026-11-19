@@ -1,6 +1,11 @@
 import { expect, test, type Page } from '@playwright/test'
 import { enterWorkspace } from './authentication'
 
+const shopsTable = (page: Page) => page.getByRole('table', { name: '授权店铺列表' })
+const shopRows = (page: Page) => shopsTable(page).locator('tbody tr')
+const shopPagerCurrent = (page: Page) =>
+  page.getByRole('navigation', { name: '授权店铺分页' }).locator('[aria-current="page"]')
+
 test.beforeEach(async ({ page }) => {
   await enterWorkspace(page)
   await mockHub(page)
@@ -232,28 +237,28 @@ test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标
   await mockShops(page)
   await page.goto('/shops')
 
-  const shopsHeader = page.locator('.shops-head')
+  const shopsHeader = page.locator('[data-testid="shops-head"]')
   await expect(shopsHeader).toHaveCSS('display', 'flex')
   await expect(shopsHeader).toHaveCSS('height', '62px')
   await expect(shopsHeader).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(shopsHeader).toHaveCSS('box-shadow', 'none')
 
-  const shopsCard = page.locator('.page-shops .shops-card')
+  const shopsCard = page.locator('[data-testid="shops-card"]')
   await expect(shopsCard).toBeVisible()
   await expect(shopsCard).toHaveCSS('border-top-width', '1px')
   await expect(shopsCard).toHaveCSS('border-top-left-radius', '6px')
   await expect(shopsCard).toHaveCSS('border-bottom-left-radius', '6px')
-  await expect(page.locator('.page-shops .grid-table th').first()).toHaveCSS(
+  await expect(shopsTable(page).getByRole('columnheader').first()).toHaveCSS(
     'background-color',
     'rgb(242, 245, 250)',
   )
 
-  const shopsTitle = page.locator('.page-shops h1')
+  const shopsTitle = page.getByRole('heading', { name: '授权店铺' })
   await expect(shopsTitle).toHaveCSS('font-size', '20px')
   await expect(shopsTitle).toHaveCSS('font-weight', '600')
-  await expect(page.locator('.page-shops .tag').first()).toHaveCSS('height', '18px')
+  await expect(page.locator('[data-testid="upstream-tag"]')).toHaveCSS('height', '18px')
   await expect(page.getByRole('button', { name: '刷新本地数据' })).toBeVisible()
-  await expect(page.locator('.shop-summary-card')).toHaveCount(4)
+  await expect(page.locator('[data-testid="shop-summary-card"]')).toHaveCount(4)
   await expect(page.locator('[class^="el-"], [class*=" el-"]')).toHaveCount(0)
 
   await page.route('**/api/ping', (route) => route.fulfill({ json: { message: '连接正常' } }))
@@ -299,7 +304,7 @@ test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标
   expect(hasWideOverflow).toBe(false)
 
   await page.goto('/shops')
-  await expect(page.locator('.page-shops .grid-table')).toBeVisible()
+  await expect(shopsTable(page)).toBeVisible()
   const hasWideShopsOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   )
@@ -316,7 +321,7 @@ test('Given 独立服务路由 When 从设置侧栏导航 Then 授权店铺和�
 
   await page.locator('[data-nav-page="shops"]').click()
   await expect(page).toHaveURL(/\/shops$/)
-  await expect(page.locator('.page-shops .grid-table')).toBeVisible()
+  await expect(shopsTable(page)).toBeVisible()
   await expect(page.locator('[data-nav-page="shops"]').first()).toHaveAttribute(
     'aria-current',
     'page',
@@ -340,11 +345,11 @@ test('Given 一页 20 家店铺 When 视口高度不足 Then 分页栏固定可�
   await mockShops(page, 20)
   await page.goto('/shops')
 
-  await expect(page.locator('.page-shops tbody tr')).toHaveCount(20)
-  const pagination = page.locator('.table-pagination')
+  await expect(shopRows(page)).toHaveCount(20)
+  const pagination = page.getByRole('navigation', { name: '授权店铺分页' })
   await expect(pagination).toBeInViewport()
 
-  const scroll = page.locator('.table-scroll')
+  const scroll = page.getByRole('region', { name: '授权店铺表格' })
   const metrics = await scroll.evaluate((element) => ({
     scrollHeight: element.scrollHeight,
     clientHeight: element.clientHeight,
@@ -353,7 +358,7 @@ test('Given 一页 20 家店铺 When 视口高度不足 Then 分页栏固定可�
 
   await scroll.hover()
   await page.mouse.wheel(0, 4000)
-  await expect(page.locator('.page-shops tbody tr').last()).toBeInViewport()
+  await expect(shopRows(page).last()).toBeInViewport()
   await expect(pagination).toBeInViewport()
 })
 
@@ -364,35 +369,35 @@ test('Given 多页店铺 When 使用完整分页器 Then 页码、每页条数�
   await mockPagedShops(page, 45)
   await page.goto('/shops')
 
-  await expect(page.locator('.page-shops tbody tr')).toHaveCount(20)
-  await expect(page.locator('.page-num')).toHaveText('1')
-  await expect(page.locator('.page-shops tbody tr').first()).toContainText('分页店铺 1')
+  await expect(shopRows(page)).toHaveCount(20)
+  await expect(shopPagerCurrent(page)).toHaveText('1')
+  await expect(shopRows(page).first()).toContainText('分页店铺 1')
 
   await page.getByRole('button', { name: '下一页' }).click()
-  await expect(page.locator('.page-num')).toHaveText('2')
-  await expect(page.locator('.page-shops tbody tr').first()).toContainText('分页店铺 21')
+  await expect(shopPagerCurrent(page)).toHaveText('2')
+  await expect(shopRows(page).first()).toContainText('分页店铺 21')
 
-  await page.locator('.page-size select').selectOption('50')
-  await expect(page.locator('.page-num')).toHaveText('1')
-  await expect(page.locator('.page-shops tbody tr')).toHaveCount(45)
+  await page.getByLabel('每页条数').selectOption('50')
+  await expect(shopPagerCurrent(page)).toHaveText('1')
+  await expect(shopRows(page)).toHaveCount(45)
 
-  await page.locator('.page-size select').selectOption('20')
-  await expect(page.locator('.page-shops tbody tr')).toHaveCount(20)
+  await page.getByLabel('每页条数').selectOption('20')
+  await expect(shopRows(page)).toHaveCount(20)
 
-  const jump = page.locator('.page-jump input')
+  const jump = page.getByLabel('前往页码')
   await jump.fill('9')
   await jump.press('Enter')
-  await expect(page.locator('.page-num')).toHaveText('3')
-  await expect(page.locator('.page-shops tbody tr').first()).toContainText('分页店铺 41')
+  await expect(shopPagerCurrent(page)).toHaveText('3')
+  await expect(shopRows(page).first()).toContainText('分页店铺 41')
 
   await jump.fill('0')
   await jump.press('Enter')
-  await expect(page.locator('.page-num')).toHaveText('1')
-  await expect(page.locator('.page-shops tbody tr').first()).toContainText('分页店铺 1')
+  await expect(shopPagerCurrent(page)).toHaveText('1')
+  await expect(shopRows(page).first()).toContainText('分页店铺 1')
 
   await jump.fill('99')
   await jump.press('Enter')
-  await expect(page.locator('.page-num')).toHaveText('3')
+  await expect(shopPagerCurrent(page)).toHaveText('3')
 })
 
 test('Given 店铺列表返回长错误详情 When 加载失败 Then 提示条完整换行且页面无横向溢出', async ({
@@ -413,7 +418,7 @@ test('Given 店铺列表返回长错误详情 When 加载失败 Then 提示条�
   )
   await page.goto('/shops')
 
-  const notice = page.locator('.page-shops .notice.red')
+  const notice = page.getByRole('alert').first()
   await expect(notice).toBeVisible()
   await expect(notice).toHaveAttribute('role', 'alert')
   await expect(notice).toContainText(longDetail)

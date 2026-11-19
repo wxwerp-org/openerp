@@ -6,8 +6,8 @@ const props = withDefaults(
     scope?: 'col' | 'row'
     numeric?: boolean
     sticky?: 'none' | 'left' | 'right'
-    /** 订单卡片表头沿用旧 `--page-soft` 底色。 */
-    surface?: 'white' | 'page-soft'
+    /** 订单卡片表头沿用旧 `--page-soft` 底色；店铺页表头沿用旧 `--page` 底色。 */
+    surface?: 'white' | 'page-soft' | 'page'
   }>(),
   {
     scope: 'col',
@@ -19,7 +19,11 @@ const props = withDefaults(
 
 const classes = computed(() => [
   'sticky top-0 h-40 overflow-hidden border-b border-b-line text-12/18 font-semibold text-ellipsis whitespace-nowrap text-ink',
-  props.surface === 'page-soft' ? 'bg-page-soft' : 'bg-white',
+  props.surface === 'page-soft'
+    ? 'bg-page-soft'
+    : props.surface === 'page'
+      ? 'bg-page'
+      : 'bg-white',
   props.sticky === 'none' ? 'z-[3]' : 'z-[6]',
   props.numeric ? 'text-right tabular-nums' : 'text-left',
   props.sticky === 'left'

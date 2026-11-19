@@ -16,7 +16,11 @@ const props = withDefaults(
   },
 )
 
-const toneClass = computed(() => (props.tone === 'toolbar' ? 'text-toolbar-icon' : 'text-body'))
+const toneClass = computed(() =>
+  props.tone === 'toolbar'
+    ? 'text-toolbar-icon disabled:text-toolbar-icon'
+    : 'text-body disabled:text-btn-disabled-text',
+)
 </script>
 
 <template>
@@ -25,7 +29,7 @@ const toneClass = computed(() => (props.tone === 'toolbar' ? 'text-toolbar-icon'
     :disabled="disabled"
     :aria-label="label"
     :title="label"
-    class="inline-flex h-[var(--control-h)] w-[var(--control-h)] shrink-0 items-center justify-center rounded-4 bg-transparent hover:bg-icon-hover hover:text-ink disabled:cursor-default disabled:text-btn-disabled-text disabled:hover:bg-transparent disabled:hover:text-btn-disabled-text [&_svg]:size-16"
+    class="inline-flex h-[var(--control-h)] w-[var(--control-h)] shrink-0 items-center justify-center rounded-4 bg-transparent hover:bg-icon-hover hover:text-ink disabled:cursor-default disabled:hover:bg-transparent [&_svg]:size-16"
     :class="toneClass"
   >
     <slot />

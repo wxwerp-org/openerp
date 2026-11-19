@@ -11,7 +11,7 @@ const props = withDefaults(
     width?: number | string
     minWidth?: number
     /** 旧列表页外壳（下承圆角）与订单卡片外壳（整块圆角、内缩一圈）两种几何。 */
-    variant?: 'list' | 'card'
+    variant?: 'list' | 'card' | 'plain'
     /** 订单卡片内的聚焦环落在滚动区上：2px 主色、内缩 2px。 */
     focusRing?: boolean
   }>(),
@@ -31,6 +31,8 @@ provide(
 )
 
 const isCard = computed(() => props.variant === 'card')
+/** 店铺页把边框/圆角放在外层卡片上，表格本身只负责滚动区域与分页槽位。 */
+const isPlain = computed(() => props.variant === 'plain')
 
 const tableStyle = computed(() => {
   const style: { width?: string; minWidth?: string } = {}
@@ -42,10 +44,15 @@ const tableStyle = computed(() => {
 </script>
 
 <template>
-  <div class="min-h-0 flex-1 bg-white" :class="isCard ? 'px-16 pt-12 pb-16' : 'px-12 pb-18'">
+  <div
+    class="min-h-0 flex-1 bg-white"
+    :class="isCard ? 'px-16 pt-12 pb-16' : isPlain ? '' : 'px-12 pb-18'"
+  >
     <div
-      class="flex h-full min-h-0 flex-col overflow-hidden border border-line bg-white"
-      :class="isCard ? 'rounded-4' : 'rounded-b-4'"
+      class="flex h-full min-h-0 flex-col overflow-hidden bg-white"
+      :class="
+        isCard ? 'rounded-4 border border-line' : isPlain ? '' : 'rounded-b-4 border border-line'
+      "
     >
       <div class="relative min-h-0 flex-1 overflow-hidden bg-white">
         <div

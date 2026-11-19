@@ -11,12 +11,15 @@ const props = withDefaults(
     showPageList?: boolean
     disabled?: boolean
     as?: 'nav' | 'div' | 'footer'
+    /** 左右内边距档：列表页默认 4px，店铺页旧样式为 12px。 */
+    paddingX?: 4 | 12
   }>(),
   {
     label: '分页',
     showPageList: true,
     disabled: false,
     as: 'nav',
+    paddingX: 4,
   },
 )
 
@@ -44,7 +47,8 @@ function go(page: number): void {
     :is="as"
     :aria-label="as === 'nav' ? label : undefined"
     :data-disabled="String(disabled)"
-    class="flex h-[var(--control-h)] flex-none items-center justify-end gap-8 bg-white px-4 text-12/18 text-body whitespace-nowrap"
+    class="flex h-[var(--control-h)] flex-none items-center justify-end gap-8 bg-white text-12/18 text-body whitespace-nowrap"
+    :class="paddingX === 12 ? 'px-12' : 'px-4'"
   >
     <slot name="prefix" />
     <button

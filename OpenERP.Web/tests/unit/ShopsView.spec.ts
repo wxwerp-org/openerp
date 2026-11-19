@@ -71,12 +71,14 @@ describe('授权店铺页', () => {
     wrapper = await mountView()
 
     expect(hubMock.connect).toHaveBeenCalled()
-    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(2)
-    expect(wrapper.get('.shop-summary-card.is-static').text()).toContain('15 分钟前')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(2)
+    expect(wrapper.get('[data-testid="shop-summary-card"][data-static="true"]').text()).toContain(
+      '15 分钟前',
+    )
     expect(wrapper.text()).toContain('有效')
     expect(wrapper.text()).toContain('无效')
     expect(wrapper.text()).toContain('共 2 家店铺')
-    expect(wrapper.findAll('.shop-summary-card')).toHaveLength(4)
+    expect(wrapper.findAll('[data-testid="shop-summary-card"]')).toHaveLength(4)
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/erp/shops?'))).toBe(true)
   })
 
@@ -96,7 +98,7 @@ describe('授权店铺页', () => {
     expect(wrapper.get('[aria-label^="无效"]').attributes('aria-pressed')).toBe('true')
     expect(wrapper.get('[aria-label^="有效"]').text()).toContain('1')
     expect(wrapper.get('[aria-label^="无效"]').text()).toContain('1')
-    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(1)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
 
     await wrapper.get('[aria-label^="无效"]').trigger('click')
     await flushPromises()
@@ -126,20 +128,20 @@ describe('授权店铺页', () => {
     installFetch(defaultHandler(items, { valid: 45, invalid: 0, unknown: 0, lastSyncedAt: null }))
     wrapper = await mountView()
 
-    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(20)
-    expect(wrapper.get('.page-num').text()).toBe('1')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(20)
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('1')
 
     await wrapper.get('button[aria-label="下一页"]').trigger('click')
     await flushPromises()
     expect(lastShopsUrl()).toContain('page=2')
-    expect(wrapper.get('.page-num').text()).toBe('2')
-    expect(wrapper.findAll('.shops-table tbody tr')[0].text()).toContain('分页店铺 21')
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('2')
+    expect(wrapper.findAll('tbody tr')[0].text()).toContain('分页店铺 21')
 
     await wrapper.get('select[aria-label="每页条数"]').setValue('50')
     await flushPromises()
     expect(lastShopsUrl()).toContain('pageSize=50')
     expect(lastShopsUrl()).toContain('page=1')
-    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(45)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(45)
   })
 
   it('Given 点击详情 When 打开弹窗 Then 展示可用字段且深链在新标签打开', async () => {
@@ -214,7 +216,7 @@ describe('授权店铺页', () => {
     installFetch(defaultHandler([shop()], { valid: 1, invalid: 0, unknown: 0, lastSyncedAt: null }))
     wrapper = await mountView()
 
-    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(1)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
     expect(wrapper.text()).toContain('实时连接已断开')
     expect(firstButton(wrapper, '立即同步').attributes('disabled')).toBeDefined()
   })
@@ -232,7 +234,7 @@ describe('授权店铺页', () => {
     wrapper = await mountView()
 
     expect(wrapper.text()).toContain('尚未配置私有 ERP AccessToken')
-    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(1)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
     expect(firstButton(wrapper, '立即同步').attributes('disabled')).toBeDefined()
   })
 
@@ -253,7 +255,7 @@ describe('授权店铺页', () => {
     })
     wrapper = await mountView()
 
-    const notice = wrapper.get('.notice.red')
+    const notice = wrapper.get('[role="alert"]')
     expect(notice.text()).toContain('数据库连接失败。')
     expect(firstButton(wrapper, '重试')).toBeTruthy()
   })
@@ -348,7 +350,7 @@ describe('授权店铺页', () => {
     wrapper = await mountView()
 
     expect(calls).toBe(2)
-    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(1)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
   })
 })
 
