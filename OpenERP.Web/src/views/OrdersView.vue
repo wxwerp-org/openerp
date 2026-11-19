@@ -1,182 +1,269 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import { apiRequest } from '../account/session'
 import OrderNoticeDialog from '../forms/OrderNoticeDialog.vue'
-import SegmentedControl from '../components/controls/SegmentedControl.vue'
+import { platformLabel } from '../reports/orderSnapshot'
+
+type Order = {
+  id: string
+  sid: number
+  shopName: string | null
+  platform: string
+  platformOrders: { number: string; status: string; matched: boolean }[]
+  created: string | null
+  dispatched: string | null
+  lineCount: number
+  itemQuantity: number
+}
+
+type OrderPage = {
+  items: Order[]
+  total: number
+  page: number
+  pageSize: number
+  options: {
+    shops: { sid: number; name: string | null }[]
+    platforms: string[]
+    statuses: string[]
+  }
+}
 
 const noticeOpen = ref(false)
-const orderView = ref('销售订单')
+const defaultPageSize = 20
+const currentPage = ref(1)
+const result = ref<OrderPage | null>(null)
+const loadFailed = ref(false)
+const options = ref<OrderPage['options']>({ shops: [], platforms: [], statuses: [] })
+const emptyFilters = {
+  shopSid: '',
+  platform: '',
+  status: '',
+  number: '',
+  createdFrom: '',
+  createdTo: '',
+}
+const filters = reactive({ ...emptyFilters })
+const appliedFilters = ref({ ...filters })
+const isFiltered = computed(() => Object.values(appliedFilters.value).some(Boolean))
+const pageCount = computed(() =>
+  result.value ? Math.max(1, Math.ceil(result.value.total / result.value.pageSize)) : 1,
+)
+let activeRequest: AbortController | undefined
+
+function sourceTime(value: string | null): string {
+  // 保留来源记录的日历日期和墙钟时间，与创建日期筛选的口径一致。
+  return value ? value.slice(0, 19).replace('T', ' ') : '—'
+}
+
+async function load(page = currentPage.value): Promise<void> {
+  activeRequest?.abort()
+  const request = new AbortController()
+  activeRequest = request
+  result.value = null
+  loadFailed.value = false
+  currentPage.value = page
+
+  const query = new URLSearchParams({ page: String(page), pageSize: String(defaultPageSize) })
+  for (const [name, value] of Object.entries(appliedFilters.value)) {
+    if (value) query.set(name, value)
+  }
+
+  try {
+    const response = await apiRequest(`/api/orders?${query}`, {
+      signal: request.signal,
+    })
+    if (!response.ok) throw new Error()
+    const data: OrderPage = await response.json()
+    if (!request.signal.aborted) {
+      result.value = data
+      options.value = data.options
+      currentPage.value = data.page
+    }
+  } catch {
+    if (!request.signal.aborted) loadFailed.value = true
+  }
+}
+
+function search(): void {
+  appliedFilters.value = { ...filters, number: filters.number.trim() }
+  void load(1)
+}
+
+function reset(): void {
+  Object.assign(filters, emptyFilters)
+  search()
+}
+
+onMounted(load)
+onUnmounted(() => activeRequest?.abort())
 </script>
 
 <template>
   <section id="page-orders" class="page page-orders active">
-    <div class="subtabs-bar">
-      <SegmentedControl
-        v-model="orderView"
-        group-class="subtabs-bar"
-        button-class="subtab"
-        :options="['销售订单', '多渠道订单', '推广订单']"
-        aria-label="订单视图"
-      />
-      <button id="openNotice" class="notice-entry" type="button" @click="noticeOpen = true">
-        <svg aria-hidden="true" class="ic"><use href="#i-bell" /></svg>订单公告
-      </button>
-    </div>
-    <h1 class="visually-hidden">订单列表</h1>
-    <div class="list-searchbar order-filter">
-      <button class="control placeholder" type="button">
-        Listing负责人<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-      </button>
-      <button class="control placeholder" type="button">
-        全部国家<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-      </button>
-      <button class="control placeholder" type="button">
-        全部店铺<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-      </button>
-      <button class="control placeholder" type="button">
-        配送方式<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-      </button>
-      <button class="control placeholder" type="button">
-        订单类型<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-      </button>
-      <button class="control placeholder" type="button">
-        订单状态<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-      </button>
-      <button class="control placeholder" type="button">
-        请求评论状态<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-      </button>
-      <button class="control placeholder" type="button">
-        下单时间<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-      </button>
-      <button class="control date-range" type="button">
-        2026-11-05 - 2026-11-12<svg aria-hidden="true" class="ic"><use href="#i-calendar" /></svg>
-      </button>
-      <div class="field-box" style="width: 71px">
-        <input aria-label="订单号" placeholder="订单号" />
-      </div>
-      <div class="field-box" style="width: 59px; margin-left: -1px">
-        <input aria-label="查询方式" value="模糊" readonly /><svg
-          aria-hidden="true"
-          class="ic caret"
-        >
-          <use href="#i-chev-down" />
-        </svg>
-      </div>
-      <div class="search-box">
-        <input aria-label="搜索订单" placeholder="输入订单号、买家姓名搜索" />
-        <button class="search-btn" type="button" title="搜索" aria-label="搜索">
-          <svg aria-hidden="true" class="ic ic-16"><use href="#i-search" /></svg>
-        </button>
-        <span class="split-line"></span>
-        <button class="search-btn" type="button" title="高级搜索" aria-label="高级搜索">
-          <svg aria-hidden="true" class="ic ic-16"><use href="#i-filter" /></svg>
-        </button>
-      </div>
-      <button class="btn" type="button">更多筛选</button>
-      <button class="btn soft" type="button">重置</button>
-    </div>
-    <div class="list-toolbar">
-      <div class="toolbar-left">
-        <button class="btn" type="button">
-          标记<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-        </button>
-        <button class="btn" type="button">
-          订单费用<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-        </button>
-        <button class="btn" type="button">
-          退款<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>
-        </button>
-        <button class="btn" type="button">Request Review</button>
-        <button class="btn" type="button">批量备注</button>
-      </div>
-      <div class="toolbar-right">
-        <button class="btn-icon" type="button" title="刷新" aria-label="刷新">
-          <svg aria-hidden="true" class="ic"><use href="#i-refresh" /></svg>
-        </button>
-        <button class="btn-icon" type="button" title="帮助" aria-label="帮助">
-          <svg aria-hidden="true" class="ic"><use href="#i-help" /></svg>
-        </button>
-        <button class="btn-icon" type="button" title="导出" aria-label="导出">
-          <svg aria-hidden="true" class="ic"><use href="#i-download" /></svg>
-        </button>
-        <button class="btn-icon" type="button" title="自定义列" aria-label="自定义列">
-          <svg aria-hidden="true" class="ic"><use href="#i-layout" /></svg>
-        </button>
-      </div>
-    </div>
-    <div class="table-region">
-      <div class="table-box">
-        <div class="table-area">
-          <div class="table-scroll" tabindex="0" role="region" aria-label="订单列表">
-            <table class="grid-table order-table" style="width: 2271px">
-              <caption class="visually-hidden">
-                订单列表
-              </caption>
-              <colgroup>
-                <col style="width: 28px" />
-                <col style="width: 120px" />
-                <col style="width: 160px" />
-                <col style="width: 400px" />
-                <col style="width: 240px" />
-                <col style="width: 160px" />
-                <col style="width: 80px" />
-                <col style="width: 120px" />
-                <col style="width: 200px" />
-                <col style="width: 100px" />
-                <col style="width: 150px" />
-                <col style="width: 150px" />
-                <col style="width: 80px" />
-                <col style="width: 165px" />
-                <col style="width: 1px" />
-                <col style="width: 1px" />
-                <col style="width: 116px" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th scope="col" class="col-check">
-                    <input class="checkbox" type="checkbox" aria-label="全选" />
-                  </th>
-                  <th scope="col" class="col-sticky-2 order-fixed-store">店铺/国家</th>
-                  <th scope="col" class="col-sticky-3 order-fixed-no">订单号</th>
-                  <th scope="col">商品信息</th>
-                  <th scope="col">品名/SKU</th>
-                  <th scope="col">促销编码</th>
-                  <th scope="col">订单总金额</th>
-                  <th scope="col">毛利润/毛利率</th>
-                  <th scope="col">买家信息</th>
-                  <th scope="col">备注</th>
-                  <th scope="col">
-                    <button class="sort-head" type="button" disabled>
-                      下单时间<svg class="sort-icon" style="color: #bfc7d2">
-                        <use href="#i-sort" />
-                      </svg>
-                    </button>
-                  </th>
-                  <th scope="col">发货时限</th>
-                  <th scope="col">订单状态</th>
-                  <th scope="col">请求评论状态</th>
-                  <th scope="col"></th>
-                  <th scope="col"></th>
-                  <th scope="col" class="col-action">操作</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <div class="empty-overlay"><span>暂无数据</span></div>
+    <div class="order-card">
+      <header class="card-head list-toolbar order-toolbar">
+        <h1 class="card-title">订单列表</h1>
+        <div class="toolbar-right">
+          <button type="button" class="btn-icon" title="刷新" aria-label="刷新" @click="load()">
+            <svg aria-hidden="true" class="ic"><use href="#i-refresh" /></svg>
+          </button>
+          <button id="openNotice" class="btn notice-entry" type="button" @click="noticeOpen = true">
+            <svg aria-hidden="true" class="ic"><use href="#i-bell" /></svg>
+            订单公告
+          </button>
         </div>
-        <div class="table-pagination">
-          <span>共0条</span>
-          <button class="page-btn" type="button" disabled aria-label="上一页">
-            <svg aria-hidden="true" class="ic ic-12"><use href="#i-chev-left" /></svg>
-          </button>
-          <span class="page-num">1</span>
-          <button class="page-btn" type="button" disabled aria-label="下一页">
-            <svg aria-hidden="true" class="ic ic-12"><use href="#i-chev-right" /></svg>
-          </button>
-          <button class="page-size" type="button">
-            20条/页<svg aria-hidden="true" class="ic"><use href="#i-chev-down" /></svg>
-          </button>
-          <span class="page-jump">前往<input value="1" aria-label="前往页码" />页</span>
+      </header>
+      <form class="list-searchbar order-filter" aria-label="筛选订单" @submit.prevent="search">
+        <label>
+          店铺
+          <select v-model="filters.shopSid" class="control" name="shopSid">
+            <option value="">全部店铺</option>
+            <option v-for="shop in options.shops" :key="shop.sid" :value="String(shop.sid)">
+              {{ shop.name || `店铺 #${shop.sid}` }}
+            </option>
+          </select>
+        </label>
+        <label>
+          平台
+          <select v-model="filters.platform" class="control" name="platform">
+            <option value="">全部平台</option>
+            <option v-for="platform in options.platforms" :key="platform" :value="platform">
+              {{ platformLabel(platform) }}
+            </option>
+          </select>
+        </label>
+        <label>
+          订单状态
+          <select v-model="filters.status" class="control" name="status">
+            <option value="">全部状态</option>
+            <option v-for="status in options.statuses" :key="status" :value="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          平台订单号
+          <input v-model="filters.number" class="control" name="number" type="search" />
+        </label>
+        <label>
+          创建开始日期
+          <input
+            v-model="filters.createdFrom"
+            class="control"
+            name="createdFrom"
+            type="date"
+            :max="filters.createdTo || undefined"
+          />
+        </label>
+        <label>
+          创建结束日期
+          <input
+            v-model="filters.createdTo"
+            class="control"
+            name="createdTo"
+            type="date"
+            :min="filters.createdFrom || undefined"
+          />
+        </label>
+        <button class="btn primary" type="submit">搜索</button>
+        <button class="btn soft" type="button" aria-label="重置筛选" @click="reset">重置</button>
+      </form>
+      <div class="table-region">
+        <div class="table-box">
+          <div class="table-area">
+            <div class="table-scroll is-y" tabindex="0" role="region" aria-label="订单列表">
+              <table class="grid-table is-wrap order-table">
+                <caption class="visually-hidden">订单列表</caption>
+                <colgroup>
+                  <col class="order-shop-column" />
+                  <col class="order-platform-column" />
+                  <col />
+                  <col class="order-time-column" />
+                  <col class="order-time-column" />
+                  <col class="order-count-column" />
+                  <col class="order-count-column" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col">店铺</th>
+                    <th scope="col">平台</th>
+                    <th scope="col">平台订单号 / 状态</th>
+                    <th scope="col">创建时间</th>
+                    <th scope="col">出库时间</th>
+                    <th scope="col" class="num-cell">商品行数</th>
+                    <th scope="col" class="num-cell">商品件数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="order in result?.items" :key="order.id">
+                    <td>{{ order.shopName || `店铺 #${order.sid}` }}</td>
+                    <td>{{ platformLabel(order.platform) }}</td>
+                    <td>
+                      <ul v-if="order.platformOrders.length" class="order-platform-list">
+                        <li v-for="(platformOrder, index) in order.platformOrders" :key="index">
+                          <component
+                            :is="platformOrder.matched && (appliedFilters.number || appliedFilters.status) ? 'mark' : 'span'"
+                            class="order-platform-entry"
+                          >
+                            <span>{{ platformOrder.number || '—' }}</span>
+                            <span class="tag order-status">{{ platformOrder.status || '—' }}</span>
+                          </component>
+                        </li>
+                      </ul>
+                      <span v-else>—</span>
+                    </td>
+                    <td>{{ sourceTime(order.created) }}</td>
+                    <td>{{ sourceTime(order.dispatched) }}</td>
+                    <td class="num-cell">{{ order.lineCount }}</td>
+                    <td class="num-cell">{{ order.itemQuantity }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-if="loadFailed" class="order-message">
+                <p role="alert">无法加载订单，请稍后重试。</p>
+                <button class="btn" type="button" aria-label="重新加载订单" @click="load()">
+                  重试
+                </button>
+              </div>
+              <div v-else-if="!result || !result.items.length" class="order-message">
+                <p role="status">
+                  {{
+                    !result
+                      ? '正在加载订单…'
+                      : isFiltered
+                        ? '未找到符合筛选条件的订单'
+                        : '暂无同步订单'
+                  }}
+                </p>
+                <RouterLink v-if="result && !isFiltered" class="order-sync-link" to="/shops">
+                  前往授权店铺
+                </RouterLink>
+              </div>
+            </div>
+          </div>
+          <nav class="table-pagination" aria-label="订单分页">
+            <span v-if="result">共{{ result.total }}条</span>
+            <button
+              class="page-btn"
+              type="button"
+              aria-label="上一页"
+              :disabled="!result || currentPage <= 1"
+              @click="load(currentPage - 1)"
+            >
+              <svg aria-hidden="true" class="ic ic-12"><use href="#i-chev-left" /></svg>
+            </button>
+            <span class="page-num" aria-current="page">{{ currentPage }}</span>
+            <span>/ {{ pageCount }} 页</span>
+            <button
+              class="page-btn"
+              type="button"
+              aria-label="下一页"
+              :disabled="!result || currentPage >= pageCount"
+              @click="load(currentPage + 1)"
+            >
+              <svg aria-hidden="true" class="ic ic-12"><use href="#i-chev-right" /></svg>
+            </button>
+            <span>{{ defaultPageSize }}条/页</span>
+          </nav>
         </div>
       </div>
     </div>

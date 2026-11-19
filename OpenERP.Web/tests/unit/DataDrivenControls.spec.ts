@@ -22,16 +22,11 @@ describe('数据驱动控件与文档结构', () => {
     ).toHaveLength(1)
   })
 
-  it('Given 产品和订单分段控件 When 选择其他视图 Then 当前选项随状态变化', async () => {
+  it('Given 产品视图分段控件 When 选择按 SPU Then 当前选项随状态变化', async () => {
     const products = mount(ProductListView)
     const spu = products.findAll('.toggle-sku button').find((button) => button.text() === '按SPU')!
     await spu.trigger('click')
     expect(spu.classes()).toContain('active')
-
-    const orders = mount(OrdersView)
-    const multiChannel = orders.findAll('.subtab').find((button) => button.text() === '多渠道订单')!
-    await multiChannel.trigger('click')
-    expect(multiChannel.classes()).toContain('active')
   })
 
   it('Given 用户创建时间 When 连续排序 Then 行顺序和 aria-sort 同步变化', async () => {

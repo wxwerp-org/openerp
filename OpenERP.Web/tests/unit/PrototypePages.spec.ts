@@ -36,7 +36,6 @@ describe('原型列表与配置组件', () => {
   it('Given 订单列表 When 打开订单公告 Then 原型公告弹窗显示', async () => {
     const wrapper = mount(OrdersView)
 
-    expect(wrapper.find('.empty-overlay').exists()).toBe(true)
     await wrapper.get('#openNotice').trigger('click')
     expect(wrapper.get('#noticeLayer').classes()).toContain('open')
     expect(wrapper.get('#noticeTitle').text()).toBe('【订单列表】优化公告')

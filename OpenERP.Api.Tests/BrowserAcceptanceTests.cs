@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.Net.Security;
+using Microsoft.EntityFrameworkCore;
+using OpenERP.Api.Orders;
 using Xunit;
+using Xunit.Sdk;
 
 namespace OpenERP.Api.Tests;
 
@@ -17,6 +20,8 @@ public sealed class BrowserAcceptanceTests(ITestOutputHelper output)
         await using var fixture = new AspireIntegrationFixture(initializeAdmin: false);
         await fixture.InitializeAsync();
         var endpoint = await fixture.StartWebAsync(timeout.Token);
+        // Given 本地一张主单含两个不同状态的平台订单，宿主没有配置上游 Token。
+        await SeedOrderAsync(fixture, timeout.Token);
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (root is not null && !File.Exists(Path.Combine(root.FullName, "OpenERP.slnx")))
             root = root.Parent;
@@ -34,6 +39,7 @@ public sealed class BrowserAcceptanceTests(ITestOutputHelper output)
             start.ArgumentList.Add(argument);
         start.Environment["PLAYWRIGHT_BASE_URL"] = endpoint.ToString();
         start.Environment["OPENERP_TEST_ADMIN_PASSWORD"] = fixture.AdminPassword;
+        start.Environment["OPENERP_TEST_LOCAL_ORDERS"] = "1";
         // Node 在 macOS 上未必识别开发证书的本机信任；只导出已通过 .NET 严格校验的公钥证书。
         var certificatePath = Path.Combine(Path.GetTempPath(), $"openerp-browser-ca-{Guid.NewGuid():N}.pem");
         string? certificate = null;
@@ -81,5 +87,20 @@ public sealed class BrowserAcceptanceTests(ITestOutputHelper output)
         {
             File.Delete(certificatePath);
         }
+    }
+
+    private static async Task SeedOrderAsync(AspireIntegrationFixture fixture, CancellationToken ct)
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(await fixture.GetPostgresConnectionStringAsync(ct)).Options;
+        await using var db = new AppDbContext(options);
+        var order = new OrderSnapshot("browser-local-order", "erp-internal-order", 30, "TemuPop", "处理中",
+            new(new("2026-11-17 08:30", "list"), null, null, null),
+            [new("TM-72801-A", 30, "shipped", "已发货"), new("TM-72801-B", 30, "pending", "待发货")],
+            [new(null, null, null, "SKU-1", 2, null, null), new(null, null, null, "SKU-2", 3, null, null)]);
+        var saved = await new OrderStore(db).SaveAsync([order], ct);
+        if (saved.IsErr)
+            throw new XunitException(saved.Error.Message);
+        Assert.Equal(1, saved.Value.Added);
     }
 }
