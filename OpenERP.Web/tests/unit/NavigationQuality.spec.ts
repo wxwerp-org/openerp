@@ -23,6 +23,19 @@ describe('导航与临时状态质量', () => {
     expect(wrapper.find('[data-group="sales"] [data-testid="nav-flyout"]').exists()).toBe(false)
   })
 
+  it('Given 报表窄屏自动轨道 When 点击分组 Then 浮层展开且不改写手动折叠状态', async () => {
+    const wrapper = mount(AppSidebar, {
+      props: { activePage: 'order-report', collapsed: false, rail: true },
+      attachTo: document.body,
+    })
+    const sales = wrapper.get('[data-group="sales"] button[aria-expanded]')
+
+    expect(wrapper.get('[data-testid="sidebar"]').attributes('data-rail')).toBe('true')
+    await sales.trigger('click')
+    expect(wrapper.find('[data-group="sales"] [data-testid="nav-flyout"]').exists()).toBe(true)
+    expect(wrapper.emitted('update:collapsed')).toBeUndefined()
+  })
+
   it('Given 账户按钮 When 按方向下键和 Escape Then 打开菜单并聚焦首项后关闭归还焦点', async () => {
     const wrapper = mount(AccountMenu, {
       props: { account: adminAccount },

@@ -68,7 +68,7 @@ function formatPercentage(percentage: number): string {
               cy="83"
               r="63"
               class="fill-none [stroke-width:17]"
-              :stroke="segment.color"
+              :style="{ stroke: segment.color }"
               pathLength="100"
               :stroke-dasharray="`${segment.percentage * 100} ${100 - segment.percentage * 100}`"
               :stroke-dashoffset="segment.dashOffset"

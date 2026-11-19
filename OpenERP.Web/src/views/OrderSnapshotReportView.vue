@@ -130,18 +130,18 @@ function submitJumpPage(): void {
 <template>
   <section
     id="page-order-snapshot-report"
-    class="page-order-snapshot-report flex h-full min-h-0 w-full flex-col overflow-hidden bg-page"
+    class="flex h-full min-h-0 w-full flex-col overflow-hidden bg-page"
     aria-labelledby="order-snapshot-report-title"
   >
     <h1 id="order-snapshot-report-title" class="sr-only">商品量报表</h1>
 
     <div
       data-testid="report-searchbar"
-      class="report-searchbar relative z-[5] flex h-52 min-w-0 flex-none flex-nowrap items-center gap-6 overflow-visible bg-white px-20 shadow-header [@media(max-width:768px)]:h-auto [@media(max-width:768px)]:min-h-52 [@media(max-width:768px)]:flex-wrap [@media(max-width:768px)]:py-8"
+      class="relative z-[5] flex h-52 min-w-0 flex-none flex-nowrap items-center gap-6 overflow-visible bg-white px-20 shadow-header [@media(max-width:768px)]:h-auto [@media(max-width:768px)]:min-h-52 [@media(max-width:768px)]:flex-wrap [@media(max-width:768px)]:py-8"
     >
       <span
         data-testid="report-platform-filter"
-        class="report-select inline-flex h-30 w-160 flex-none items-center rounded-4 border border-input bg-white focus-within:border-primary"
+        class="inline-flex h-30 w-160 flex-none items-center rounded-4 border border-input bg-white focus-within:border-primary"
       >
         <select
           v-model="platform"
@@ -157,10 +157,10 @@ function submitJumpPage(): void {
         <AppIcon name="i-chev-down" />
       </span>
 
-      <details class="report-shop-filter group relative min-w-180 flex-none text-12 text-ink">
+      <details class="group relative min-w-180 flex-none text-12 text-ink">
         <summary
           aria-label="店铺筛选"
-          class="report-shop-trigger flex h-32 w-180 list-none items-center justify-between gap-8 rounded-4 border border-input bg-white px-10 text-12/30 text-ink hover:border-input-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary pointer-coarse:min-h-44 [&::-webkit-details-marker]:hidden"
+          class="flex h-32 w-180 list-none items-center justify-between gap-8 rounded-4 border border-input bg-white px-10 text-12/30 text-ink hover:border-input-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary pointer-coarse:min-h-44 [&::-webkit-details-marker]:hidden"
         >
           <span>{{ selectedShopLabel }}</span>
           <AppIcon
@@ -170,12 +170,12 @@ function submitJumpPage(): void {
           />
         </summary>
         <div
-          class="report-shop-options absolute left-0 top-34 z-20 flex max-h-280 w-[min(340px,calc(100vw_-_48px))] flex-col gap-2 overflow-auto rounded-6 border border-line bg-white p-8 shadow-menu-lg"
+          class="absolute left-0 top-34 z-20 flex max-h-280 w-[min(340px,calc(100vw_-_48px))] flex-col gap-2 overflow-auto rounded-6 border border-line bg-white p-8 shadow-menu-lg"
         >
           <label
             v-for="shop in availableShops"
             :key="shop.key"
-            class="report-shop-option flex min-h-28 cursor-pointer items-center gap-8 rounded-4 px-6 py-2 text-body hover:bg-primary-faint pointer-coarse:min-h-44"
+            class="flex min-h-28 cursor-pointer items-center gap-8 rounded-4 px-6 py-2 text-body hover:bg-primary-faint pointer-coarse:min-h-44"
           >
             <AppCheckbox
               :model-value="selectedShopKeys"
@@ -186,9 +186,7 @@ function submitJumpPage(): void {
             />
             <span>{{ platformLabel(shop.platform) }} · {{ shop.label }}</span>
           </label>
-          <p v-if="availableShops.length === 0" class="report-shop-empty m-0 p-6 text-muted">
-            暂无可选店铺
-          </p>
+          <p v-if="availableShops.length === 0" class="m-0 p-6 text-muted">暂无可选店铺</p>
         </div>
       </details>
 
@@ -202,7 +200,7 @@ function submitJumpPage(): void {
       </button>
 
       <span
-        class="report-generated-at ml-auto min-w-0 overflow-hidden text-12/32 text-muted text-ellipsis whitespace-nowrap"
+        class="ml-auto min-w-0 overflow-hidden text-12/32 text-muted text-ellipsis whitespace-nowrap"
       >
         <template v-if="report"
           >查询时间：<time :datetime="report.generatedAtUtc">{{ localGeneratedAt }}</time></template
@@ -229,16 +227,16 @@ function submitJumpPage(): void {
       class="@container min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-page"
     >
       <div
-        class="report-analysis-grid grid grid-cols-12 items-stretch gap-12 p-16"
+        class="grid grid-cols-12 items-stretch gap-12 p-16"
         :aria-busy="status === 'loading' ? 'true' : undefined"
       >
         <div
           v-if="status === 'error'"
-          class="report-error col-span-12 flex min-w-0 items-center gap-8 rounded-4 border border-tag-red-border bg-tag-red-bg px-12 py-10 text-12/18 text-ink"
+          class="col-span-12 flex min-w-0 items-center gap-8 rounded-4 border border-tag-red-border bg-tag-red-bg px-12 py-10 text-12/18 text-ink"
           role="alert"
         >
           <AppIcon name="i-warning" :size="16" class="mt-1 shrink-0 text-danger" />
-          <div class="report-error-body min-w-0 flex-1">
+          <div class="min-w-0 flex-1">
             <strong class="font-semibold text-ink [overflow-wrap:anywhere]">{{
               errorMessage
             }}</strong>
@@ -253,14 +251,8 @@ function submitJumpPage(): void {
           </AppButton>
         </div>
 
-        <AppCard
-          data-testid="report-overview"
-          class="report-overview-card col-span-12 pb-16"
-          aria-label="快照概览"
-        >
-          <div
-            class="report-overview-head flex h-46 flex-none items-start justify-between gap-12 px-16 pt-12"
-          >
+        <AppCard data-testid="report-overview" class="col-span-12 pb-16" aria-label="快照概览">
+          <div class="flex h-46 flex-none items-start justify-between gap-12 px-16 pt-12">
             <div class="flex min-w-0 items-center gap-8">
               <div class="flex items-center gap-4 text-14/22 font-bold whitespace-nowrap text-ink">
                 快照概览
@@ -268,58 +260,50 @@ function submitJumpPage(): void {
             </div>
           </div>
           <div
-            class="report-overview-body grid grid-cols-4 gap-x-16 px-16 pt-6 @max-[480px]:grid-cols-2 @max-[480px]:gap-y-12"
+            class="grid grid-cols-4 gap-x-16 px-16 pt-6 @max-[480px]:grid-cols-2 @max-[480px]:gap-y-12"
           >
-            <div class="report-stat min-w-0 pr-12">
-              <div
-                class="report-stat-label overflow-hidden text-12/16 text-muted text-ellipsis whitespace-nowrap"
-              >
+            <div class="min-w-0 pr-12">
+              <div class="overflow-hidden text-12/16 text-muted text-ellipsis whitespace-nowrap">
                 本地订单数
               </div>
               <strong
-                class="report-stat-value mt-2 block text-20/26 font-medium tabular-nums text-ink"
+                class="mt-2 block text-20/26 font-medium tabular-nums text-ink"
                 aria-label="订单总数"
                 >{{ report ? formatQuantity(report.summary.orderCount) : '—' }}</strong
               >
             </div>
             <div
-              class="report-stat min-w-0 border-l border-toolbar pr-12 pl-16 @max-[480px]:border-l-0 @max-[480px]:pl-0"
+              class="min-w-0 border-l border-toolbar pr-12 pl-16 @max-[480px]:border-l-0 @max-[480px]:pl-0"
             >
-              <div
-                class="report-stat-label overflow-hidden text-12/16 text-muted text-ellipsis whitespace-nowrap"
-              >
+              <div class="overflow-hidden text-12/16 text-muted text-ellipsis whitespace-nowrap">
                 商品件数
               </div>
               <strong
-                class="report-stat-value mt-2 block text-20/26 font-medium tabular-nums text-ink"
+                class="mt-2 block text-20/26 font-medium tabular-nums text-ink"
                 aria-label="商品件数"
                 >{{ report ? formatQuantity(report.summary.itemQuantity) : '—' }}</strong
               >
             </div>
             <div
-              class="report-stat min-w-0 border-l border-toolbar pr-12 pl-16 @max-[480px]:border-l-0 @max-[480px]:pl-0"
+              class="min-w-0 border-l border-toolbar pr-12 pl-16 @max-[480px]:border-l-0 @max-[480px]:pl-0"
             >
-              <div
-                class="report-stat-label overflow-hidden text-12/16 text-muted text-ellipsis whitespace-nowrap"
-              >
+              <div class="overflow-hidden text-12/16 text-muted text-ellipsis whitespace-nowrap">
                 有订单店铺数
               </div>
               <strong
-                class="report-stat-value mt-2 block text-20/26 font-medium tabular-nums text-ink"
+                class="mt-2 block text-20/26 font-medium tabular-nums text-ink"
                 aria-label="有订单店铺数"
                 >{{ report ? formatQuantity(orderedShopCount) : '—' }}</strong
               >
             </div>
             <div
-              class="report-stat min-w-0 border-l border-toolbar pr-12 pl-16 @max-[480px]:border-l-0 @max-[480px]:pl-0"
+              class="min-w-0 border-l border-toolbar pr-12 pl-16 @max-[480px]:border-l-0 @max-[480px]:pl-0"
             >
-              <div
-                class="report-stat-label overflow-hidden text-12/16 text-muted text-ellipsis whitespace-nowrap"
-              >
+              <div class="overflow-hidden text-12/16 text-muted text-ellipsis whitespace-nowrap">
                 平均每单件数
               </div>
               <strong
-                class="report-stat-value mt-2 block text-20/26 font-medium tabular-nums text-ink"
+                class="mt-2 block text-20/26 font-medium tabular-nums text-ink"
                 aria-label="平均每单件数"
                 >{{ report ? averageItemsText : '—' }}</strong
               >
@@ -329,25 +313,20 @@ function submitJumpPage(): void {
 
         <OrderSnapshotShopRanking
           data-testid="report-shop-ranking"
-          class="report-rank-card col-span-8 @max-[640px]:col-span-12"
+          class="col-span-8 @max-[640px]:col-span-12"
           :groups="report?.groups ?? []"
           :loading="status === 'loading'"
         />
         <OrderSnapshotPlatformDistribution
           data-testid="report-platform-distribution"
-          class="report-dist-card col-span-4 @max-[640px]:col-span-12"
+          class="col-span-4 @max-[640px]:col-span-12"
           :groups="report?.groups ?? []"
           :total-orders="report?.summary.orderCount ?? 0"
           :loading="status === 'loading'"
         />
 
-        <AppCard
-          data-testid="report-groups-panel"
-          class="report-panel report-groups-panel col-span-12"
-        >
-          <header
-            class="report-panel-head flex h-46 flex-none items-start justify-between gap-12 px-16 pt-12"
-          >
+        <AppCard data-testid="report-groups-panel" class="col-span-12">
+          <header class="flex h-46 flex-none items-start justify-between gap-12 px-16 pt-12">
             <div class="flex min-w-0 items-center gap-8">
               <h2
                 id="report-groups-title"
@@ -357,7 +336,7 @@ function submitJumpPage(): void {
               </h2>
             </div>
             <p
-              class="report-panel-desc m-0 min-w-0 overflow-hidden text-12/22 text-muted text-ellipsis whitespace-nowrap"
+              class="m-0 min-w-0 overflow-hidden text-12/22 text-muted text-ellipsis whitespace-nowrap"
             >
               统计当前筛选下的全部本地来源订单
             </p>
@@ -372,7 +351,7 @@ function submitJumpPage(): void {
             >
               <table
                 data-testid="report-groups-table"
-                class="report-groups-table w-full min-w-full table-fixed border-separate border-spacing-0 bg-white @max-[640px]:min-w-[480px]"
+                class="w-full min-w-full table-fixed border-separate border-spacing-0 bg-white @max-[640px]:min-w-[480px]"
               >
                 <caption class="sr-only">
                   分店订单与商品件数汇总
@@ -409,13 +388,8 @@ function submitJumpPage(): void {
           </div>
         </AppCard>
 
-        <AppCard
-          data-testid="report-orders-panel"
-          class="report-panel report-orders-panel col-span-12"
-        >
-          <header
-            class="report-panel-head flex h-46 flex-none items-start justify-between gap-12 px-16 pt-12"
-          >
+        <AppCard data-testid="report-orders-panel" class="col-span-12">
+          <header class="flex h-46 flex-none items-start justify-between gap-12 px-16 pt-12">
             <div class="flex min-w-0 items-center gap-8">
               <h2
                 id="report-orders-title"
@@ -425,7 +399,7 @@ function submitJumpPage(): void {
               </h2>
             </div>
             <p
-              class="report-panel-desc m-0 min-w-0 overflow-hidden text-12/22 text-muted text-ellipsis whitespace-nowrap"
+              class="m-0 min-w-0 overflow-hidden text-12/22 text-muted text-ellipsis whitespace-nowrap"
             >
               一行对应一条本地来源订单；展开查看当前商品行和平台订单参考号。
             </p>
@@ -440,7 +414,7 @@ function submitJumpPage(): void {
             >
               <table
                 data-testid="report-orders-table"
-                class="report-orders-table w-full min-w-full table-fixed border-separate border-spacing-0 bg-white @max-[640px]:min-w-[720px]"
+                class="w-full min-w-full table-fixed border-separate border-spacing-0 bg-white @max-[640px]:min-w-[720px]"
               >
                 <caption class="sr-only">
                   本地来源订单分页明细
@@ -507,12 +481,9 @@ function submitJumpPage(): void {
                     <tr
                       v-if="expandedOrderIds.has(orderIdentity(order))"
                       data-testid="report-order-details"
-                      class="report-order-details"
                     >
                       <AppTd :colspan="8" surface="page-soft">
-                        <div
-                          class="report-detail-sections grid grid-cols-2 gap-x-22 gap-y-14 @max-[480px]:grid-cols-1"
-                        >
+                        <div class="grid grid-cols-2 gap-x-22 gap-y-14 @max-[480px]:grid-cols-1">
                           <section>
                             <h3 class="mb-8 text-12/18 font-semibold text-ink">
                               平台订单参考号（不分配商品行）
@@ -584,7 +555,7 @@ function submitJumpPage(): void {
                             </ul>
                             <p v-else class="m-0 text-muted">无商品行</p>
                           </section>
-                          <p class="report-order-total col-span-full font-semibold text-ink">
+                          <p class="col-span-full font-semibold text-ink">
                             本地订单件数 {{ formatQuantity(order.itemQuantity) }}
                           </p>
                         </div>
@@ -609,7 +580,7 @@ function submitJumpPage(): void {
           <AppPager
             as="footer"
             data-testid="report-pagination"
-            class="report-pagination pointer-coarse:h-auto pointer-coarse:[&_button]:min-h-44 pointer-coarse:[&_input]:min-h-44 pointer-coarse:[&_select]:min-h-44 pointer-coarse:min-h-44 pointer-coarse:flex-wrap pointer-coarse:py-4 @max-[640px]:h-auto @max-[640px]:min-h-30 @max-[640px]:flex-wrap @max-[640px]:py-4"
+            class="pointer-coarse:h-auto pointer-coarse:[&_button]:min-h-44 pointer-coarse:[&_input]:min-h-44 pointer-coarse:[&_select]:min-h-44 pointer-coarse:min-h-44 pointer-coarse:flex-wrap pointer-coarse:py-4 @max-[640px]:h-auto @max-[640px]:min-h-30 @max-[640px]:flex-wrap @max-[640px]:py-4"
             :page="currentPage"
             :page-count="pageCount"
             :disabled="paginationDisabled"
@@ -650,18 +621,17 @@ function submitJumpPage(): void {
           </AppPager>
         </AppCard>
 
-        <AppCard class="report-scope-panel col-span-12 px-16 py-12">
+        <AppCard class="col-span-12 px-16 py-12">
           <p
             data-testid="report-scope"
-            class="report-scope m-0 flex min-w-0 items-start gap-6 border-0 bg-transparent p-0 text-12/18 text-body"
+            class="m-0 flex min-w-0 items-start gap-6 border-0 bg-transparent p-0 text-12/18 text-body"
             role="note"
             aria-label="报表统计口径"
             :title="`统计口径：${scopeText}`"
           >
             <AppIcon name="i-info" :size="14" class="mt-2 shrink-0 text-muted" />
             <span class="min-w-0"
-              ><strong class="report-scope-title mr-2 font-semibold text-ink">统计口径</strong>
-              {{ scopeText }}</span
+              ><strong class="mr-2 font-semibold text-ink">统计口径</strong> {{ scopeText }}</span
             >
           </p>
         </AppCard>

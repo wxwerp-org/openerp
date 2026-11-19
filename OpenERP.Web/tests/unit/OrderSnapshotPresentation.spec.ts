@@ -182,7 +182,14 @@ describe('平台分布', () => {
 
     const colors = platformDistribution(many, 6).map((row) => row.color)
 
-    expect(colors).toEqual(['#005BF5', '#65A6FF', '#A8CBFF', '#D5E5FF', '#005BF5', '#65A6FF'])
+    expect(colors).toEqual([
+      'var(--color-chart-1)',
+      'var(--color-chart-2)',
+      'var(--color-chart-3)',
+      'var(--color-chart-4)',
+      'var(--color-chart-1)',
+      'var(--color-chart-2)',
+    ])
   })
 
   it('Given 汇总订单数为 0 When 计算占比 Then 占比为 0 且数量保持原始值', () => {

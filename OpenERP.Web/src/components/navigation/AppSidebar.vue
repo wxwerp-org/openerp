@@ -9,11 +9,15 @@ const props = withDefaults(
   defineProps<{
     activePage: string
     collapsed: boolean
+    /** 视口强制轨道（报表页窄屏）：布局按轨道呈现，但手动折叠状态保持不变。 */
+    rail?: boolean
     /** 报表页窄屏 + 触屏时轨道目标放大到 44px（WCAG 2.5.5）。 */
     touchRail?: boolean
   }>(),
-  { touchRail: false },
+  { rail: false, touchRail: false },
 )
+
+const isRail = computed(() => props.collapsed || props.rail)
 
 const emit = defineEmits<{
   'update:collapsed': [value: boolean]
@@ -160,12 +164,9 @@ watch(
   { immediate: true },
 )
 
-/** 折叠轨道，以及订单报表在窄屏下收起侧栏时，导航以浮层展开。 */
+/** 轨道态下导航分组以浮层展开（手动折叠与报表页窄屏自动轨道一致）。 */
 function usesRail(): boolean {
-  return (
-    props.collapsed ||
-    (props.activePage === 'order-report' && window.matchMedia('(max-width: 768px)').matches)
-  )
+  return isRail.value
 }
 
 function setFlyoutElement(element: unknown): void {
@@ -246,7 +247,7 @@ const expandedItemLayout = 'h-38 w-full gap-10 px-8 [@media(max-height:760px)]:h
 
 /** 折叠轨道高度在旧样式里由更高特异性覆盖，短视口媒体查询不应压低它。 */
 function headLayout(): string[] {
-  return props.collapsed ? [railItemLayout.value] : [expandedItemLayout]
+  return isRail.value ? [railItemLayout.value] : [expandedItemLayout]
 }
 
 function linkState(active: boolean): string[] {
@@ -284,14 +285,14 @@ function subItemState(active: boolean): string[] {
 <template>
   <aside
     class="relative z-[60] flex h-full flex-none flex-col border-r border-border-nav bg-nav transition-[width] duration-180 ease-[ease]"
-    :class="collapsed ? 'w-56' : 'w-200'"
+    :class="isRail ? 'w-56' : 'w-200'"
     aria-label="主导航"
     data-testid="sidebar"
-    :data-rail="collapsed"
+    :data-rail="isRail ? 'true' : 'false'"
   >
     <button
       class="flex h-56 flex-none items-center gap-10 text-primary"
-      :class="collapsed ? 'justify-center px-0' : 'px-16'"
+      :class="isRail ? 'justify-center px-0' : 'px-16'"
       type="button"
       data-nav-page="dashboard"
       title="回到首页"
@@ -302,7 +303,7 @@ function subItemState(active: boolean): string[] {
         <path
           d="M4.7 25.9 12.9 6.2c1.2-2.9 5.1-2.9 6.4 0l2.1 5"
           fill="none"
-          stroke="#0968FF"
+          class="stroke-brand"
           stroke-width="4.2"
           stroke-linecap="round"
           stroke-linejoin="round"
@@ -310,7 +311,7 @@ function subItemState(active: boolean): string[] {
         <path
           d="M8.7 26 19.3 6.3c1-1.8 3.7-1.6 4.6.3 1 2.1 2.2 4.9 3.1 7.5.7 1.8.5 3.9-.5 5.5l-2.3 3.3"
           fill="none"
-          stroke="#0968FF"
+          class="stroke-brand"
           stroke-width="4"
           stroke-linecap="round"
           stroke-linejoin="round"
@@ -318,14 +319,14 @@ function subItemState(active: boolean): string[] {
         <path
           d="M9.7 19.3h8.1"
           fill="none"
-          stroke="#0968FF"
+          class="stroke-brand"
           stroke-width="3.6"
           stroke-linecap="round"
         />
       </svg>
       <span
         class="whitespace-nowrap text-14/[21px] font-semibold tracking-[0.3px] text-ink"
-        :class="collapsed ? 'hidden' : ''"
+        :class="isRail ? 'hidden' : ''"
       >
         Open ERP
       </span>
@@ -348,13 +349,13 @@ function subItemState(active: boolean): string[] {
           class="size-18 flex-none [stroke-width:1.55] [@media(max-height:760px)]:size-16"
           :class="headIconState(activePage === 'dashboard')"
         />
-        <span :class="collapsed ? 'hidden' : ''">工作台</span>
+        <span :class="isRail ? 'hidden' : ''">工作台</span>
       </button>
 
       <div
         v-for="group in groups"
         :key="group.id"
-        :class="collapsed ? 'mt-4' : ''"
+        :class="isRail ? 'mt-4' : ''"
         :data-group="group.id"
         @mouseenter="usesRail() && openFlyoutOnHover(group, $event)"
         @mouseleave="closeFlyoutSoon"
@@ -376,21 +377,21 @@ function subItemState(active: boolean): string[] {
           />
           <span
             class="min-w-0 flex-1 overflow-hidden text-ellipsis"
-            :class="collapsed ? 'hidden' : ''"
+            :class="isRail ? 'hidden' : ''"
             >{{ group.label }}</span
           >
           <AppIcon
             name="i-chev-down"
             class="ml-auto size-14 transition-transform duration-150 [@media(max-height:760px)]:size-16"
             :class="[
-              collapsed ? 'hidden' : isGroupCollapsed(group) ? '[transform:rotate(-90deg)]' : '',
+              isRail ? 'hidden' : isGroupCollapsed(group) ? '[transform:rotate(-90deg)]' : '',
               isGroupActive(group) ? 'text-primary' : 'text-nav-icon-muted',
             ]"
           />
         </button>
         <div
           class="grid grid-cols-[minmax(0,1fr)] gap-2 pb-8 pt-3"
-          :class="collapsed || isGroupCollapsed(group) ? 'hidden' : ''"
+          :class="isRail || isGroupCollapsed(group) ? 'hidden' : ''"
         >
           <button
             v-for="item in group.items"
@@ -431,7 +432,7 @@ function subItemState(active: boolean): string[] {
 
     <div
       class="flex h-48 w-full flex-none items-center text-sidebar-foot"
-      :class="collapsed ? 'justify-center pr-0' : 'justify-end pr-14'"
+      :class="isRail ? 'justify-center pr-0' : 'justify-end pr-14'"
     >
       <button
         class="flex size-32 items-center justify-center rounded-4 hover:bg-hover-bg hover:text-nav-text"
