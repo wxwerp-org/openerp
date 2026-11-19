@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import SegmentedControl from '../controls/SegmentedControl.vue'
+import AppCard from '../../ui/AppCard.vue'
+import AppSegmented from '../../ui/AppSegmented.vue'
 import type { OrderSnapshotReport } from '../../reports/orderSnapshot'
 import {
   formatSnapshotQuantity,
@@ -35,33 +36,52 @@ const rows = computed(() => shopRanking(props.groups, metric.value))
 </script>
 
 <template>
-  <section class="card snapshot-rank-card">
-    <div class="card-head">
-      <div class="card-head-left">
-        <div class="card-title">店铺排行</div>
+  <AppCard data-testid="report-shop-ranking" class="@container flex flex-col pb-16">
+    <div class="flex h-54 min-w-0 flex-none items-start justify-between gap-12 px-16 pt-16">
+      <div class="flex min-w-0 items-center gap-8">
+        <div class="flex items-center gap-4 text-14/22 font-bold whitespace-nowrap text-ink">
+          店铺排行
+        </div>
       </div>
-      <div class="card-head-right">
-        <SegmentedControl
+      <div class="flex min-w-0 flex-nowrap items-center gap-10">
+        <AppSegmented
           v-model="selectedMetricLabel"
           :options="metricLabels"
           aria-label="排行指标"
+          option-class="pointer-coarse:min-h-44"
         />
       </div>
     </div>
-    <p v-if="loading" class="snapshot-loading">正在加载店铺排行…</p>
-    <figure v-else-if="rows.length" class="snapshot-rank-figure">
-      <figcaption class="snapshot-rank-caption">按{{ metricLabel }}取前 5 家店铺</figcaption>
-      <ul class="snapshot-rank-list">
-        <li v-for="(row, index) in rows" :key="row.shop.key" class="snapshot-rank-row">
-          <span class="rank-number" :class="{ top: index < 3 }">{{ index + 1 }}</span>
-          <span class="snapshot-rank-shop">{{ row.shop.label }}</span>
-          <span class="snapshot-rank-bar"
-            ><span :style="{ width: `${row.barPercentage * 100}%` }"></span
+    <p v-if="loading" class="m-0 px-16 pt-24 pb-8 text-center text-12 text-muted">
+      正在加载店铺排行…
+    </p>
+    <figure v-else-if="rows.length" class="m-0 flex min-h-0 flex-col gap-10 px-16 pt-8">
+      <figcaption class="text-12 text-muted">按{{ metricLabel }}取前 5 家店铺</figcaption>
+      <ul class="flex flex-col gap-10">
+        <li
+          v-for="(row, index) in rows"
+          :key="row.shop.key"
+          class="grid grid-cols-[16px_minmax(64px,1fr)_minmax(72px,2fr)_48px] items-center gap-10 @max-[400px]:grid-cols-[16px_minmax(0,1fr)_48px]"
+        >
+          <span
+            class="w-16 flex-none text-center text-12 font-bold"
+            :class="index < 3 ? 'text-primary' : 'text-muted'"
+            >{{ index + 1 }}</span
+          >
+          <span class="text-12 wrap-break-word text-body">{{ row.shop.label }}</span>
+          <span
+            class="h-6 overflow-hidden rounded-3 bg-progress-track @max-[400px]:col-span-full @max-[400px]:row-start-2"
+            ><span
+              class="block h-full rounded-3 bg-primary"
+              :style="{ width: `${row.barPercentage * 100}%` }"
+            ></span
           ></span>
-          <b class="snapshot-rank-value">{{ formatSnapshotQuantity(row[metric]) }}</b>
+          <b class="text-end text-12 font-medium text-ink tabular-nums">{{
+            formatSnapshotQuantity(row[metric])
+          }}</b>
         </li>
       </ul>
-      <table class="visually-hidden">
+      <table class="sr-only">
         <caption>
           店铺{{
             metricLabel
@@ -83,87 +103,6 @@ const rows = computed(() => shopRanking(props.groups, metric.value))
         </tbody>
       </table>
     </figure>
-    <p v-else class="snapshot-empty">暂无店铺排行数据</p>
-  </section>
+    <p v-else class="m-0 px-16 pt-24 pb-8 text-center text-12 text-muted">暂无店铺排行数据</p>
+  </AppCard>
 </template>
-
-<style scoped>
-.snapshot-rank-card {
-  container-type: inline-size;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 16px;
-}
-.snapshot-rank-figure {
-  margin: 0;
-  padding: 8px 16px 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.snapshot-rank-caption {
-  font-size: 12px;
-  color: var(--muted);
-}
-.snapshot-rank-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.snapshot-rank-row {
-  display: grid;
-  grid-template-columns: 16px minmax(64px, 1fr) minmax(72px, 2fr) 48px;
-  align-items: center;
-  gap: 10px;
-}
-.snapshot-rank-shop {
-  font-size: 12px;
-  color: var(--body);
-  overflow-wrap: break-word;
-}
-.snapshot-rank-bar {
-  height: 6px;
-  border-radius: 3px;
-  background: #eef3fa;
-  overflow: hidden;
-}
-.snapshot-rank-bar > span {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-  background: var(--primary);
-}
-.snapshot-rank-value {
-  font-weight: 500;
-  font-size: 12px;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  text-align: end;
-}
-.snapshot-empty,
-.snapshot-loading {
-  margin: 0;
-  padding: 24px 16px 8px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--muted);
-}
-@container (inline-size < 400px) {
-  .snapshot-rank-row {
-    grid-template-columns: 16px minmax(0, 1fr) 48px;
-  }
-  .snapshot-rank-bar {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-}
-@media (pointer: coarse) {
-  .snapshot-rank-card :deep(.mini-seg button) {
-    min-height: 44px;
-  }
-}
-</style>

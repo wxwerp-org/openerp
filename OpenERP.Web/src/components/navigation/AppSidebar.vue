@@ -5,10 +5,15 @@ import AppIcon from '../../ui/AppIcon.vue'
 type NavItem = { label: string; page?: string }
 type NavGroup = { id: string; label: string; icon: string; items: NavItem[] }
 
-const props = defineProps<{
-  activePage: string
-  collapsed: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    activePage: string
+    collapsed: boolean
+    /** 报表页窄屏 + 触屏时轨道目标放大到 44px（WCAG 2.5.5）。 */
+    touchRail?: boolean
+  }>(),
+  { touchRail: false },
+)
 
 const emit = defineEmits<{
   'update:collapsed': [value: boolean]
@@ -234,12 +239,14 @@ function closeFlyoutOnFocusOut(_group: NavGroup, event: FocusEvent): void {
 const hasFlyout = computed(() => flyoutGroup.value !== null)
 
 /** 折叠轨道与展开两套布局值必须整体二选一，避免同属性工具类互相覆盖。 */
-const railItemLayout = 'mx-auto h-40 w-40 justify-center p-0'
+const railItemLayout = computed(() =>
+  props.touchRail ? 'mx-auto size-44 justify-center p-0' : 'mx-auto h-40 w-40 justify-center p-0',
+)
 const expandedItemLayout = 'h-38 w-full gap-10 px-8 [@media(max-height:760px)]:h-36'
 
 /** 折叠轨道高度在旧样式里由更高特异性覆盖，短视口媒体查询不应压低它。 */
 function headLayout(): string[] {
-  return props.collapsed ? [railItemLayout] : [expandedItemLayout]
+  return props.collapsed ? [railItemLayout.value] : [expandedItemLayout]
 }
 
 function linkState(active: boolean): string[] {
@@ -272,7 +279,6 @@ function subItemState(active: boolean): string[] {
     ? ['bg-nav-active font-semibold text-primary']
     : ['text-body hover:bg-nav-hover hover:text-ink']
 }
-
 </script>
 
 <template>
