@@ -103,7 +103,8 @@ jobs:
 
       - name: 构建并验收单容器发布形态
         run: |
-          dotnet tool restore
+          # Aspire 已安装到 PATH，单独还原 EF，避开冷缓存下多工具命令错配（dotnet/sdk#53783）。
+          dotnet tool install --local dotnet-ef --version "$(jq -r '.tools["dotnet-ef"].version' .config/dotnet-tools.json)"
           aspire do build-openerp --non-interactive
           aspire publish --non-interactive -o "$RUNNER_TEMP/aspire-output"
           python3 deploy/tests/smoke.py --compose "$RUNNER_TEMP/aspire-output/docker-compose.yaml"
