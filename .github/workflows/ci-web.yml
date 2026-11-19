@@ -9,7 +9,8 @@ on:
       - '.node-version'
       - '.editorconfig'
       - '.gitattributes'
-      # 发布宿主检查通过 AppHost 构建 Web 镜像并核对 Compose 配置。
+      # 发布宿主检查从实际的单容器镜像验收前端、API 和持久数据。
+      - 'deploy/**'
       - 'OpenERP.AppHost/**'
       - 'aspire.config.json'
       - '.config/dotnet-tools.json'
@@ -100,87 +101,12 @@ jobs:
           dotnet tool install aspire.cli --tool-path "$RUNNER_TEMP/aspire-bin" --version "$(jq -r '.tools["aspire.cli"].version' .config/dotnet-tools.json)"
           echo "$RUNNER_TEMP/aspire-bin" >> "$GITHUB_PATH"
 
-      - name: 生成发布产物
+      - name: 构建并验收单容器发布形态
         run: |
-          aspire publish --list-steps --non-interactive
+          dotnet tool restore
+          aspire do build-openerp --non-interactive
           aspire publish --non-interactive -o "$RUNNER_TEMP/aspire-output"
-
-      # 守护发布形态的 Web 宿主：YARP 变量回潮、端口或上游丢失都会在这里失败。
-      - name: 断言 Compose 宿主契约
-        run: |
-          docker compose -f "$RUNNER_TEMP/aspire-output/docker-compose.yaml" config --no-interpolate --format json > "$RUNNER_TEMP/compose.json"
-          jq -e '
-            .services.web.environment.PORT == "8000"
-            and .services.web.environment.API_HTTP == "http://api:8080"
-            and .services.web.environment["services__api__http__0"] == "http://api:8080"
-            and (.services.web.environment | has("YARP_ENABLE_STATIC_FILES") | not)
-            and ([.services.web.environment | keys[] | select(startswith("REVERSEPROXY"))] | length == 0)
-            and .services.web.ports[0] == "127.0.0.1:${WEB_PORT:-8080}:8000"
-            and .services.web.depends_on.api.condition == "service_started"
-          ' "$RUNNER_TEMP/compose.json"
-
-      - name: 构建 Web 镜像
-        run: aspire do build-web --non-interactive
-
-      - name: 验证宿主行为矩阵
-        run: |
-          set -euo pipefail
-          image="$(docker images --filter=reference='web:*' --format '{{.Repository}}:{{.Tag}}' | head -1)"
-          if [ -z "$image" ]; then
-            echo "未找到 web 镜像。" >&2
-            exit 1
-          fi
-          echo "Web 镜像：$image"
-          cid="$(docker run -d --rm -e PORT=5000 -e API_HTTP=http://127.0.0.1:1 -p 127.0.0.1::5000 "$image")"
-          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
-          port="$(docker port "$cid" 5000/tcp | head -1 | awk -F: '{print $NF}')"
-          base="http://127.0.0.1:$port"
-          ready=""
-          for _ in $(seq 1 60); do
-            if curl -fsS -o /dev/null "$base/" 2>/dev/null; then ready=1; break; fi
-            sleep 1
-          done
-          if [ -z "$ready" ]; then docker logs "$cid"; exit 1; fi
-
-          assert_spa() {
-            code="$(curl -sS -o "$RUNNER_TEMP/body" -w '%{http_code}' "$base$1")"
-            if [ "$code" != 200 ] || ! grep -q '<div id="app">' "$RUNNER_TEMP/body"; then
-              echo "FAIL $1 -> $code" >&2
-              head -c 400 "$RUNNER_TEMP/body" >&2
-              docker logs "$cid"
-              exit 1
-            fi
-            echo "OK $1 -> 200 index"
-          }
-          assert_404() {
-            code="$(curl -sS -o /dev/null -w '%{http_code}' -X "${2:-GET}" "$base$1")"
-            if [ "$code" != 404 ]; then
-              echo "FAIL $1 ${2:-GET} -> $code" >&2
-              docker logs "$cid"
-              exit 1
-            fi
-            echo "OK $1 ${2:-GET} -> 404"
-          }
-
-          assert_spa /
-          assert_spa /shops
-          assert_spa /reports/orders
-          assert_spa /login
-          assert_spa /index.html
-          assert_spa /nope
-          assert_404 /assets/missing.js
-          assert_404 /missing.js
-          assert_404 /health
-          assert_404 /shops POST
-
-          code="$(curl -sS -o "$RUNNER_TEMP/api-body" -w '%{http_code}' "$base/api/unknown")"
-          if [ "$code" = 200 ] || grep -q '<div id="app">' "$RUNNER_TEMP/api-body"; then
-            echo "FAIL /api/unknown -> $code" >&2
-            head -c 400 "$RUNNER_TEMP/api-body" >&2
-            docker logs "$cid"
-            exit 1
-          fi
-          echo "OK /api/unknown -> ${code}（无上游预期 502）"
+          python3 deploy/tests/smoke.py --compose "$RUNNER_TEMP/aspire-output/docker-compose.yaml"
 
   e2e:
     name: 浏览器端到端

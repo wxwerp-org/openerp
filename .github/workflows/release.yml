@@ -39,33 +39,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 构建并推送 Release 镜像
-        run: aspire do push --non-interactive
-
-      - name: 生成 Compose 部署产物
-        run: aspire publish --non-interactive
-
-      - name: 改写 Release 附件的镜像地址
-        shell: bash
+      - name: 构建 Release 镜像和 Compose
         run: |
-          compose_file=OpenERP.AppHost/aspire-output/docker-compose.yaml
-          sed -E \
-            -e "s~^(    image:[[:blank:]]+[\"']?)docker\.io/~\1m.daocloud.io/docker.io/~" \
-            -e "s~^(    image:[[:blank:]]+[\"']?)ghcr\.io/~\1ghcr.nju.edu.cn/~" \
-            "$compose_file" > "$compose_file.tmp"
-          mv "$compose_file.tmp" "$compose_file"
+          dotnet tool restore
+          aspire do build-openerp --non-interactive
+          aspire publish --non-interactive -o "$RUNNER_TEMP/aspire-output"
+
+      - name: 验证 Release 附件和本次构建的镜像
+        run: |
+          source_file="$RUNNER_TEMP/aspire-output/docker-compose.yaml"
+          compose_file="$RUNNER_TEMP/compose.yaml"
+          release_image="ghcr.io/${GITHUB_REPOSITORY,,}/openerp:$ReleaseTag"
+          test "$(docker compose -f "$source_file" config --images)" = "$release_image"
+          sed 's|ghcr\.io/|ghcr.nju.edu.cn/|g' "$source_file" > "$compose_file"
           if grep -oE '[$][{][^}]+[}]' "$compose_file" | grep -Fvx '${WEB_PORT:-8080}'; then
             echo 'Compose 包含未解析的部署变量' >&2
             exit 1
           fi
-          docker compose -f "$compose_file" config --format json | jq -e --arg tag ":$ReleaseTag" '
-            (.services.credentials.image == .services.api.image) and
-            ([.services.api.image, .services.web.image, .services.migrations.image]
-              | all(startswith("ghcr.nju.edu.cn/") and endswith($tag)))'
+          docker compose --env-file /dev/null -f "$compose_file" config --format json |
+            jq -e --arg image "${release_image/ghcr.io/ghcr.nju.edu.cn}" '
+              (.services | keys) == ["openerp"] and .services.openerp.image == $image and
+              (.services.openerp.ports | length) == 1 and
+              (.services.openerp.ports[0] | .host_ip == "127.0.0.1" and .published == "8080" and .target == 8000)'
+          test "$(docker image inspect openerp:local --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+          image_id="$(docker image inspect openerp:local --format '{{.Id}}')"
+          docker tag "$image_id" "$release_image"
+          python3 deploy/tests/smoke.py --compose "$compose_file" --image "$release_image"
+          echo "RELEASE_IMAGE=$release_image" >> "$GITHUB_ENV"
+
+      - name: 推送已验收的单个镜像
+        run: docker push "$RELEASE_IMAGE"
 
       - name: 上传同一 Release 的部署附件
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tar -czf "$RUNNER_TEMP/openerp-compose.tar.gz" -C OpenERP.AppHost/aspire-output docker-compose.yaml
-          gh release upload --repo "$GITHUB_REPOSITORY" -- "$ReleaseTag" "$RUNNER_TEMP/openerp-compose.tar.gz"
+        run: gh release upload --repo "$GITHUB_REPOSITORY" -- "$ReleaseTag" "$RUNNER_TEMP/compose.yaml"

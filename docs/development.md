@@ -7,7 +7,7 @@
 ### 环境准备
 
 - 正式版 .NET **10** SDK，[global.json](../global.json) 选择已安装的最高 .NET 10 SDK。
-- Node.js **26.13.0**，见 [.node-version](../.node-version)。
+- Node.js **26**，见 [.node-version](../.node-version)。
 - pnpm **11.16.0**，见 [package.json](../OpenERP.Web/package.json)。
 - PATH 中可直接调用的 Aspire CLI，版本与项目的 **13.6.5** 对齐；安装方式见 [Aspire 官方安装说明](https://aspire.dev/get-started/install-cli/)。
 - 已启动的 Docker Desktop 或 Aspire 支持的兼容容器运行环境。
@@ -140,7 +140,18 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 [前端检查](../.github/workflows/ci-web.yml)在 PR 改动 Web 项目、发布宿主输入、共享构建配置或该 workflow 时触发，也在每次推送 `main` 时运行。它执行 lint、类型检查、单元测试与构建，依赖安装成功且运行未取消时，一项失败后仍执行其余检查。浏览器 job 只在 `workflow_dispatch` 时执行，手动运行失败仍会传递到结果汇总；失败时在运行页下载 `playwright-report-<attempt>` 产物，用 `pnpm --dir OpenERP.Web exec playwright show-report <下载的 zip>` 查看失败用例的截图与 trace。浏览器 job 的前序步骤失败时会尝试上传已生成的报告。
 
-前端 workflow 中的 `web-hosting` job 验证发布形态的 Web 宿主：按发布流水线执行 `aspire publish`，断言生成的 Compose 中 `web` 仍是无 YARP 变量、保留 `PORT`/`API_HTTP`/service discovery 与 `WEB_PORT` 回环映射的计算容器；再用 `aspire do build-web` 构建镜像，并只启动这一个容器验证宿主行为矩阵（深链接回退、缺失静态资源/非 GET 导航/保留路径 404、API 不可用 502）。失败时输出容器日志。该 job 是对已构建发布产物的契约测试，不替代 Aspire 编排；应用与依赖容器仍由既有 Aspire 测试夹具启动和清理，YAML 不编排这些容器。
+前端 workflow 的 `web-hosting` job 在独立目录验收单容器发布形态，覆盖 HTTPS 入口、管理员登录、附件读写和容器重建。本地 Aspire 开发及后端测试仍使用各自的服务资源。
+
+在仓库根目录使用前述固定版本的 Aspire CLI、Docker、Python 3 和 OpenSSL，可以复现发布验收：
+
+```bash
+dotnet tool restore
+aspire do build-openerp --non-interactive
+aspire publish --non-interactive -o "$PWD/aspire-output"
+python3 deploy/tests/smoke.py --compose ./aspire-output/docker-compose.yaml
+```
+
+默认验收本次构建的 `openerp:local`。已有两个本地版本时，通过 `--image <旧镜像> --upgrade-image <新镜像>` 检查升级后数据能否读回。Release 工作流先验收本次组装的镜像，再推送同一个镜像并上传版本化配置，服务器操作见[部署说明](deployment.md)。
 
 ## 管理员账户与会话
 

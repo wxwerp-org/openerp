@@ -1,20 +1,20 @@
 # 部署说明
 
-OpenERP 的部署目标为单台 Linux amd64 服务器。服务器需要 Docker Engine 28 或更高版本、支持 `up --wait` 的 Docker Compose v2 或更高版本，以及负责 HTTPS 的反向代理。Web 端口依赖 Docker [回环绑定的隔离保证](https://docs.docker.com/engine/network/port-publishing/#publishing-ports)。本地开发启动见[开发说明](development.md#本地开发)。
+OpenERP 以一个镜像、一个容器运行在 Linux amd64 服务器上。服务器需要 Docker Engine 28 或更高版本、Docker Compose v2 或更高版本、能从发布附件指定的地址拉取镜像，以及负责 HTTPS 的外层反向代理。[Docker 回环端口绑定](https://docs.docker.com/engine/network/port-publishing/#publishing-ports)
 
-## 获取产物
+## 首次安装
 
-发布 [GitHub Release](https://github.com/wxwerp-org/openerp/releases) 会触发发布工作流。等工作流成功后，从同一 Release 下载 `openerp-compose.tar.gz` 并解压到该版本的独立目录。
-
-## 首次部署
-
-首次部署使用空的数据卷和凭据卷。在解压目录运行以下命令。默认 Compose 项目名为 `openerp`。需要调整回环端口时，可通过 `WEB_PORT` 覆盖默认值 8080，并同步修改反代上游端口。
+等 [GitHub Release](https://github.com/wxwerp-org/openerp/releases) 的发布工作流成功后，从同一 Release 下载 **`compose.yaml`**，放入该实例的长期目录，例如 `/opt/openerp/`。在该目录执行：
 
 ```bash
-docker compose up
+docker compose up -d
 ```
 
-首次启动时，`credentials` 生成 PostgreSQL 密码与 SeaweedFS 的 S3 凭据，并分别保存到两个 Docker 命名卷。Redis 在 Compose 内网使用无密码模式。PostgreSQL 就绪后，`migrations` 执行同版本 EF Core bundle，迁移成功后 API 才启动。用 `docker compose up -d --wait` 可在后台启动，用 `docker compose ps -a` 确认 `credentials` 和 `migrations` 已成功退出。启动失败时通过 `docker compose logs` 查看出错的服务，修复后重新执行 `up`。
+Compose 拉取附件指定版本的镜像并启动 `openerp`。首次启动自动在同目录的 `data/` 创建数据和凭据。入口依次完成 PostgreSQL 建库、EF 迁移、Redis 和对象存储启动，再开放 API 和 Web。后台启动命令返回后，可通过 `docker compose logs -f openerp` 查看启动进度，访问 `/api/auth/status` 检查应用是否可用。
+
+同一台服务器部署第二套时，选择不同名称的空目录，为它设置不同的 `WEB_PORT`（例如在该实例目录的 `.env` 写入 `WEB_PORT=8081`），再执行同一命令。Compose 默认按目录名区分项目，目录下的数据和凭据各自独立。
+
+## HTTPS 入口与首次登录
 
 将外层 HTTPS 反代（例如 Caddy）的整个站点转发到 `http://127.0.0.1:8080`，保留原请求路径和 Host，并覆盖客户端可能发送的 `X-Forwarded-Proto` 和 `X-Forwarded-For`，分别写入 `https` 和外层反代所见的客户端地址。Caddy 默认即按此设置转发头并透传 Host，最小配置为：
 
@@ -25,44 +25,40 @@ example.com {
 }
 ```
 
-改动 `WEB_PORT` 后同步修改上游端口；若反代容器已接入 `openerp_aspire` 网络，可用 `http://web:8000` 作为上游（Web 容器内的 Caddy 监听 Aspire 注入的 8000）。外层反代只负责 TLS、HTTP→HTTPS 与压缩，不要配置 SPA 回退、不要改写 `/api` 前缀：Web 容器内的 Caddy 负责把前端 history 深链接回退到 `index.html`、把同源 `/api/*` 转发给 API，并对缺失的静态资源、非 GET 导航以及 `/health`、`/alive` 返回真实 404；它保留外层写入的 `X-Forwarded-Proto` 与 `X-Forwarded-For`，API 因此能看到 `https` 和真实客户端地址。外层探活请访问 `/`。Web 的宿主机端口须保持仅绑定回环地址，API 端口须留在 Compose 网络内，该网络仅接入受信任的部署容器。外层反代应允许上传功能所需的请求体大小（至少 21 MiB，含 multipart 开销）；若外层反代前还有 CDN 或负载均衡，需在外层配置可信代理以保留真实客户端地址。
+改动 `WEB_PORT` 后同步修改反代上游。外层代理负责 TLS、HTTP→HTTPS 与压缩，容器内的 Caddy 处理 SPA 深链接和同源 `/api/*`。外层代理应允许至少 21 MiB 的上传请求体。若它前面还有 CDN 或负载均衡，需在外层配置可信代理，以保留真实客户端地址。
 
-开放入口前，通过 HTTPS 打开首页并检查 `/api/auth/status`，确认 `/api/auth/csrf` 返回 200 且设置带 `Secure` 的 Cookie。直达并刷新 `/shops`、`/reports/orders` 与 `/settings`，确认未知路径显示“页面不存在”，且 `/assets/missing.js` 与 `/api/not-a-route` 返回 404 而不是首页。在「设置管理员密码」页设置并确认密码，再用 `admin` 登录。密码长度为 6–20 个字符，保留首尾空白。登录后验证文件上传和下载。需要使用 ERP 功能时，通过右上角「系统设置 → 基础 → ERP 接入」填写 Token，再到授权店铺页验证本地店铺目录同步与授权状态，在订单列表工具栏打开「同步历史订单」验证同步进度和结果。
+开放入口前，通过 HTTPS 打开首页并检查 `/api/auth/status`，确认 `/api/auth/csrf` 返回 200 且设置带 `Secure` 的 Cookie。在「设置管理员密码」页设置密码，再用 `admin` 登录。密码长度为 6–20 个字符，保留首尾空白。
+
+登录后直达并刷新 `/shops`、`/reports/orders` 与 `/settings`，确认未知页面显示“页面不存在”，缺失静态资源返回 404，使用有效访问令牌请求 `/api/not-a-route` 也返回 404。验证文件可以上传和下载。需要使用 ERP 功能时，通过右上角「系统设置 → 基础 → ERP 接入」填写 Token，到授权店铺页验证同步，再从订单列表工具栏打开「同步历史订单」查看进度和结果。
 
 初始化入口匿名开放。公网可达时，第一个成功设置密码的人将成为管理员，因此应用启动后应立即初始化。全新实例被抢先初始化且尚无业务数据时可重新部署。已有数据时可通过[重置管理员密码](#重置管理员密码)恢复，保留数据库和数据卷。
 
-## 凭据查找与备份
+## 停机、备份与恢复
 
-用 `docker volume ls --filter label=com.docker.compose.project=openerp` 查找部署卷。默认的凭据卷名是 `openerp_postgres-credentials` 和 `openerp_s3-credentials`。有 Docker 权限的运维人员在部署目录中可按需读取凭据。以下命令直接输出凭据，只在受控终端使用。
+在实例目录执行 `docker compose stop`。入口先关闭 Web 和 API，再等待 PostgreSQL、Redis 和 SeaweedFS 完成正常关闭。Compose 为整套服务预留两分钟。若进程被强制终止，请先启动并确认正常，重新干净停机后再归档数据库文件。[PostgreSQL 文件系统备份](https://www.postgresql.org/docs/18/backup-file.html)
+
+停机后一起备份整个 `data/` 和当时使用的 `compose.yaml`，保留文件属主和权限。数据目录包含 PostgreSQL、Redis 快照、SeaweedFS 文件和元数据，以及每个实例独有的数据库和 S3 凭据。按含有密钥的备份保管。恢复时将两者还原到同一实例目录，再运行 `docker compose up -d`。已有数据缺少对应凭据时，入口会报出缺失的位置，请恢复与该数据匹配的凭据。
+
+需要单独核对凭据时，有相应宿主机权限的运维人员可在实例目录查看 `data/credentials/postgres/current/password` 和 `data/credentials/s3/current/s3.json`。这些文件包含真实密钥。
+
+## 容器重建与升级
+
+在维护窗口备份后，将新版 Release 的 `compose.yaml` **覆盖到原实例目录**，保留整个 `data/`，然后运行：
 
 ```bash
-docker compose exec postgres cat /run/openerp/postgres/current/password
-docker compose exec seaweedfs cat /run/openerp/s3/current/s3.json
+docker compose up -d
 ```
 
-服务停机时，先用 `docker volume inspect` 确认凭据卷存在，再从部署目录运行以下命令。临时容器复用附件指定的本地 API 镜像和只读挂载。
+新容器复用原数据和凭据，执行待应用的 EF 迁移。登录原账号，确认业务记录和已有附件均可读取。若迁移失败，Web 不会开放，使用 `docker compose logs openerp` 查看失败阶段。数据库结构已经改变且旧版不兼容时，停机后从升级前的备份成套恢复。
 
-```bash
-docker compose run --rm --no-deps --pull never --entrypoint cat api /run/openerp/postgres/current/password
-docker compose run --rm --no-deps --pull never --entrypoint cat api /run/openerp/s3/current/s3.json
-```
-
-用 [Docker 卷的备份和恢复流程](https://docs.docker.com/engine/storage/volumes/#back-up-restore-or-migrate-data-volumes)归档或恢复卷前，先在维护窗口停止 Web 和 API，再停止 PostgreSQL 和 SeaweedFS。PostgreSQL 的普通文件归档要求数据库干净停止，见 [PostgreSQL 文件系统备份说明](https://www.postgresql.org/docs/18/backup-file.html)。将 `postgres-credentials` 和 `postgres-data` 成组备份和恢复，将 `s3-credentials` 和 `seaweedfs-data` 成组备份和恢复。凭据归档存入加密备份。恢复的 PostgreSQL 数据与原角色密码配套。
-
-## 容器重建与版本升级
-
-保留 Compose 项目名及其命名卷，重新执行 `docker compose up` 即可复用已生成的凭据和数据。`docker compose down -v` 会删除数据卷和凭据卷，仅在要移除整套实例时使用。Redis 使用快照持久化，异常退出时最后一次快照之后的写入可能丢失。
-
-使用自动生成凭据的实例更换 Release 时，在维护窗口停止旧服务并按上文备份卷。在新目录沿用项目名及命名卷，运行 `docker compose up -d --wait`，检查迁移退出码，再验证 HTTPS、登录和已有数据。迁移失败时保持维护窗口，查看迁移日志和数据库状态，修复后重试。确认旧版 API 与当前数据库架构兼容后才可切回旧镜像；架构不兼容时先从备份恢复。
-
-常驻容器使用 `unless-stopped`，在异常退出或 Docker 重启后自动恢复，手动停止的容器保持停止。Docker 重启时不会自动重跑凭据初始化和迁移容器。API 每次启动生成临时 JWT 签名密钥，重启前的 access token 随即失效，浏览器仍可用有效的 refresh Cookie 续期。重启时遇到失败的保存或上传，可以在会话续期后重新提交。
+运行中任一常驻进程意外退出会触发整套容器重启，期间 ERP 短暂不可用。手动执行 `docker compose stop` 后保持停止。本部署方式从空目录开始，面向此后单容器版本之间的升级。
 
 ## 重置管理员密码
 
-到正在运行的部署目录执行以下命令。
+在正在运行的实例目录执行：
 
 ```bash
-docker compose exec api dotnet OpenERP.Api.dll reset-admin-password
+docker compose exec openerp dotnet /app/OpenERP.Api.dll reset-admin-password
 ```
 
-命令仅使用 API 容器内的 PostgreSQL 配置连接数据库，更新已有管理员并撤销全部登录。未初始化的占位账户会在重置时完成初始化。交互模式隐藏输入并要求确认。自动化时追加 `--stdin`，由机密管理工具通过标准输入提供一行密码，避免把真实密码写进脚本或终端历史。失败时命令返回非零退出码。
+命令更新管理员密码并撤销已有登录。未初始化的账户会在重置时完成初始化。交互模式隐藏输入并要求确认。自动化时使用 `docker compose exec -T`，为子命令追加 `--stdin`，通过标准输入传入一行密码。失败时命令返回非零退出码。
