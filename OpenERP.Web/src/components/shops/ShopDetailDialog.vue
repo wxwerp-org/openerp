@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { nextTick, ref, watch, type ComponentPublicInstance } from 'vue'
 import AppButton from '../../ui/AppButton.vue'
 import AppDialog from '../../ui/AppDialog.vue'
 import AppDialogClose from '../../ui/AppDialogClose.vue'
@@ -18,18 +17,6 @@ const emit = defineEmits<{
   closed: []
   authorize: [shop: Shop]
 }>()
-
-const authorizeButton = ref<ComponentPublicInstance | null>(null)
-
-watch(
-  () => props.open,
-  async (open) => {
-    if (!open) return
-    await nextTick()
-    ;(authorizeButton.value?.$el as HTMLElement | null)?.focus()
-  },
-  { immediate: true },
-)
 
 function close(): void {
   if (props.open) emit('close')
@@ -161,7 +148,7 @@ function formatDateTime(value: string | null): string {
       </p>
 
       <footer class="mt-20 flex justify-end gap-8">
-        <AppButton id="shopAuthorize" ref="authorizeButton" variant="primary" @click="authorize">
+        <AppButton id="shopAuthorize" variant="primary" autofocus @click="authorize">
           去 wxw 授权
         </AppButton>
         <AppButton @click="close">关闭</AppButton>

@@ -42,7 +42,12 @@ const classes = computed(() => [
 </script>
 
 <template>
-  <td :data-numeric="String(numeric)" :data-sticky="sticky" :class="classes">
+  <td
+    :data-numeric="String(numeric)"
+    :data-sticky="sticky"
+    :data-surface="surface === 'page-soft' ? 'page-soft' : undefined"
+    :class="classes"
+  >
     <slot />
   </td>
 </template>

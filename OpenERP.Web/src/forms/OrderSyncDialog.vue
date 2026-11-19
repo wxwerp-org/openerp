@@ -679,7 +679,7 @@ const hintClass = 'py-6 text-12/18 text-muted'
 const metaText = 'text-12/18 text-body [overflow-wrap:anywhere]'
 const countText = 'm-0 text-12 leading-[1.45] text-body [overflow-wrap:anywhere]'
 const shopOptionClass =
-  'flex cursor-pointer items-center gap-6 px-2 py-3 text-12/18 text-body hover:bg-primary-faint'
+  'flex cursor-pointer items-center gap-6 px-2 py-3 text-12/18 text-body hover:bg-primary-faint has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-primary'
 const pageSizeClass =
   'inline-flex h-28 min-w-100 shrink-0 cursor-pointer items-center justify-between gap-10 rounded-4 border border-input bg-white px-9 text-ink focus-within:border-primary'
 const pageSizeDisabledClass =
@@ -1076,7 +1076,8 @@ onUnmounted(() => {
               :disabled="paginationDisabled"
               as="div"
               focus-ring
-              class="border-t border-t-line-soft px-16"
+              :padding-x="16"
+              class="border-t border-t-line-soft"
               @update:page="handlePageChange"
             >
               <template #prefix>

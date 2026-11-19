@@ -106,7 +106,7 @@ const tableStyle = computed(() => {
   border-radius: 8px;
 }
 
-.app-table :deep(tbody tr:hover td) {
+.app-table :deep(tbody tr:hover td:not([data-surface='page-soft'])) {
   background: var(--color-row-hover);
 }
 
