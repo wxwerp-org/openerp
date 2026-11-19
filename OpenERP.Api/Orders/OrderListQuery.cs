@@ -73,10 +73,14 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
             Status = !string.IsNullOrWhiteSpace(po.StatusText) ? po.StatusText! :
                 !string.IsNullOrWhiteSpace(po.StatusCode) ? po.StatusCode! : "未知"
         });
-        var shopSids = await db.Orders.Select(order => order.Sid).Distinct().Order().ToArrayAsync(ct);
+        var shops = await db.Orders.Select(order => order.Sid).Distinct()
+            .LeftJoin(db.Shops, sid => sid, shop => shop.Sid,
+                (sid, shop) => new { Sid = sid, Name = shop == null ? null : shop.Name })
+            .OrderBy(shop => shop.Sid)
+            .Select(shop => new OrderListShop(shop.Sid, shop.Name)).ToArrayAsync(ct);
         var platforms = await db.Orders.Select(order => order.Platform).Distinct().ToArrayAsync(ct);
         var statuses = await platformOrders.Select(po => po.Status).Distinct().ToArrayAsync(ct);
-        var options = new OrderListOptions(shopSids.Select(sid => new OrderListShop(sid, null)).ToArray(),
+        var options = new OrderListOptions(shops,
             platforms.Order(StringComparer.Ordinal).ToArray(), statuses.Order(StringComparer.Ordinal).ToArray());
 
         var number = string.IsNullOrEmpty(request.Number) ? null : request.Number;
@@ -122,7 +126,8 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         var childRows = await children.Where(po => ids.Contains(po.ErpId)).ToArrayAsync(ct);
         var childrenByOrder = childRows.OrderBy(po => po.PoNumber, StringComparer.Ordinal).ToLookup(po => po.ErpId,
             po => new PlatformOrderListItem(po.PoNumber, po.Status, po.Matched));
-        var items = rows.Select(row => new OrderListItem(row.Order.ErpId, row.Order.Sid, null, row.Order.Platform,
+        var shopNames = shops.ToDictionary(shop => shop.Sid, shop => shop.Name);
+        var items = rows.Select(row => new OrderListItem(row.Order.ErpId, row.Order.Sid, shopNames[row.Order.Sid], row.Order.Platform,
             childrenByOrder[row.Order.ErpId].ToArray(),
             FormatTime(row.Order.CreatedAt, row.Order.CreatedRaw), FormatTime(row.Order.DispatchedAt, row.Order.DispatchedRaw),
             row.LineCount, row.ItemQuantity)).ToArray();
