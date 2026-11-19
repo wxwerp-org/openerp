@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
-import AppIcon from './AppIcon.vue'
+import AppIcon from '../../ui/AppIcon.vue'
 
 type NavItem = { label: string; page?: string }
 type NavGroup = { id: string; label: string; icon: string; items: NavItem[] }
@@ -155,10 +155,7 @@ watch(
   { immediate: true },
 )
 
-function isGroupCollapsed(group: NavGroup): boolean {
-  return collapsedGroups.value.has(group.id)
-}
-
+/** 折叠轨道，以及订单报表在窄屏下收起侧栏时，导航以浮层展开。 */
 function usesRail(): boolean {
   return (
     props.collapsed ||
@@ -181,11 +178,14 @@ function showFlyout(group: NavGroup, groupElement: Element): void {
   })
 }
 
+function isGroupCollapsed(group: NavGroup): boolean {
+  return collapsedGroups.value.has(group.id)
+}
+
 function openFlyout(group: NavGroup, event: MouseEvent | FocusEvent): void {
   cancelFlyoutClose()
   cancelFlyoutOpen()
-  const target = event.currentTarget as HTMLElement
-  showFlyout(group, target.closest('.nav-group') ?? target)
+  showFlyout(group, event.currentTarget as Element)
 }
 
 function openFlyoutOnHover(group: NavGroup, event: MouseEvent): void {
@@ -195,8 +195,7 @@ function openFlyoutOnHover(group: NavGroup, event: MouseEvent): void {
   }
   cancelFlyoutClose()
   cancelFlyoutOpen()
-  const target = event.currentTarget as HTMLElement
-  const groupElement = target.closest('.nav-group') ?? target
+  const groupElement = event.currentTarget as Element
   flyoutOpenTimer = setTimeout(() => {
     flyoutOpenTimer = undefined
     showFlyout(group, groupElement)
@@ -233,19 +232,67 @@ function closeFlyoutOnFocusOut(_group: NavGroup, event: FocusEvent): void {
 }
 
 const hasFlyout = computed(() => flyoutGroup.value !== null)
+
+/** 折叠轨道与展开两套布局值必须整体二选一，避免同属性工具类互相覆盖。 */
+const railItemLayout = 'mx-auto h-40 w-40 justify-center p-0'
+const expandedItemLayout = 'h-38 w-full gap-10 px-8 [@media(max-height:760px)]:h-36'
+
+/** 折叠轨道高度在旧样式里由更高特异性覆盖，短视口媒体查询不应压低它。 */
+function headLayout(): string[] {
+  return props.collapsed ? [railItemLayout] : [expandedItemLayout]
+}
+
+function linkState(active: boolean): string[] {
+  return active
+    ? ['bg-nav-active font-semibold text-primary']
+    : ['text-nav-text hover:bg-nav-hover hover:text-ink']
+}
+
+function headState(active: boolean): string[] {
+  if (props.collapsed) {
+    return active
+      ? ['bg-nav-active text-primary']
+      : ['text-nav-text hover:bg-nav-hover hover:text-ink']
+  }
+  return active
+    ? ['bg-nav-hover font-semibold text-ink']
+    : ['text-nav-text hover:bg-nav-hover hover:text-ink']
+}
+
+function headIconState(active: boolean): string[] {
+  return active ? ['text-primary'] : ['text-nav-icon group-hover:text-nav-text']
+}
+
+function subItemLayout(inFlyout: boolean): string[] {
+  return inFlyout ? ['w-full px-8'] : ['pl-34 pr-8']
+}
+
+function subItemState(active: boolean): string[] {
+  return active
+    ? ['bg-nav-active font-semibold text-primary']
+    : ['text-body hover:bg-nav-hover hover:text-ink']
+}
+
 </script>
 
 <template>
-  <aside class="sidebar" :class="{ 'is-rail': collapsed }" aria-label="主导航">
+  <aside
+    class="relative z-[60] flex h-full flex-none flex-col border-r border-border-nav bg-nav transition-[width] duration-180 ease-[ease]"
+    :class="collapsed ? 'w-56' : 'w-200'"
+    aria-label="主导航"
+    data-testid="sidebar"
+    :data-rail="collapsed"
+  >
     <button
-      class="brand"
+      class="flex h-56 flex-none items-center gap-10 text-primary"
+      :class="collapsed ? 'justify-center px-0' : 'px-16'"
       type="button"
       data-nav-page="dashboard"
       title="回到首页"
       aria-label="回到首页"
       @click="navigate('dashboard')"
     >
-      <svg viewBox="0 0 32 32" aria-hidden="true">
+      <svg viewBox="0 0 32 32" aria-hidden="true" class="size-28 flex-none">
         <path
           d="M4.7 25.9 12.9 6.2c1.2-2.9 5.1-2.9 6.4 0l2.1 5"
           fill="none"
@@ -270,25 +317,38 @@ const hasFlyout = computed(() => flyoutGroup.value !== null)
           stroke-linecap="round"
         />
       </svg>
-      <span class="brand-name">Open ERP</span>
+      <span
+        class="whitespace-nowrap text-14/[21px] font-semibold tracking-[0.3px] text-ink"
+        :class="collapsed ? 'hidden' : ''"
+      >
+        Open ERP
+      </span>
     </button>
 
-    <nav class="side-nav">
+    <nav
+      class="side-nav min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-8 pb-10 pt-6"
+      data-testid="side-nav"
+    >
       <button
-        class="nav-link"
-        :class="{ active: activePage === 'dashboard' }"
+        class="group flex items-center rounded-4 text-left text-13/[19.5px] whitespace-nowrap transition-[background,color] duration-150"
+        :class="[...headLayout(), ...linkState(activePage === 'dashboard')]"
         type="button"
         data-nav-page="dashboard"
+        :aria-current="activePage === 'dashboard' ? 'page' : undefined"
         @click="navigate('dashboard')"
       >
-        <AppIcon name="i-nav-home" /><span>工作台</span>
+        <AppIcon
+          name="i-nav-home"
+          class="size-18 flex-none [stroke-width:1.55] [@media(max-height:760px)]:size-16"
+          :class="headIconState(activePage === 'dashboard')"
+        />
+        <span :class="collapsed ? 'hidden' : ''">工作台</span>
       </button>
 
       <div
         v-for="group in groups"
         :key="group.id"
-        class="nav-group"
-        :class="{ collapsed: isGroupCollapsed(group), active: isGroupActive(group) }"
+        :class="collapsed ? 'mt-4' : ''"
         :data-group="group.id"
         @mouseenter="usesRail() && openFlyoutOnHover(group, $event)"
         @mouseleave="closeFlyoutSoon"
@@ -297,23 +357,43 @@ const hasFlyout = computed(() => flyoutGroup.value !== null)
         @keydown.esc.stop="closeFlyout"
       >
         <button
-          class="nav-group-head"
+          class="group flex items-center rounded-4 text-left text-13/[19.5px] whitespace-nowrap transition-[background,color] duration-150"
+          :class="[...headLayout(), ...headState(isGroupActive(group))]"
           type="button"
           :aria-expanded="!isGroupCollapsed(group)"
           @click="toggleGroup(group, $event)"
         >
-          <AppIcon :name="group.icon" />
-          <span class="nav-group-label">{{ group.label }}</span>
-          <AppIcon name="i-chev-down" icon-class="nav-caret" />
+          <AppIcon
+            :name="group.icon"
+            class="size-18 flex-none [stroke-width:1.55] [@media(max-height:760px)]:size-16"
+            :class="headIconState(isGroupActive(group))"
+          />
+          <span
+            class="min-w-0 flex-1 overflow-hidden text-ellipsis"
+            :class="collapsed ? 'hidden' : ''"
+            >{{ group.label }}</span
+          >
+          <AppIcon
+            name="i-chev-down"
+            class="ml-auto size-14 transition-transform duration-150 [@media(max-height:760px)]:size-16"
+            :class="[
+              collapsed ? 'hidden' : isGroupCollapsed(group) ? '[transform:rotate(-90deg)]' : '',
+              isGroupActive(group) ? 'text-primary' : 'text-nav-icon-muted',
+            ]"
+          />
         </button>
-        <div class="nav-sub">
+        <div
+          class="grid grid-cols-[minmax(0,1fr)] gap-2 pb-8 pt-3"
+          :class="collapsed || isGroupCollapsed(group) ? 'hidden' : ''"
+        >
           <button
             v-for="item in group.items"
             :key="item.label"
-            class="nav-sub-item"
-            :class="{ active: item.page === activePage }"
+            class="flex h-32 items-center overflow-hidden text-ellipsis rounded-4 text-left text-13/[19.5px] whitespace-nowrap transition-[background,color] duration-150 [@media(max-height:760px)]:h-28"
+            :class="[...subItemLayout(false), ...subItemState(item.page === activePage)]"
             type="button"
             :data-nav-page="item.page ?? ''"
+            :aria-current="item.page === activePage ? 'page' : undefined"
             @click="navigate(item.page, item.label)"
           >
             {{ item.label }}
@@ -322,14 +402,18 @@ const hasFlyout = computed(() => flyoutGroup.value !== null)
         <div
           v-if="hasFlyout && flyoutGroup === group.id"
           :ref="setFlyoutElement"
-          class="nav-flyout open"
+          class="fixed left-48 z-[300] max-h-[calc(100dvh-16px)] w-max min-w-150 max-w-220 overflow-y-auto rounded-6 border border-line bg-white p-6 shadow-menu"
           :style="{ top: `${flyoutTop}px` }"
+          data-testid="nav-flyout"
         >
-          <div class="nav-flyout-title">{{ group.label }}</div>
+          <div class="px-8 pb-6 pt-2 text-12 font-semibold text-sidebar-foot">
+            {{ group.label }}
+          </div>
           <button
             v-for="item in group.items"
             :key="item.label"
-            class="nav-sub-item"
+            class="flex h-32 items-center overflow-hidden text-ellipsis rounded-4 text-left text-13/[19.5px] whitespace-nowrap transition-[background,color] duration-150 [@media(max-height:760px)]:h-28"
+            :class="[...subItemLayout(true), ...subItemState(item.page === activePage)]"
             type="button"
             @click="navigate(item.page, item.label)"
           >
@@ -339,11 +423,14 @@ const hasFlyout = computed(() => flyoutGroup.value !== null)
       </div>
     </nav>
 
-    <div class="sidebar-foot">
+    <div
+      class="flex h-48 w-full flex-none items-center text-sidebar-foot"
+      :class="collapsed ? 'justify-center pr-0' : 'justify-end pr-14'"
+    >
       <button
-        id="collapseNav"
-        class="collapse-btn"
+        class="flex size-32 items-center justify-center rounded-4 hover:bg-hover-bg hover:text-nav-text"
         type="button"
+        data-testid="collapse-nav"
         :title="collapsed ? '展开导航' : '收起导航'"
         :aria-label="collapsed ? '展开导航' : '收起导航'"
         @click="emit('update:collapsed', !collapsed)"
@@ -355,9 +442,15 @@ const hasFlyout = computed(() => flyoutGroup.value !== null)
 </template>
 
 <style scoped>
-.nav-flyout {
-  left: 48px;
-  max-height: calc(100dvh - 16px);
-  overflow-y: auto;
+.side-nav {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scroll-thumb-nav) transparent;
+}
+.side-nav::-webkit-scrollbar {
+  width: 6px;
+}
+.side-nav::-webkit-scrollbar-thumb {
+  background: var(--color-scroll-thumb-nav);
+  border-radius: 3px;
 }
 </style>

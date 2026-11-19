@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { apiRequest } from '../account/session'
-import AppIcon from '../components/navigation/AppIcon.vue'
-import { buildPageList } from '../components/controls/pager'
+import AppIcon from '../ui/AppIcon.vue'
+import { buildPageList } from '../ui/pager'
 import ShopDetailDialog from '../components/shops/ShopDetailDialog.vue'
 import ShopSummaryCards from '../components/shops/ShopSummaryCards.vue'
 import type {

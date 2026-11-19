@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import SegmentedControl from '../controls/SegmentedControl.vue'
+import AppSegmented from '../../ui/AppSegmented.vue'
 import {
   distributionSegments,
   orderPeriods,
@@ -40,8 +40,8 @@ const period = ref(props.periods[2] ?? props.periods[0] ?? '')
         订单分布<svg class="ic title-caret" aria-hidden="true"><use href="#i-chev-right" /></svg>
       </div>
       <div class="order-dist-head-right">
-        <SegmentedControl v-model="orderType" :options="types" aria-label="订单类型" />
-        <SegmentedControl v-model="period" :options="periods" aria-label="订单周期" />
+        <AppSegmented v-model="orderType" :options="types" aria-label="订单类型" />
+        <AppSegmented v-model="period" :options="periods" aria-label="订单周期" />
       </div>
     </div>
     <div class="order-dist-body">

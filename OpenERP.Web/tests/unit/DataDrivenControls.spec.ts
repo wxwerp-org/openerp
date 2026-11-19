@@ -10,23 +10,32 @@ import UsersView from '../../src/views/UsersView.vue'
 describe('数据驱动控件与文档结构', () => {
   it('Given 实时销量 When 切换到昨日 Then 选中态真实更新', async () => {
     const wrapper = mount(RealtimeSalesCard)
-    const yesterday = wrapper
-      .findAll('.mini-seg button')
-      .find((button) => button.text() === '昨日')!
+    const group = wrapper.get('[role="group"][aria-label="实时销量周期"]')
+    const yesterday = group.findAll('button').find((button) => button.text() === '昨日')!
 
     await yesterday.trigger('click')
 
-    expect(yesterday.classes()).toContain('active')
-    expect(
-      wrapper.findAll('.mini-seg button').filter((button) => button.classes().includes('active')),
-    ).toHaveLength(1)
+    const pressed = wrapper
+      .get('[role="group"][aria-label="实时销量周期"]')
+      .findAll('button')
+      .filter((button) => button.attributes('aria-pressed') === 'true')
+    expect(pressed).toHaveLength(1)
+    expect(pressed[0]!.text()).toBe('昨日')
   })
 
   it('Given 产品视图分段控件 When 选择按 SPU Then 当前选项随状态变化', async () => {
     const products = mount(ProductListView)
-    const spu = products.findAll('.toggle-sku button').find((button) => button.text() === '按SPU')!
+    const group = products.get('[role="group"][aria-label="产品维度"]')
+    const spu = group.findAll('button').find((button) => button.text() === '按SPU')!
+
     await spu.trigger('click')
-    expect(spu.classes()).toContain('active')
+
+    const pressed = products
+      .get('[role="group"][aria-label="产品维度"]')
+      .findAll('button')
+      .filter((button) => button.attributes('aria-pressed') === 'true')
+    expect(pressed).toHaveLength(1)
+    expect(pressed[0]!.text()).toBe('按SPU')
   })
 
   it('Given 用户创建时间 When 连续排序 Then 行顺序和 aria-sort 同步变化', async () => {

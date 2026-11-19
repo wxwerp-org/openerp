@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import SegmentedControl from '../controls/SegmentedControl.vue'
+import AppSegmented from '../../ui/AppSegmented.vue'
 import { profitPeriods, profitSummary, profitTypes, type ProfitSummary } from './dashboardMocks'
 
 const props = withDefaults(
@@ -27,8 +27,8 @@ const period = ref(props.periods[1] ?? props.periods[0] ?? '')
         结算利润<svg class="ic title-caret" aria-hidden="true"><use href="#i-chev-right" /></svg>
       </div>
       <div class="profit-head-right">
-        <SegmentedControl v-model="profitType" :options="types" aria-label="利润类型" />
-        <SegmentedControl v-model="period" :options="periods" aria-label="利润周期" />
+        <AppSegmented v-model="profitType" :options="types" aria-label="利润类型" />
+        <AppSegmented v-model="period" :options="periods" aria-label="利润周期" />
       </div>
     </div>
     <div class="profit-body">

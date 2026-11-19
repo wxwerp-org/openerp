@@ -94,6 +94,18 @@
 
   --color-soft-bg: rgba(11, 16, 25, 0.1);
   --color-soft-bg-hover: rgba(11, 16, 25, 0.16);
+  --color-icon-hover: rgba(11, 16, 25, 0.06);
+  --color-caret: #a9b0ba;
+  --color-notice-bg: #fafbfc;
+  --color-progress-track: #eef3fa;
+  --color-page-btn-hover: #f5f8ff;
+  --color-page-num-border: #d7e4ff;
+  --color-empty-icon: #c6ced9;
+  --color-empty-icon-strong: #c9d2dd;
+  --color-radio-border: #c6cfdc;
+  --color-radio-check: #65a6ff;
+  --color-radio-border-disabled: #d5dbe4;
+  --color-radio-check-disabled: #afc9f3;
   --color-btn-hover-bg: #f8fafd;
   --color-btn-disabled-bg: #f7f9fc;
   --color-btn-disabled-text: #c7cdd6;

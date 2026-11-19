@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import SegmentedControl from '../controls/SegmentedControl.vue'
+import AppSegmented from '../../ui/AppSegmented.vue'
 import { performancePeriods, performanceStats, type PerformanceStat } from './dashboardMocks'
 
 const props = withDefaults(
@@ -27,7 +27,14 @@ const period = ref(props.periods[0] ?? '')
         <span class="info-dot" style="margin-right: 0"
           ><svg class="ic" aria-hidden="true"><use href="#i-info" /></svg
         ></span>
-        <SegmentedControl v-model="period" :options="periods" aria-label="业绩周期" />
+        <AppSegmented
+          v-model="period"
+          :options="periods"
+          aria-label="业绩周期"
+          :padding-x="7"
+          :min-width="36"
+          option-class="max-[1500px]:px-6 max-[1500px]:min-w-32"
+        />
         <button class="date-range-btn" type="button">
           <span>2026-11-11 - 2026-11-11</span
           ><svg class="ic" aria-hidden="true"><use href="#i-calendar" /></svg>

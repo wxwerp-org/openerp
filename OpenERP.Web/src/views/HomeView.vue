@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { apiRequest } from '../account/session'
-import AppIcon from '../components/navigation/AppIcon.vue'
+import AppIcon from '../ui/AppIcon.vue'
 
 type PingStatus = 'loading' | 'success' | 'error'
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import SegmentedControl from '../controls/SegmentedControl.vue'
+import AppSegmented from '../../ui/AppSegmented.vue'
 import { inventoryMetrics, warehouseStocks, type WarehouseStock } from './dashboardMocks'
 
 const props = withDefaults(
@@ -30,7 +30,7 @@ const metric = ref(props.metrics[0] ?? '')
         库存概览<svg class="ic title-caret" aria-hidden="true"><use href="#i-chev-right" /></svg>
       </div>
       <div class="inventory-tools">
-        <SegmentedControl v-model="metric" :options="metrics" aria-label="库存指标" />
+        <AppSegmented v-model="metric" :options="metrics" aria-label="库存指标" />
         <button class="trend-icon-btn" type="button" title="刷新" aria-label="刷新">
           <svg class="ic" aria-hidden="true"><use href="#i-refresh" /></svg>
         </button>

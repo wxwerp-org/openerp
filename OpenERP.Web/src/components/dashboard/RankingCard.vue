@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import SegmentedControl from '../controls/SegmentedControl.vue'
+import AppSegmented from '../../ui/AppSegmented.vue'
 import { rankingDimensions, rankingPeriods, rankingRows, type RankRow } from './dashboardMocks'
 
 const props = withDefaults(
@@ -42,11 +42,13 @@ const period = ref(props.periods[0] ?? '')
     </div>
     <div class="rank-controls">
       <div class="rank-controls-left">
-        <SegmentedControl
+        <AppSegmented
           v-model="dimension"
-          group-class="toggle-group"
           :options="dimensions"
           aria-label="排行商品维度"
+          :line-height="28"
+          color="ink"
+          :min-width="0"
         />
         <button class="control" type="button">
           店铺<svg class="ic caret" aria-hidden="true"><use href="#i-chev-down" /></svg>
@@ -69,7 +71,7 @@ const period = ref(props.periods[0] ?? '')
         <button class="btn" type="button">更多筛选</button>
       </div>
       <div class="rank-controls-right">
-        <SegmentedControl v-model="period" :options="periods" aria-label="排行周期" />
+        <AppSegmented v-model="period" :options="periods" aria-label="排行周期" />
         <button class="date-range-btn" type="button">
           <span>2026-10-13 - 2026-11-11</span
           ><svg class="ic" aria-hidden="true"><use href="#i-calendar" /></svg>

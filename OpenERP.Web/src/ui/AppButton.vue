@@ -1,0 +1,79 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { RouterLink, type RouteLocationRaw } from 'vue-router'
+
+const props = withDefaults(
+  defineProps<{
+    variant?: 'default' | 'primary' | 'soft' | 'text'
+    size?: 'md' | 'lg'
+    type?: 'button' | 'submit' | 'reset'
+    disabled?: boolean
+    href?: string
+    to?: RouteLocationRaw
+  }>(),
+  {
+    variant: 'default',
+    size: 'md',
+    type: 'button',
+    disabled: false,
+    href: undefined,
+    to: undefined,
+  },
+)
+
+const sizeClass: Record<'md' | 'lg', string> = {
+  md: 'h-[var(--control-h)] min-h-[var(--control-h)]',
+  lg: 'h-[var(--control-h-lg)] min-h-[var(--control-h-lg)]',
+}
+
+const lineHeightClass: Record<'md' | 'lg', string> = {
+  md: 'text-12/28',
+  lg: 'text-12/28',
+}
+
+const variantClass: Record<'default' | 'primary' | 'soft' | 'text', string> = {
+  default:
+    'border-input bg-white hover:border-input-hover hover:bg-btn-hover-bg disabled:cursor-default disabled:border-line disabled:bg-btn-disabled-bg disabled:text-placeholder disabled:hover:border-line disabled:hover:bg-btn-disabled-bg',
+  primary:
+    'border-primary bg-primary text-white hover:border-primary-hover hover:bg-primary-hover disabled:cursor-default disabled:border-primary-disabled disabled:bg-primary-disabled disabled:text-white disabled:hover:border-primary-disabled disabled:hover:bg-primary-disabled',
+  soft: 'border-transparent bg-soft-bg hover:bg-soft-bg-hover disabled:cursor-default',
+  text: 'border-transparent bg-transparent text-primary hover:bg-primary-faint disabled:cursor-default',
+}
+
+const colorClass: Record<'default' | 'primary' | 'soft' | 'text', string> = {
+  default: 'text-ink',
+  primary: 'text-white',
+  soft: 'text-ink',
+  text: 'text-primary',
+}
+
+const classes = computed(() => [
+  'inline-flex shrink-0 items-center justify-center gap-5 whitespace-nowrap rounded-4 border',
+  lineHeightClass[props.size],
+  sizeClass[props.size],
+  props.variant === 'text' ? 'px-4' : 'px-10',
+  colorClass[props.variant],
+  variantClass[props.variant],
+])
+
+const tag = computed(() => (props.to ? RouterLink : props.href ? 'a' : 'button'))
+const rootProps = computed(() =>
+  props.to
+    ? { to: props.to }
+    : props.href
+      ? { href: props.href }
+      : { type: props.type, disabled: props.disabled },
+)
+</script>
+
+<template>
+  <component
+    :is="tag"
+    v-bind="rootProps"
+    :class="classes"
+    :data-variant="variant"
+    :data-size="size"
+  >
+    <slot />
+  </component>
+</template>

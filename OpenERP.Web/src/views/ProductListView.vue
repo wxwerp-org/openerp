@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import ProductFormDialog from '../forms/ProductFormDialog.vue'
 import { useToast } from '../composables/useToast'
-import SegmentedControl from '../components/controls/SegmentedControl.vue'
+import AppSegmented from '../ui/AppSegmented.vue'
 
 const skuMode = ref('按SKU')
 const productType = ref('全部')
@@ -15,17 +15,20 @@ const { toast, showToast } = useToast()
   <section id="page-product" class="page page-product page-list active">
     <h1 class="visually-hidden">产品管理</h1>
     <div class="list-searchbar product-filter">
-      <SegmentedControl
+      <AppSegmented
         v-model="skuMode"
-        group-class="toggle-group toggle-sku"
         :options="['按SKU', '按SPU']"
         aria-label="产品维度"
+        size="md"
+        :padding-x="10"
+        :min-width="52"
       />
-      <SegmentedControl
+      <AppSegmented
         v-model="productType"
-        group-class="toggle-group toggle-type"
         :options="['全部', '普通产品', '组合产品']"
         aria-label="产品类型"
+        size="md"
+        :padding-x="10"
       />
       <button class="control placeholder" type="button">
         分类<svg aria-hidden="true" class="ic caret"><use href="#i-chev-down" /></svg>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import type { Account } from '../../account/session'
-import AppIcon from './AppIcon.vue'
+import AppIcon from '../../ui/AppIcon.vue'
 
 defineProps<{ account: Account }>()
 

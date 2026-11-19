@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import SegmentedControl from '../controls/SegmentedControl.vue'
+import AppSegmented from '../../ui/AppSegmented.vue'
 
 const period = ref('今日')
 const metrics = [
@@ -35,10 +35,15 @@ const metrics = [
           <svg class="ic info-dot" style="width: 13px; height: 13px" aria-hidden="true">
             <use href="#i-info" /></svg
         ></span>
-        <SegmentedControl
+        <AppSegmented
           v-model="period"
           :options="['今日', '昨日', '近24小时']"
           aria-label="实时销量周期"
+          size="md"
+          :line-height="26"
+          color="body"
+          :padding-x="8"
+          :min-width="44"
         />
       </div>
     </div>
