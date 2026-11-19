@@ -52,9 +52,9 @@ describe('服务连接页', () => {
     expect(wrapper.text()).toContain('正在请求 /api/ping…')
     expect(wrapper.find('.el-card').exists()).toBe(false)
     expect(findElNode(wrapper)).toBeNull()
-    expect(wrapper.get('.tag').classes()).toContain('gray')
+    expect(wrapper.get('[data-testid="service-tag"]').attributes('data-tone')).toBe('gray')
 
-    const retry = wrapper.get('.btn.primary')
+    const retry = wrapper.get('[data-testid="service-retry"]')
     expect(retry.text()).toBe('重试')
     expect(retry.attributes('disabled')).toBeDefined()
     expect(retry.attributes('aria-busy')).toBe('true')
@@ -76,8 +76,8 @@ describe('服务连接页', () => {
 
     expect(wrapper.text()).toContain('连接成功')
     expect(wrapper.text()).toContain('后端响应：pong')
-    expect(wrapper.get('.tag').classes()).toContain('green')
-    const retry = wrapper.get('.btn.primary')
+    expect(wrapper.get('[data-testid="service-tag"]').attributes('data-tone')).toBe('green')
+    const retry = wrapper.get('[data-testid="service-retry"]')
     expect(retry.attributes('disabled')).toBeUndefined()
     expect(retry.attributes('aria-busy')).toBeUndefined()
   })
@@ -109,8 +109,8 @@ describe('服务连接页', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain(message)
-    expect(wrapper.get('.tag').classes()).toContain('red')
-    expect(wrapper.get('.btn.primary').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="service-tag"]').attributes('data-tone')).toBe('red')
+    expect(wrapper.get('[data-testid="service-retry"]').attributes('disabled')).toBeUndefined()
   })
 
   it('Given 连接失败 When 点击重试 Then 发起新请求且请求期间按钮禁用并保持原文案', async () => {
@@ -125,12 +125,12 @@ describe('服务连接页', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('网络请求失败，请检查前端代理和后端连接。')
 
-    await wrapper.get('.btn.primary').trigger('click')
+    await wrapper.get('[data-testid="service-retry"]').trigger('click')
     await wrapper.vm.$nextTick()
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('正在检测')
-    const retry = wrapper.get('.btn.primary')
+    const retry = wrapper.get('[data-testid="service-retry"]')
     expect(retry.text()).toBe('重试')
     expect(retry.attributes('disabled')).toBeDefined()
     expect(retry.attributes('aria-busy')).toBe('true')
@@ -138,7 +138,7 @@ describe('服务连接页', () => {
     retryResponse.resolve(jsonResponse({ message: 'pong' }))
     await flushPromises()
     expect(wrapper.text()).toContain('连接成功')
-    expect(wrapper.get('.btn.primary').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="service-retry"]').attributes('disabled')).toBeUndefined()
   })
 
   it('Given 连续触发检测 When 旧请求晚于新请求返回 Then 旧结果不覆盖新结果', async () => {
@@ -156,7 +156,7 @@ describe('服务连接页', () => {
     wrapper = mountHome()
     await flushPromises()
 
-    const retry = wrapper.get('.btn.primary')
+    const retry = wrapper.get('[data-testid="service-retry"]')
     void retry.trigger('click')
     void retry.trigger('click')
     expect(calls).toBe(3)

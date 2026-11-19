@@ -259,30 +259,30 @@ test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标
   await page.route('**/api/ping', (route) => route.fulfill({ json: { message: '连接正常' } }))
   await page.goto('/service-connection')
 
-  const serviceHeader = page.locator('.service-head')
+  const serviceHeader = page.locator('[data-testid="service-head"]')
   await expect(serviceHeader).toHaveCSS('display', 'block')
   await expect(serviceHeader).toHaveCSS('height', '62px')
   await expect(serviceHeader).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(serviceHeader).toHaveCSS('box-shadow', 'none')
 
-  const panel = page.locator('.page-service .service-panel')
+  const panel = page.locator('[data-testid="service-panel"]')
   await expect(panel).toBeVisible()
   await expect(panel).toHaveCSS('border-top-width', '0px')
   await expect(panel).toHaveCSS('border-top-left-radius', '6px')
-  await expect(page.locator('.page-service .service-label')).toHaveCSS('font-size', '14px')
-  await expect(page.locator('.page-service .service-label')).toHaveCSS('font-weight', '700')
-  await expect(page.locator('.page-service .service-panel__head')).toHaveCSS(
+  await expect(page.locator('[data-testid="service-label"]')).toHaveCSS('font-size', '14px')
+  await expect(page.locator('[data-testid="service-label"]')).toHaveCSS('font-weight', '700')
+  await expect(page.locator('[data-testid="service-panel-head"]')).toHaveCSS(
     'border-bottom-width',
     '0px',
   )
-  await expect(page.locator('.page-service .service-panel__head')).toHaveCSS('min-height', '54px')
-  await expect(page.locator('.page-service .service-panel__body')).toHaveCSS(
+  await expect(page.locator('[data-testid="service-panel-head"]')).toHaveCSS('min-height', '54px')
+  await expect(page.locator('[data-testid="service-panel-body"]')).toHaveCSS(
     'background-color',
     'rgb(255, 255, 255)',
   )
-  await expect(page.locator('.page-service h1')).toHaveCSS('font-size', '20px')
-  await expect(page.locator('.page-service .btn.primary')).toHaveCSS('height', '30px')
-  await expect(page.locator('.page-service .tag')).toHaveCSS('height', '18px')
+  await expect(page.locator('[data-testid="service-head"] h1')).toHaveCSS('font-size', '20px')
+  await expect(page.locator('[data-testid="service-retry"]')).toHaveCSS('height', '30px')
+  await expect(page.locator('[data-testid="service-tag"]')).toHaveCSS('height', '18px')
   await expect(page.locator('[class^="el-"], [class*=" el-"]')).toHaveCount(0)
 
   const hasPageOverflow = await page.evaluate(
@@ -292,7 +292,7 @@ test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标
 
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.reload()
-  await expect(page.locator('.page-service .service-panel')).toBeVisible()
+  await expect(page.locator('[data-testid="service-panel"]')).toBeVisible()
   const hasWideOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   )
@@ -326,7 +326,7 @@ test('Given 独立服务路由 When 从设置侧栏导航 Then 授权店铺和�
 
   await page.locator('[data-nav-page="service-connection"]').click()
   await expect(page).toHaveURL(/\/service-connection$/)
-  await expect(page.locator('.page-service .service-panel')).toBeVisible()
+  await expect(page.locator('[data-testid="service-panel"]')).toBeVisible()
   await expect(page.locator('[data-nav-page="service-connection"]').first()).toHaveAttribute(
     'aria-current',
     'page',
@@ -438,13 +438,13 @@ test('Given 服务连接 When 检测成功或失败 Then 显示对应状态与�
   )
 
   await page.goto('/service-connection')
-  await expect(page.locator('.page-service .tag')).toHaveText('连接成功')
-  await expect(page.locator('.page-service .service-message')).toHaveText('后端响应：pong')
+  await expect(page.locator('[data-testid="service-tag"]')).toHaveText('连接成功')
+  await expect(page.locator('[data-testid="service-message"]')).toHaveText('后端响应：pong')
 
   fail = true
   await page.getByRole('button', { name: '重试' }).click()
-  await expect(page.locator('.page-service .tag')).toHaveText('连接失败')
-  await expect(page.locator('.page-service .service-message.is-error')).toContainText(
+  await expect(page.locator('[data-testid="service-tag"]')).toHaveText('连接失败')
+  await expect(page.locator('[data-testid="service-message"][data-tone="error"]')).toContainText(
     '服务器返回 HTTP 500',
   )
   await expect(page.getByRole('button', { name: '重试' })).toBeEnabled()

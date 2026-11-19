@@ -397,7 +397,7 @@ const scenarios: Scenario[] = [
         await route.fulfill({ json: { message: 'pong' } }).catch(() => undefined)
       })
     },
-    waitFor: async (page) => page.locator('.page-service .tag').first().waitFor(),
+    waitFor: async (page) => page.locator('[data-testid="service-tag"]').first().waitFor(),
   },
   {
     name: 'service-success-1440',
