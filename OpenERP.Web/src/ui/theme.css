@@ -137,6 +137,8 @@
   --color-primary: #005bf5;
   /* 品牌标识（侧栏与登录页 logo）沿用旧品牌蓝，与交互主色不同。 */
   --color-brand: #0968ff;
+  /* 初始化引导卡插画的浅蓝底，属于固定图标 artwork 的设计值。 */
+  --color-guide-product-bg: #e8f1ff;
   --color-primary-hover: #0047c7;
   --color-primary-soft: rgba(0, 91, 245, 0.1);
   --color-primary-faint: rgba(0, 91, 245, 0.06);

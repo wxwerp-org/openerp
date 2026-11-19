@@ -84,7 +84,7 @@ describe('工作台数据控件与无障碍质量', () => {
       for (const button of wrapper.findAll('button').filter((item) => !item.text().trim())) {
         expect(button.attributes('aria-label'), `${component.name} 存在无名称图标按钮`).toBeTruthy()
       }
-      for (const icon of wrapper.findAll('svg.ic')) {
+      for (const icon of wrapper.findAll('svg').filter((svg) => !svg.attributes('role'))) {
         expect(icon.attributes('aria-hidden'), `${component.name} 存在未隐藏装饰图标`).toBe('true')
       }
     }

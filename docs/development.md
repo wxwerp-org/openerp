@@ -81,9 +81,9 @@ pnpm --dir OpenERP.Web test
 
 [ESLint 配置](../OpenERP.Web/eslint.config.js) 使用 flat config，以 `@eslint/js`、`typescript-eslint` 和 `eslint-plugin-vue` 的官方配置为基础。Vue 采用完整 `flat/recommended` 规则集，`eslint-config-prettier/flat` 放在最后关闭与 Prettier 冲突的排版规则；单元测试与浏览器测试分别使用 `@vitest/eslint-plugin` 和 `eslint-plugin-playwright` 的推荐规则。Playwright 按官方 `allowConditional` 选项仅允许现有真实会话环境条件下的 `skip`，不放宽无条件跳过。这套组合与仓库现有 Node.js 26、TypeScript 6、Vue 3.5 的版本范围兼容，且不引入旧式 `.eslintrc`。
 
-[Prettier 配置](../OpenERP.Web/.prettierrc.json) 采用 create-vue v3.24.0 预设：两格缩进由 `.editorconfig` 提供，不加分号、使用单引号、行宽 100。格式检查覆盖 `src`、`tests`、前端根目录 JS/TS 配置、`index.html`、`package.json`、`tsconfig.json` 和 `.prettierrc.json`；依赖、构建产物、测试报告与生成的锁文件不在检查范围内。
+[Prettier 配置](../OpenERP.Web/.prettierrc.json) 采用 create-vue v3.24.0 预设：两格缩进由 `.editorconfig` 提供，不加分号、使用单引号、行宽 100。格式检查覆盖 `src`、`tests`、`scripts`、前端根目录 JS/TS 配置、`index.html`、`package.json`、`tsconfig.json` 和 `.prettierrc.json`；依赖、构建产物、测试报告与生成的锁文件不在检查范围内。
 
-ESLint 检查范围为 `src/**/*.{ts,vue}`、`tests/**/*.ts`、前端根目录的构建配置和 ESLint 配置本身；`node_modules`、`dist`、`coverage`、`playwright-report` 与 `test-results` 不参与检查。`src` 使用浏览器全局变量，构建配置使用 Node.js 全局变量，单元测试同时启用浏览器、Node.js 与 Vitest 环境，端到端测试使用 Playwright 规则并同时启用浏览器与 Node.js 全局变量（浏览器全局变量用于 `page.evaluate` 等页面内回调）。
+ESLint 检查范围为 `src/**/*.{ts,vue}`、`tests/**/*.ts`、`scripts/**/*.mjs`、前端根目录的构建配置和 ESLint 配置本身；`node_modules`、`dist`、`coverage`、`playwright-report` 与 `test-results` 不参与检查。`src` 使用浏览器全局变量，构建配置使用 Node.js 全局变量，单元测试同时启用浏览器、Node.js 与 Vitest 环境，端到端测试使用 Playwright 规则并同时启用浏览器与 Node.js 全局变量（浏览器全局变量用于 `page.evaluate` 等页面内回调）。
 
 ```bash
 pnpm --dir OpenERP.Web lint

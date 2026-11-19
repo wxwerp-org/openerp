@@ -26,7 +26,9 @@ import AppIcon from '../../ui/AppIcon.vue'
       <div
         class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-init-step-hover first:pl-16"
       >
-        <svg class="mr-10 size-36 flex-none text-primary"><use href="#i-guide-shield" /></svg>
+        <svg aria-hidden="true" class="mr-10 size-36 flex-none text-primary">
+          <use href="#i-guide-shield" />
+        </svg>
         <div class="min-w-0">
           <div class="flex items-center gap-4 text-14/20 font-bold whitespace-nowrap text-ink">
             基础数据授权
@@ -43,7 +45,9 @@ import AppIcon from '../../ui/AppIcon.vue'
       <div
         class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-init-step-hover"
       >
-        <svg class="mr-10 size-36 flex-none text-primary"><use href="#i-guide-account" /></svg>
+        <svg aria-hidden="true" class="mr-10 size-36 flex-none text-primary">
+          <use href="#i-guide-account" />
+        </svg>
         <div class="min-w-0">
           <div class="flex items-center gap-4 text-14/20 font-bold whitespace-nowrap text-ink">
             账号权限配置
@@ -56,7 +60,9 @@ import AppIcon from '../../ui/AppIcon.vue'
       <div
         class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-init-step-hover"
       >
-        <svg class="mr-10 size-36 flex-none text-primary"><use href="#i-guide-product" /></svg>
+        <svg aria-hidden="true" class="mr-10 size-36 flex-none text-primary">
+          <use href="#i-guide-product" />
+        </svg>
         <div class="min-w-0">
           <div class="flex items-center gap-4 text-14/20 font-bold whitespace-nowrap text-ink">
             产品信息维护
@@ -69,7 +75,9 @@ import AppIcon from '../../ui/AppIcon.vue'
       <div
         class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-init-step-hover"
       >
-        <svg class="mr-10 size-36 flex-none text-primary"><use href="#i-guide-supply" /></svg>
+        <svg aria-hidden="true" class="mr-10 size-36 flex-none text-primary">
+          <use href="#i-guide-supply" />
+        </svg>
         <div class="min-w-0">
           <div class="flex items-center gap-4 text-14/20 font-bold whitespace-nowrap text-ink">
             供应链管理
@@ -82,7 +90,9 @@ import AppIcon from '../../ui/AppIcon.vue'
       <div
         class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-28 hover:bg-init-step-hover"
       >
-        <svg class="mr-8 size-30 flex-none text-init-more"><use href="#i-guide-more" /></svg>
+        <svg aria-hidden="true" class="mr-8 size-30 flex-none text-init-more">
+          <use href="#i-guide-more" />
+        </svg>
         <div class="min-w-0">
           <div class="flex items-center gap-4 text-14/20 font-bold whitespace-nowrap text-ink">
             更多进阶功能
