@@ -112,7 +112,7 @@ onMounted(checkPing)
         <p class="mt-4 text-12/18 text-muted">检查前端与后端 API 的连接状态。</p>
       </header>
 
-      <AppCard data-testid="service-panel" class="flex-none">
+      <AppCard as="div" data-testid="service-panel" class="flex-none">
         <div
           data-testid="service-panel-head"
           class="flex min-h-54 items-center gap-12 px-16 [@media(max-width:800px)]:flex-col [@media(max-width:800px)]:items-start [@media(max-width:800px)]:gap-8 [@media(max-width:800px)]:py-14"
