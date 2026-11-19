@@ -93,9 +93,9 @@ function toggleCreatedSort(): void {
 const joinedControlStart =
   'inline-flex h-[var(--control-h)] shrink-0 items-center gap-6 rounded-l-4 border-y border-l border-input bg-white px-10 text-12/28 whitespace-nowrap text-placeholder hover:border-input-hover'
 const fieldBox =
-  'inline-flex h-[var(--control-h)] shrink-0 items-center border border-input bg-white'
+  'inline-flex h-[var(--control-h)] shrink-0 items-center border border-input bg-white focus-within:border-primary'
 const fieldBoxJoinedEnd =
-  'inline-flex h-[var(--control-h)] shrink-0 items-center border-y border-r border-input bg-white'
+  'inline-flex h-[var(--control-h)] shrink-0 items-center border-y border-r border-input bg-white focus-within:border-primary'
 const fieldBoxInput =
   'h-28 min-w-0 border-0 border-current bg-transparent px-10 py-0 text-12/18 text-ink outline-none placeholder:text-placeholder'
 const searchButton =

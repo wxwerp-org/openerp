@@ -11,18 +11,12 @@ const props = withDefaults(
     showPageList?: boolean
     disabled?: boolean
     as?: 'nav' | 'div' | 'footer'
-    /** 列表页内嵌分页与订单卡片内带分隔线的分页两种几何。 */
-    variant?: 'default' | 'card'
-    /** 订单卡片内聚焦环：2px 主色、内缩 2px。 */
-    focusRing?: boolean
   }>(),
   {
     label: '分页',
     showPageList: true,
     disabled: false,
     as: 'nav',
-    variant: 'default',
-    focusRing: false,
   },
 )
 
@@ -30,14 +24,8 @@ const emit = defineEmits<{
   'update:page': [page: number]
 }>()
 
-const pageButtonClass = computed(() =>
-  [
-    'inline-flex h-28 w-28 shrink-0 items-center justify-center rounded-4 border border-transparent bg-white text-body hover:bg-page-btn-hover hover:text-primary disabled:cursor-default disabled:text-btn-disabled-text disabled:hover:bg-transparent disabled:hover:text-btn-disabled-text',
-    props.focusRing
-      ? 'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary'
-      : '',
-  ].join(' '),
-)
+const pageButtonClass =
+  'inline-flex h-28 w-28 shrink-0 items-center justify-center rounded-4 border border-transparent bg-white text-body hover:bg-page-btn-hover hover:text-primary disabled:cursor-default disabled:text-btn-disabled-text disabled:hover:bg-transparent disabled:hover:text-btn-disabled-text'
 
 const total = computed(() => Math.max(1, Math.floor(props.pageCount) || 1))
 const pages = computed<PageItem[]>(() => buildPageList(props.page, total.value))
@@ -56,9 +44,7 @@ function go(page: number): void {
     :is="as"
     :aria-label="as === 'nav' ? label : undefined"
     :data-disabled="String(disabled)"
-    :data-variant="variant"
-    class="flex h-[var(--control-h)] flex-none items-center justify-end gap-8 bg-white text-12/18 text-body whitespace-nowrap"
-    :class="variant === 'card' ? 'min-h-40 border-t border-line px-12' : 'px-4'"
+    class="flex h-[var(--control-h)] flex-none items-center justify-end gap-8 bg-white px-4 text-12/18 text-body whitespace-nowrap"
   >
     <slot name="prefix" />
     <button

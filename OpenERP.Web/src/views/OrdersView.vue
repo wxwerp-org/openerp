@@ -120,9 +120,9 @@ const focusRing =
   'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary'
 const filterField = 'grid gap-4 text-12/18 text-body'
 const filterControl =
-  'inline-flex h-[var(--control-h)] shrink-0 items-center rounded-4 border border-input bg-white px-10 py-0 text-12/28 text-ink'
+  'inline-flex h-[var(--control-h)] shrink-0 items-center rounded-4 border border-input bg-white px-10 py-0 text-12/28 text-ink hover:border-input-hover'
 const filterInput =
-  'inline-flex h-[var(--control-h)] shrink-0 items-center rounded-4 border border-input bg-white px-10 py-0 text-12/18 text-ink'
+  'inline-flex h-[var(--control-h)] shrink-0 items-center rounded-4 border border-input bg-white px-10 py-0 text-12/18 text-ink hover:border-input-hover'
 const pageButton =
   'inline-flex h-28 w-28 shrink-0 items-center justify-center rounded-4 border border-transparent bg-white text-body hover:bg-page-btn-hover hover:text-primary disabled:cursor-default disabled:text-btn-disabled-text disabled:hover:bg-transparent disabled:hover:text-btn-disabled-text'
 const statusTag =
