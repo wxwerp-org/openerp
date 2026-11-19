@@ -321,6 +321,9 @@ const scenarios: Scenario[] = [
     afterGoto: async (page) => {
       await page.getByRole('button', { name: '同步历史订单', exact: true }).first().click()
       await page.locator('#order-sync-panel[open]').waitFor()
+      // 面板内定时同步卡片与店铺列表是并行异步加载的；两处都等就绪，避免截图落在加载中状态。
+      await page.locator('#order-sync-panel').getByText('已启用', { exact: true }).waitFor()
+      await page.locator('#order-sync-panel').getByText('测试店铺 1').first().waitFor()
     },
   },
   {

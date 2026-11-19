@@ -65,9 +65,11 @@ onUnmounted(() => document.removeEventListener('click', closeOnOutsideClick))
         <button
           v-if="item.id !== 'dashboard'"
           type="button"
-          class="absolute right-8 top-8 size-16 items-center justify-center rounded-3 text-muted hover:bg-toolbar hover:text-ink"
+          class="absolute right-8 top-8 flex size-16 items-center justify-center rounded-3 text-muted hover:bg-toolbar hover:text-ink"
           :class="
-            item.id === activePage ? 'flex' : 'hidden group-hover:flex group-focus-within:flex'
+            item.id === activePage
+              ? 'visible'
+              : 'invisible group-hover:visible group-focus-within:visible'
           "
           :data-close-tab="item.id"
           :title="`关闭${item.label}`"
