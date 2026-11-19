@@ -21,7 +21,7 @@ internal static class ComposeDeployment
 
         var api = builder.AddProject<Projects.OpenERP_Api>("api");
         var apiImage = $"api:{runId}";
-#pragma warning disable ASPIREPIPELINES003 // 为 SDK 的本地构建产物分配本次流水线专用标签。
+#pragma warning disable ASPIREPIPELINES003 // 为本次 API 构建分配独立本地标签。
         api.WithContainerBuildOptions(options => options.LocalImageTag = runId);
 #pragma warning restore ASPIREPIPELINES003
         builder.AddViteApp("web", "../OpenERP.Web")
@@ -45,13 +45,13 @@ internal static class ComposeDeployment
         var composeImage = $"{Image}:{LocalTag}";
         if (builder.Configuration["ReleaseTag"] is { Length: > 0 } releaseTag)
         {
-#pragma warning disable ASPIRECOMPUTE003 // 使用 Aspire 的发布仓库参数解析最终镜像名。
             var endpoint = builder.AddParameter("registry-endpoint");
             var repository = builder.AddParameter("registry-repository");
+#pragma warning disable ASPIRECOMPUTE003 // 用发布参数配置最终镜像的容器仓库。
             builder.AddContainerRegistry("registry", endpoint, repository);
 #pragma warning restore ASPIRECOMPUTE003
 
-#pragma warning disable ASPIREPIPELINES003 // 让 Compose 与 Aspire 使用相同的发布标签。
+#pragma warning disable ASPIREPIPELINES003 // 将最终镜像与 Release 标签绑定。
             openerp.WithRemoteImageTag(releaseTag);
 #pragma warning restore ASPIREPIPELINES003
             builder.Eventing.Subscribe<BeforeStartEvent>(async (_, cancellationToken) =>
@@ -74,7 +74,6 @@ internal static class ComposeDeployment
             env.Remove("OPENERP_IMAGE");
         });
 
-#pragma warning disable ASPIREPIPELINES001 // 声明组装依赖，发布 Compose 时无需先构建运行制品。
         openerp.WithPipelineStepFactory(
             "stage-openerp",
             context => SingleContainerArtifacts.StageAsync(context, staging, deploy, apiImage),
@@ -82,14 +81,18 @@ internal static class ComposeDeployment
             requiredBy: ["build-openerp"]);
         openerp.WithPipelineConfiguration(context =>
         {
-            context.Steps.Single(step => step.Name == BundleStep).RequiredBySteps.Remove(WellKnownPipelineSteps.Publish);
-            foreach (var step in context.GetSteps(WellKnownPipelineTags.PushContainerImage)
+#pragma warning disable ASPIREPIPELINES001 // 仅使用 Aspire 13.6 定义的发布步骤名和镜像推送标签。
+            const string publish = WellKnownPipelineSteps.Publish;
+            const string push = WellKnownPipelineSteps.Push;
+            const string pushImage = WellKnownPipelineTags.PushContainerImage;
+#pragma warning restore ASPIREPIPELINES001
+            context.Steps.Single(step => step.Name == BundleStep).RequiredBySteps.Remove(publish);
+            foreach (var step in context.GetSteps(pushImage)
                          .Where(step => step.Resource?.Name is "api" or "web"))
             {
-                step.RequiredBySteps.Remove(WellKnownPipelineSteps.Push);
+                step.RequiredBySteps.Remove(push);
             }
         });
-#pragma warning restore ASPIREPIPELINES001
 
         try
         {
