@@ -575,10 +575,12 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
       data-testid="shops-card"
     >
       <div
-        class="flex h-46 flex-none items-center gap-6 overflow-hidden border-b border-b-line-soft bg-white px-12"
+        class="flex h-46 flex-none items-center gap-6 overflow-hidden border-b border-b-line-soft bg-white px-12 py-8 [@media(max-width:1100px)]:h-auto [@media(max-width:1100px)]:flex-wrap [@media(max-width:1100px)]:gap-8"
         data-testid="shops-toolbar"
       >
-        <div class="flex min-w-0 flex-1 items-center gap-6 overflow-hidden">
+        <div
+          class="flex min-w-0 flex-1 items-center gap-6 overflow-hidden [@media(max-width:1100px)]:w-full [@media(max-width:1100px)]:flex-wrap"
+        >
           <label class="inline-flex flex-none items-center gap-6 text-12 text-body">
             <span>平台</span>
             <select
@@ -596,7 +598,7 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
           </label>
 
           <form
-            class="flex h-[var(--control-h)] min-w-210 max-w-300 flex-1 items-center overflow-hidden rounded-4 border border-input bg-white"
+            class="flex h-[var(--control-h)] min-w-210 max-w-300 flex-1 items-center overflow-hidden rounded-4 border border-input bg-white [@media(max-width:1280px)]:min-w-160"
             role="search"
             @submit.prevent="applyKeyword"
           >
@@ -622,7 +624,9 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
           </AppButton>
         </div>
 
-        <div class="ml-auto flex shrink-0 items-center gap-6">
+        <div
+          class="ml-auto flex shrink-0 items-center gap-6 [@media(max-width:1100px)]:w-full [@media(max-width:1100px)]:flex-wrap [@media(max-width:1100px)]:justify-end"
+        >
           <span
             class="min-w-0 overflow-hidden text-12/18 text-muted text-ellipsis whitespace-nowrap"
             aria-live="polite"

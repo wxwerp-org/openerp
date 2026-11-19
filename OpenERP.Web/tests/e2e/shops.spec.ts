@@ -208,6 +208,8 @@ test('Given 点击详情 When 打开 Then 展示字段并可跳转 wxw 授权', 
 
   await shopRows(page).nth(0).getByRole('button', { name: '详情' }).click()
   await expect(page.locator('#shopDetailLayer')).toBeVisible()
+  // 旧弹窗打开后聚焦「去 wxw 授权」；迁移保留该初始焦点。
+  await expect(page.locator('#shopAuthorize')).toBeFocused()
   await expect(page.locator('#shopDetailLayer')).toContainText('member-42')
   await expect(page.locator('#shopDetailLayer')).toContainText('wxw ERP（OpenERP 只读）')
   await expect(page.locator('#shopDetailLayer')).toContainText(

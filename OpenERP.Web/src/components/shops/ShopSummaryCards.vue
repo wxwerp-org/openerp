@@ -37,8 +37,8 @@ const cards = computed(() => [
 ])
 
 const cardBaseClass =
-  'flex min-w-0 flex-col items-start gap-4 rounded-6 border bg-white px-16 py-14 text-left'
-const cardIdleClass = 'border-line'
+  'flex min-w-0 flex-col items-start gap-4 rounded-6 border px-16 py-14 text-left'
+const cardIdleClass = 'border-line bg-white'
 const cardActiveClass = 'border-primary bg-shop-card-active'
 const interactiveClass =
   'cursor-pointer transition duration-150 ease-[ease] hover:border-shop-card-hover-border hover:shadow-shop-card-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary'
@@ -54,7 +54,10 @@ function format(value: number): string {
 </script>
 
 <template>
-  <div class="mb-12 grid grid-cols-4 gap-12" aria-label="授权状态汇总">
+  <div
+    class="mb-12 grid grid-cols-4 gap-12 [@media(max-width:1100px)]:grid-cols-2"
+    aria-label="授权状态汇总"
+  >
     <button
       v-for="card in cards"
       :key="card.key"

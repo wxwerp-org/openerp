@@ -11,8 +11,8 @@ const props = withDefaults(
     showPageList?: boolean
     disabled?: boolean
     as?: 'nav' | 'div' | 'footer'
-    /** 左右内边距档：列表页默认 4px，报表页旧样式为 8px，店铺页旧样式为 12px。 */
-    paddingX?: 4 | 8 | 12
+    /** 左右内边距档：列表页默认 4px，报表页旧样式为 8px，店铺页 12px，订单同步面板 16px。 */
+    paddingX?: 4 | 8 | 12 | 16
     /** 报表页旧样式给分页按钮加了键盘焦点环。 */
     focusRing?: boolean
   }>(),
@@ -55,7 +55,9 @@ function go(page: number): void {
     :aria-label="as === 'nav' ? label : undefined"
     :data-disabled="String(disabled)"
     class="flex h-[var(--control-h)] flex-none items-center justify-end gap-8 bg-white text-12/18 text-body whitespace-nowrap"
-    :class="paddingX === 12 ? 'px-12' : paddingX === 8 ? 'px-8' : 'px-4'"
+    :class="
+      paddingX === 16 ? 'px-16' : paddingX === 12 ? 'px-12' : paddingX === 8 ? 'px-8' : 'px-4'
+    "
   >
     <slot name="prefix" />
     <button
