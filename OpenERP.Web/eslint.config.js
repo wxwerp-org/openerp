@@ -40,6 +40,13 @@ export default withVueTs(
     },
   },
   {
+    name: 'openerp-web/scripts',
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     name: 'openerp-web/unit-tests',
     files: ['tests/unit/**/*.ts'],
     plugins: {
