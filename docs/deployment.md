@@ -4,7 +4,7 @@ OpenERP 以一个镜像、一个容器运行在 Linux amd64 服务器上。服�
 
 ## 首次安装
 
-等 [GitHub Release](https://github.com/wxwerp-org/openerp/releases) 的发布工作流成功后，从同一 Release 下载 **`compose.yaml`**，放入该实例的长期目录，例如 `/opt/openerp/`。在该目录执行：
+等 [GitHub Release](https://github.com/wxwerp-org/openerp/releases) 的发布工作流成功后，从同一 Release 下载 **`docker-compose.yaml`**，放入该实例的长期目录，例如 `/opt/openerp/`。在该目录执行：
 
 ```bash
 docker compose up -d
@@ -37,13 +37,15 @@ example.com {
 
 在实例目录执行 `docker compose stop`。入口先关闭 Web 和 API，再等待 PostgreSQL、Redis 和 SeaweedFS 完成正常关闭。Compose 为整套服务预留两分钟。若进程被强制终止，请先启动并确认正常，重新干净停机后再归档数据库文件。[PostgreSQL 文件系统备份](https://www.postgresql.org/docs/18/backup-file.html)
 
-停机后一起备份整个 `data/` 和当时使用的 `compose.yaml`，保留文件属主和权限。数据目录包含 PostgreSQL、Redis 快照、SeaweedFS 文件和元数据，以及每个实例独有的数据库和 S3 凭据。按含有密钥的备份保管。恢复时将两者还原到同一实例目录，再运行 `docker compose up -d`。已有数据缺少对应凭据时，入口会报出缺失的位置，请恢复与该数据匹配的凭据。
+停机后一起备份整个 `data/` 和当时使用的 `docker-compose.yaml`，保留文件属主和权限。数据目录包含 PostgreSQL、Redis 快照、SeaweedFS 文件和元数据，以及每个实例独有的数据库和 S3 凭据。按含有密钥的备份保管。恢复时将两者还原到同一实例目录，再运行 `docker compose up -d`。已有数据缺少对应凭据时，入口会报出缺失的位置，请恢复与该数据匹配的凭据。
 
 需要单独核对凭据时，有相应宿主机权限的运维人员可在实例目录查看 `data/credentials/postgres/current/password` 和 `data/credentials/s3/current/s3.json`。这些文件包含真实密钥。
 
 ## 容器重建与升级
 
-在维护窗口备份后，将新版 Release 的 `compose.yaml` **覆盖到原实例目录**，保留整个 `data/`，然后运行：
+如果原实例使用旧附件 `compose.yaml`，请在停机备份时将该文件移出实例目录。两个文件共存时，Compose 会优先读取旧文件。
+
+在维护窗口备份后，将新版 Release 的 `docker-compose.yaml` **覆盖到原实例目录**，保留整个 `data/`，然后运行：
 
 ```bash
 docker compose up -d

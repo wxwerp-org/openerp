@@ -147,9 +147,9 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 ```bash
 dotnet tool restore
 aspire do build-openerp --non-interactive
-aspire publish --non-interactive -o "$PWD/aspire-output"
-yq --from-file deploy/compose.yq ./aspire-output/docker-compose.yaml > ./aspire-output/compose.yaml
-python3 deploy/tests/smoke.py --compose ./aspire-output/compose.yaml
+aspire publish --non-interactive -o "$PWD/aspire-output/generated"
+yq --from-file deploy/compose.yq ./aspire-output/generated/docker-compose.yaml > ./aspire-output/docker-compose.yaml
+python3 deploy/tests/smoke.py --compose ./aspire-output/docker-compose.yaml
 ```
 
 默认验收本次构建的 `openerp:local`。已有两个本地版本时，通过 `--image <旧镜像> --upgrade-image <新镜像>` 检查升级后数据能否读回。Release 工作流先验收本次组装的镜像，再推送同一个镜像并上传版本化配置，服务器操作见[部署说明](deployment.md)。
