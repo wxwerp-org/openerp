@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { START_LOCATION, useRoute, useRouter } from 'vue-router'
 import { account, checkSession, sessionState } from './account/session'
 import AppShell from './components/layout/AppShell.vue'
+import AppButton from './ui/AppButton.vue'
 import AuthLayout from './components/layout/AuthLayout.vue'
 import { sessionRedirect } from './router/authRoutes'
 
@@ -50,7 +51,7 @@ onUnmounted(() => {
   <AuthLayout v-else>
     <template v-if="sessionState === 'unavailable'">
       <p role="alert">无法验证登录状态，请稍后重试。</p>
-      <button class="btn primary" type="button" @click="checkSession">重试</button>
+      <AppButton variant="primary" @click="checkSession">重试</AppButton>
     </template>
     <p v-else role="status">正在验证登录状态…</p>
   </AuthLayout>

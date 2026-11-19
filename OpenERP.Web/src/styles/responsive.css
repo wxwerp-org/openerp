@@ -9,17 +9,3 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
-@media (max-height: 760px) {
-  .nav-link,
-  .nav-group-head {
-    height: 36px;
-  }
-  .nav-sub-item {
-    height: 28px;
-  }
-  .nav-link .ic,
-  .nav-group-head .ic {
-    width: 16px;
-    height: 16px;
-  }
-}

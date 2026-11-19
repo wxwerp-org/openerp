@@ -56,14 +56,14 @@ describe('真实会话路由', () => {
     )
     const { app, router } = await mountAt('/users?from=notice#main')
 
-    expect(app.find('.sidebar').exists()).toBe(false)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
     resolve(new Response(null, { status: 401 }))
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/login')
     expect(router.currentRoute.value.query.returnTo).toBe('/users?from=notice#main')
     expect(app.get('h1').text()).toBe('登录 OpenERP')
-    expect(app.find('.sidebar').exists()).toBe(false)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
   })
 
   it('Given 会话服务暂时不可用 When 检查返回 503 后重试成功 Then 保留当前地址并进入工作台', async () => {
@@ -83,11 +83,11 @@ describe('真实会话路由', () => {
     const { app, router } = await mountAt('/users')
 
     expect(router.currentRoute.value.path).toBe('/users')
-    expect(app.find('.sidebar').exists()).toBe(false)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
     await app.get('button').trigger('click')
     await flushPromises()
 
-    expect(app.get('.account-button').text()).toContain('值班管理员')
+    expect(app.get('[data-testid="account-button"]').text()).toContain('值班管理员')
     expect(router.currentRoute.value.path).toBe('/users')
   })
 
@@ -120,7 +120,7 @@ describe('真实会话路由', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/')
-    expect(app.get('.account-button').text()).toContain('值班管理员')
+    expect(app.get('[data-testid="account-button"]').text()).toContain('值班管理员')
     expect(csrfCount).toBeGreaterThan(1)
   })
 
@@ -137,19 +137,19 @@ describe('真实会话路由', () => {
       return Promise.resolve(new Response(null, { status: 401 }))
     })
     const { app, router } = await mountAt('/')
-    expect(app.get('.account-button').text()).toContain('值班管理员')
+    expect(app.get('[data-testid="account-button"]').text()).toContain('值班管理员')
 
     refreshStatus = 503
     window.dispatchEvent(new Event('focus'))
     await flushPromises()
-    expect(app.find('.sidebar').exists()).toBe(true)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(true)
 
     refreshStatus = 401
     await router.push('/service-connection')
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/login')
-    expect(app.find('.sidebar').exists()).toBe(false)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
   })
 
   it('Given 浏览器时钟越过固定期限 When 后端刷新确认 Cookie 已失效 Then 才回到登录页', async () => {
@@ -167,17 +167,17 @@ describe('真实会话路由', () => {
       return Promise.resolve(new Response(null, { status: 404 }))
     })
     const { app, router } = await mountAt('/')
-    expect(app.find('.sidebar').exists()).toBe(true)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(true)
 
     vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000)
     await flushPromises()
-    expect(app.find('.sidebar').exists()).toBe(true)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(true)
 
     window.dispatchEvent(new Event('focus'))
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/login')
-    expect(app.find('.sidebar').exists()).toBe(false)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
   })
 
   it.each(['focus', 'online', 'visibilitychange'] as const)(
@@ -208,13 +208,13 @@ describe('真实会话路由', () => {
       await flushPromises()
 
       expect(refreshCount).toBe(2)
-      expect(app.get('.account-button').text()).toContain(admin.name)
+      expect(app.get('[data-testid="account-button"]').text()).toContain(admin.name)
     },
   )
 })
 
 async function openAccountDialog(app: VueWrapper, action: 'profile' | 'password'): Promise<void> {
-  await app.get('.account-button').trigger('click')
+  await app.get('[data-testid="account-button"]').trigger('click')
   await app.get(`[data-account-action="${action}"]`).trigger('click')
 }
 
@@ -260,12 +260,12 @@ describe('真实账号操作', () => {
     await flushPromises()
     expect(app.get('#profileLayer').attributes('open')).toBeDefined()
     expect(app.get('#profileLayer').text()).toContain('暂时无法保存')
-    expect(app.get('.account-button').text()).toContain(admin.name)
+    expect(app.get('[data-testid="account-button"]').text()).toContain(admin.name)
 
     await app.get('#saveProfile').trigger('click')
     await flushPromises()
     expect(app.get('#profileLayer').attributes('open')).toBeUndefined()
-    expect(app.get('.account-button').text()).toContain('仓库管理员')
+    expect(app.get('[data-testid="account-button"]').text()).toContain('仓库管理员')
   })
 
   it('Given 资料弹窗 When 手机号超长或邮箱含空格 Then 标明首个无效字段且保留表单', async () => {
@@ -336,7 +336,7 @@ describe('真实账号操作', () => {
     await app.get('#profileName').setValue('第一会话')
     await app.get('#saveProfile').trigger('click')
     await flushPromises()
-    expect(app.get('.account-button').text()).toContain('第一会话')
+    expect(app.get('[data-testid="account-button"]').text()).toContain('第一会话')
 
     sessionNumber = 2
     if (refocus) {
@@ -349,14 +349,16 @@ describe('真实账号操作', () => {
     await app.get('#saveProfile').trigger('click')
     await flushPromises()
     expect(app.find('#profileLayer .account-error').exists()).toBe(!refocus)
-    expect(app.get('.account-button').text()).toContain(refocus ? '第二会话' : '第一会话')
+    expect(app.get('[data-testid="account-button"]').text()).toContain(
+      refocus ? '第二会话' : '第一会话',
+    )
     expect(attempts).toBe(2)
     if (!refocus) {
       await app.get('#saveProfile').trigger('click')
       await flushPromises()
     }
 
-    expect(app.get('.account-button').text()).toContain('第二会话')
+    expect(app.get('[data-testid="account-button"]').text()).toContain('第二会话')
     expect(app.get('#profileLayer').attributes('open')).toBeUndefined()
   })
 
@@ -392,7 +394,7 @@ describe('真实账号操作', () => {
     await app.get('#savePassword').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/login')
-    expect(app.find('.sidebar').exists()).toBe(false)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
   })
 
   it('Given 已登录 When 退出请求失败后重试成功 Then 仅成功退出时离开工作台', async () => {
@@ -419,18 +421,18 @@ describe('真实账号操作', () => {
     })
     const { app, router } = await mountAt('/')
 
-    await app.get('.account-button').trigger('click')
+    await app.get('[data-testid="account-button"]').trigger('click')
     await app.get('[data-account-action="logout"]').trigger('click')
     await flushPromises()
-    expect(app.get('#toast').text()).toBe('暂时无法退出')
-    expect(app.find('.sidebar').exists()).toBe(true)
+    expect(app.get('[data-testid="toast"]').text()).toBe('暂时无法退出')
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(true)
 
     failed = false
-    await app.get('.account-button').trigger('click')
+    await app.get('[data-testid="account-button"]').trigger('click')
     await app.get('[data-account-action="logout"]').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/login')
-    expect(app.find('.sidebar').exists()).toBe(false)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
   })
 })
 
@@ -498,7 +500,7 @@ describe('首次设置管理员密码', () => {
       value: 'admin',
       readOnly: true,
     })
-    expect(app.find('.sidebar').exists()).toBe(false)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
     expect(statusRequests[0]?.cache).toBe('no-store')
 
     await fillInitialization(app, 'short')
@@ -523,14 +525,14 @@ describe('首次设置管理员密码', () => {
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/login')
     expect(app.get('[role="status"]').text()).toContain('初始化成功')
-    expect(app.find('.sidebar').exists()).toBe(false)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
 
     await app.get('#loginUsername').setValue('admin')
     await app.get('#loginPassword').setValue(' personal ')
     await app.get('form').trigger('submit')
     await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe('/users?source=initialization#main')
-    expect(app.get('.account-button').text()).toContain(admin.name)
+    expect(app.get('[data-testid="account-button"]').text()).toContain(admin.name)
   })
 
   it('Given 初始化状态不可用 When 直接进入登录页并重试 Then 等状态确认后再显示初始化表单', async () => {
@@ -539,7 +541,7 @@ describe('首次设置管理员密码', () => {
     const { app, router } = await mountAt('/login?returnTo=%2Fusers')
     expect(app.find('form').exists()).toBe(false)
     expect(app.get('[role="alert"]').text()).toContain('请稍后重试')
-    expect(app.find('.sidebar').exists()).toBe(false)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
 
     service.statusUnavailable = false
     await app.get('button').trigger('click')
@@ -574,7 +576,7 @@ describe('首次设置管理员密码', () => {
       expect(app.get('[role="status"]').text()).toContain('已初始化')
       expect(app.get('[role="status"]').text()).not.toContain('初始化成功')
       expect(submissions).toHaveLength(reason === 'focus' ? 0 : 1)
-      expect(app.find('.sidebar').exists()).toBe(false)
+      expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
     },
   )
 
@@ -637,12 +639,12 @@ describe('首次设置管理员密码', () => {
     window.dispatchEvent(new Event('focus'))
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/users')
-    expect(app.get('.account-button').text()).toContain(admin.name)
+    expect(app.get('[data-testid="account-button"]').text()).toContain(admin.name)
 
     response.resolve(new Response(null, { status: 204 }))
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/users')
-    expect(app.get('.account-button').text()).toContain(admin.name)
+    expect(app.get('[data-testid="account-button"]').text()).toContain(admin.name)
   })
 
   it('Given 其他页签在初始化 204 到达前已有会话 When 当前页签在登录页重新聚焦 Then 识别共享会话并进入原目标', async () => {
@@ -660,13 +662,13 @@ describe('首次设置管理员密码', () => {
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/login')
     expect(app.get('[role="status"]').text()).toContain('初始化成功')
-    expect(app.find('.sidebar').exists()).toBe(false)
+    expect(app.find('[data-testid="sidebar"]').exists()).toBe(false)
     expect(statusRequests).toHaveLength(1)
 
     window.dispatchEvent(new Event('focus'))
     await flushPromises()
     expect(router.currentRoute.value.fullPath).toBe('/users?source=initialization#main')
-    expect(app.get('.account-button').text()).toContain(admin.name)
+    expect(app.get('[data-testid="account-button"]').text()).toContain(admin.name)
   })
 
   it('Given 初始化请求等待响应 When 状态短暂失败并恢复显示表单 Then 继续等待同一次提交', async () => {

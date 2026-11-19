@@ -10,6 +10,7 @@ import IconSprite from '../navigation/IconSprite.vue'
 import WorkspaceTabs from '../navigation/WorkspaceTabs.vue'
 import { navigationPages, workspacePages, type WorkspacePage } from '../../router/workspace'
 import { useToast } from '../../composables/useToast'
+import AppToast from '../../ui/AppToast.vue'
 
 defineProps<{ account: Account }>()
 
@@ -81,9 +82,17 @@ async function handleAccountAction(
 </script>
 
 <template>
-  <a class="skip-link" href="#main">跳转到主内容</a>
+  <a
+    href="#main"
+    class="fixed left-8 top-8 z-[3000] -translate-y-[150%] rounded-4 bg-primary px-12 py-8 text-white focus-visible:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+    >跳转到主内容</a
+  >
   <IconSprite />
-  <div class="app" :style="{ '--sidebar-width': sidebarCollapsed ? '56px' : '200px' }">
+  <div
+    class="flex h-[100dvh] w-screen min-w-1440 overflow-hidden bg-page"
+    data-testid="app-shell"
+    :style="{ '--sidebar-width': sidebarCollapsed ? '56px' : '200px' }"
+  >
     <AppSidebar
       :active-page="activePage ?? ''"
       :collapsed="sidebarCollapsed"
@@ -92,8 +101,8 @@ async function handleAccountAction(
       @preview="showToast(`原型演示：${$event}`)"
     />
 
-    <div class="app-main">
-      <header class="topbar">
+    <div class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+      <header class="relative z-50 flex h-38 flex-none items-stretch bg-topnav">
         <WorkspaceTabs :items="openTabs" :active-page="activePage ?? ''" @close="closeTab" />
         <AccountMenu
           ref="accountMenu"
@@ -102,7 +111,7 @@ async function handleAccountAction(
           @notice="showToast('原型演示：通知')"
         />
       </header>
-      <main id="main" class="main" tabindex="-1">
+      <main id="main" class="relative min-h-0 flex-1 overflow-hidden bg-page" tabindex="-1">
         <RouterView />
         <ProfileDialog
           :open="profileOpen"
@@ -119,5 +128,5 @@ async function handleAccountAction(
       </main>
     </div>
   </div>
-  <div v-show="toast" id="toast" class="toast" role="status">{{ toast }}</div>
+  <AppToast :message="toast" data-testid="toast" />
 </template>

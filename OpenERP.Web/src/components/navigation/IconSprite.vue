@@ -1,5 +1,9 @@
 <template>
-  <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <svg
+    class="pointer-events-none absolute size-0 overflow-hidden"
+    aria-hidden="true"
+    xmlns="http://www.w3.org/2000/svg"
+  >
     <symbol id="i-chev-down" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" /></symbol>
     <symbol id="i-chev-right" viewBox="0 0 16 16"><path d="m6 4 4 4-4 4" /></symbol>
     <symbol id="i-chev-left" viewBox="0 0 16 16"><path d="m10 4-4 4 4 4" /></symbol>

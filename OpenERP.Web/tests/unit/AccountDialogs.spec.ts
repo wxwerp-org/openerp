@@ -42,7 +42,7 @@ describe('账户弹窗', () => {
 
   it('Given 账户菜单 When 选择修改个人信息 Then 显示会话中的姓名并聚焦输入框', async () => {
     wrapper = await mountShell()
-    await wrapper.get('.account-button').trigger('click')
+    await wrapper.get('[data-testid="account-button"]').trigger('click')
     await wrapper.get('[data-account-action="profile"]').trigger('click')
     await new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -53,7 +53,7 @@ describe('账户弹窗', () => {
 
   it('Given 账户菜单 When 选择修改密码并输入不一致密码 Then 显示确认密码错误', async () => {
     wrapper = await mountShell()
-    await wrapper.get('.account-button').trigger('click')
+    await wrapper.get('[data-testid="account-button"]').trigger('click')
     await wrapper.get('[data-account-action="password"]').trigger('click')
     await new Promise((resolve) => setTimeout(resolve, 0))
 

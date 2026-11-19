@@ -44,13 +44,13 @@ describe('原型应用公共框架', () => {
     const mounted = await mountAt('/users')
     wrapper = mounted.wrapper
 
-    expect(wrapper.findAll('.page-tab').map((tab) => tab.text())).toEqual([
+    expect(wrapper.findAll('[data-testid="page-tab"]').map((tab) => tab.text())).toEqual([
       '首页',
       '新品开发',
       '产品管理',
       '用户管理',
     ])
-    expect(wrapper.get('.page-tab.active .tab-label').text()).toBe('用户管理')
+    expect(wrapper.get('[data-testid="page-tab"] [aria-current="page"]').text()).toBe('用户管理')
     for (const label of [
       '产品',
       '销售',
@@ -65,9 +65,9 @@ describe('原型应用公共框架', () => {
       '工具',
       '设置',
     ]) {
-      expect(wrapper.get('.side-nav').text()).toContain(label)
+      expect(wrapper.get('[data-testid="side-nav"]').text()).toContain(label)
     }
-    expect(wrapper.get('.account-button').text()).toContain(adminAccount.name)
+    expect(wrapper.get('[data-testid="account-button"]').text()).toContain(adminAccount.name)
     expect(wrapper.find('button[aria-label="通知"]').exists()).toBe(true)
   })
 
@@ -75,22 +75,22 @@ describe('原型应用公共框架', () => {
     const mounted = await mountAt('/')
     wrapper = mounted.wrapper
 
-    await wrapper.get('.account-button').trigger('click')
+    await wrapper.get('[data-testid="account-button"]').trigger('click')
 
-    expect(wrapper.get('.account-button').attributes('aria-expanded')).toBe('true')
-    expect(wrapper.get('.account-menu').isVisible()).toBe(true)
-    expect(wrapper.get('.account-menu').text()).toContain('修改个人信息')
-    expect(wrapper.get('.account-menu').text()).toContain('修改密码')
+    expect(wrapper.get('[data-testid="account-button"]').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('#accountMenu').isVisible()).toBe(true)
+    expect(wrapper.get('#accountMenu').text()).toContain('修改个人信息')
+    expect(wrapper.get('#accountMenu').text()).toContain('修改密码')
   })
 
   it('Given 完整侧边导航 When 点击收起按钮 Then 切换原型折叠轨道', async () => {
     const mounted = await mountAt('/')
     wrapper = mounted.wrapper
 
-    await wrapper.get('#collapseNav').trigger('click')
+    await wrapper.get('[data-testid="collapse-nav"]').trigger('click')
 
-    expect(wrapper.find('.sidebar.is-rail').exists()).toBe(true)
-    expect(wrapper.get('#collapseNav').attributes('aria-label')).toBe('展开导航')
+    expect(wrapper.find('[data-testid="sidebar"][data-rail="true"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="collapse-nav"]').attributes('aria-label')).toBe('展开导航')
   })
 
   it('Given 用户页签是当前页 When 关闭用户页签 Then 返回前一个产品管理页签', async () => {
@@ -101,7 +101,7 @@ describe('原型应用公共框架', () => {
     await flushPromises()
 
     expect(mounted.router.currentRoute.value.path).toBe('/products')
-    expect(wrapper.get('.page-tab.active .tab-label').text()).toBe('产品管理')
+    expect(wrapper.get('[data-testid="page-tab"] [aria-current="page"]').text()).toBe('产品管理')
   })
 
   it('Given 当前位于首页 When 通过设置分组进入用户管理 Then 路由和当前页签同步更新', async () => {
@@ -114,6 +114,6 @@ describe('原型应用公共框架', () => {
     await flushPromises()
 
     expect(mounted.router.currentRoute.value.path).toBe('/users')
-    expect(wrapper.get('.page-tab.active .tab-label').text()).toBe('用户管理')
+    expect(wrapper.get('[data-testid="page-tab"] [aria-current="page"]').text()).toBe('用户管理')
   })
 })

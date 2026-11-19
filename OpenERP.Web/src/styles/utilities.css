@@ -29,24 +29,6 @@ dialog::backdrop {
   border: 0 !important;
 }
 
-.skip-link {
-  position: fixed;
-  top: 8px;
-  left: 8px;
-  z-index: 3000;
-  padding: 8px 12px;
-  border-radius: 4px;
-  background: var(--primary);
-  color: #fff;
-  transform: translateY(-150%);
-}
-
-.skip-link:focus-visible {
-  transform: translateY(0);
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
-}
-
 .grid-table button.sort-head {
   min-height: 24px;
   padding: 0;
