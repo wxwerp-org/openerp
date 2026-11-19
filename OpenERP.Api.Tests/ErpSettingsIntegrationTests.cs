@@ -68,6 +68,11 @@ public sealed class ErpSettingsIntegrationTests
             """UPDATE "ErpSettings" SET "ProtectedAccessToken" = 'invalid-protected-token'""", database);
         await damageToken.ExecuteNonQueryAsync(ct);
         Assert.True(await IsConfiguredAsync(restarted, ct));
+        // When 选店需要解密损坏的凭证。Then 返回可重试的依赖错误，管理员仍可更换凭证。
+        using var selection = await restarted.GetAsync("/api/erp/order-sync-settings/shops", ct);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, selection.StatusCode);
+        var problem = await selection.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal("读取私有 ERP AccessToken 失败，请稍后重试。", problem.GetProperty("title").GetString());
         using var recovered = await restarted.PutAsJsonAsync(route, new { accessToken = updatedToken }, ct);
         Assert.Equal(HttpStatusCode.NoContent, recovered.StatusCode);
         await AssertUpstreamTokenAsync(connectionString, updatedToken, ct);
@@ -94,10 +99,13 @@ public sealed class ErpSettingsIntegrationTests
         using var http = new HttpClient(new ErpResponseHandler(expected));
         var tokens = new ErpTokenStore(scope.ServiceProvider.GetRequiredService<AppDbContext>(),
             provider.GetRequiredService<IDataProtectionProvider>());
-        var erp = new WxwErpClient(http, tokens);
-        var shops = await erp.GetShopsAsync(1, 20, null, ct);
+        var token = await tokens.GetAsync(ct);
+        if (token.IsErr)
+            throw new Xunit.Sdk.XunitException(token.Error.Message);
+        var erp = new WxwErpClient(http);
+        var shops = await erp.GetShopsAsync(1, 20, null, token.Value, ct);
         Assert.Equal(200, shops.Status);
-        var orders = await erp.ReadOrdersAsync(30, null, ct);
+        var orders = await erp.ReadOrdersAsync(30, null, token.Value, ct);
         if (orders.IsErr)
             Assert.Fail(orders.Error.Message);
         else

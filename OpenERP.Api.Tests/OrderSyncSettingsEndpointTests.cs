@@ -96,7 +96,7 @@ public sealed class OrderSyncSettingsEndpointTests
         // Given 当前 Token 可见两家店。
         var erp = new TestErpClient
         {
-            GetAllShops = (_, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
+            GetAllShops = (_, _, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
                 new("30", "店铺三十", "TemuPop", "US"),
                 new("644928", "店铺六四四九二八", "TemuPop")
             ]))
@@ -118,8 +118,7 @@ public sealed class OrderSyncSettingsEndpointTests
     public async Task Shop_selection_returns_503_without_an_erp_token()
     {
         // Given 私有 ERP Token 未配置。
-        var erp = new TestErpClient { Configuration = new(false, "https://erp.test") };
-        await using var app = await StartAppAsync(erp);
+        await using var app = await StartAppAsync(token: "");
 
         // When 读取选店列表。
         using var response = await app.Http.GetAsync("/api/erp/order-sync-settings/shops", TestContext.Current.CancellationToken);
@@ -134,7 +133,7 @@ public sealed class OrderSyncSettingsEndpointTests
         // Given 上游店铺列表读取失败。
         var erp = new TestErpClient
         {
-            GetAllShops = (_, _) => Task.FromResult<OpResult<IReadOnlyList<ErpShop>>>(OpResults.Err("ERP 请求超时，请重试。"))
+            GetAllShops = (_, _, _) => Task.FromResult<OpResult<IReadOnlyList<ErpShop>>>(OpResults.Err("ERP 请求超时，请重试。"))
         };
         await using var app = await StartAppAsync(erp);
 
@@ -167,8 +166,7 @@ public sealed class OrderSyncSettingsEndpointTests
     public async Task Enabling_requires_a_configured_erp_token()
     {
         // Given 私有 ERP Token 未配置。
-        var erp = new TestErpClient { Configuration = new(false, "https://erp.test") };
-        await using var app = await StartAppAsync(erp);
+        await using var app = await StartAppAsync(token: "");
 
         // When 尝试启用定时同步。
         using var response = await app.Http.PutAsJsonAsync("/api/erp/order-sync-settings",
@@ -196,14 +194,14 @@ public sealed class OrderSyncSettingsEndpointTests
         Assert.Contains("保存定时同步设置失败", body.GetProperty("title").GetString());
     }
 
-    private static async Task<TestApp> StartAppAsync(TestErpClient? erp = null)
+    private static async Task<TestApp> StartAppAsync(TestErpClient? erp = null, string token = "test-token")
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddSingleton<IErpClient>(erp ?? new TestErpClient());
-        builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore());
+        builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore(token));
         builder.Services.AddAuthorization();
         builder.Services.AddSingleton<IOrderSyncSettingsStore>(new TestSettingsStore());
         builder.Services.AddSingleton<OrderSyncJobs>();

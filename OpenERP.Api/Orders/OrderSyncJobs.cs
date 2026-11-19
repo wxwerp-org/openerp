@@ -127,6 +127,14 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
+            var tokens = scope.ServiceProvider.GetRequiredService<IErpTokenStore>();
+            var token = await tokens.GetAsync(ct);
+            if (token.IsErr)
+            {
+                Fail(current, token.Error.Message);
+                return;
+            }
+
             var erp = scope.ServiceProvider.GetRequiredService<IErpClient>();
             var read = await erp.ReadOrdersAsync(job.Sid, progress =>
             {
@@ -136,7 +144,7 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
                     Read = progress.Read, Processed = progress.Processed
                 };
                 Publish(current);
-            }, ct);
+            }, token.Value, ct);
 
             if (read.IsErr)
             {

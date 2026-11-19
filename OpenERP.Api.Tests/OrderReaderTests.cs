@@ -12,14 +12,16 @@ public sealed class OrderReaderTests
 {
     private const string FirstId = "000000000000000000000002";
     private const string SecondId = "000000000000000000000001";
+    private static readonly ErpAccessToken Token = new("fake-token");
     private const string Count = """{"data_count":2,"page_count":1}""";
 
     [Fact]
     public async Task ReadsOnlyVisibleShopAndPreservesDetailLinesAndRawTime()
     {
-        // Given 店铺可见、授权状态未参与判断，列表缺创建时间，详情含相同 SKU 的两行。
+        // Given 目标店铺位于第二页，订单列表缺创建时间，详情含相同 SKU 的两行。
         using var handler = new ErpHandler(
-            ("/open-api/shop/get_shops", Shops),
+            ("/open-api/shop/get_shops", TwoVisibleShopsFirstPage),
+            ("/open-api/shop/get_shops", TwoVisibleShopsSecondPage),
             ("/open-api/order/get_list_page_count", Count),
             ("/open-api/order/get_list", List(FirstId, 30, SecondId, 30)),
             ("/open-api/order/get_list_page_count", Count),
@@ -28,13 +30,13 @@ public sealed class OrderReaderTests
             ("/open-api/order_detail/get_base", Detail),
             ("/open-api/order_detail/get_time", Times));
         using var http = new HttpClient(handler);
-        var client = CreateClient(http);
+        var client = new WxwErpClient(http);
         var progress = new List<OrderReadProgress>();
 
         // When 读取该店全部历史订单。
-        var result = await client.ReadOrdersAsync(30, progress.Add, TestContext.Current.CancellationToken);
+        var result = await client.ReadOrdersAsync(30, progress.Add, Token, TestContext.Current.CancellationToken);
 
-        // Then 请求按店铺和平台筛选，PO 状态、每行数量和时间来源均保留。
+        // Then 店铺和订单的所有请求使用同一 Token，PO 状态、每行数量和时间来源均保留。
         if (result.IsErr)
             throw new XunitException(result.Error.Message);
         Assert.Equal(2, result.Value.Total);
@@ -70,7 +72,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 读取历史订单。
-        var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrdersAsync(30, null, Token, TestContext.Current.CancellationToken);
 
         // Then 仅同店订单进入保存集合，异常主单计为跳过且不查询详情。
         if (result.IsErr)
@@ -88,7 +90,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 手动请求同步 SID 9。
-        var result = await CreateClient(http).ReadOrdersAsync(9, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrdersAsync(9, null, Token, TestContext.Current.CancellationToken);
 
         // Then 明确拒绝且不调用任何订单接口。
         if (!result.IsErr)
@@ -118,7 +120,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 逐页读取。
-        var result = await CreateClient(http).ReadOrderIndexAsync(30, 1, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrderIndexAsync(30, 1, null, Token, TestContext.Current.CancellationToken);
 
         // Then 以分页错误结束，不能把部分 ID 当成成功。
         if (!result.IsErr)
@@ -143,7 +145,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 读取订单。
-        var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrdersAsync(30, null, Token, TestContext.Current.CancellationToken);
 
         // Then 创建时间为空，保留列表付款时间，商品使用复核后的详情。
         if (result.IsErr)
@@ -174,7 +176,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 读取整店订单。
-        var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrdersAsync(30, null, Token, TestContext.Current.CancellationToken);
 
         // Then 批次失败，已经读取的任何主单都不能交给保存步骤。
         if (!result.IsErr)
@@ -199,7 +201,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 读取该店订单。
-        var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrdersAsync(30, null, Token, TestContext.Current.CancellationToken);
 
         // Then 沿用归属异常的跳过规则，旧详情不会进入保存集合。
         if (result.IsErr)
@@ -223,7 +225,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 读取该店订单。
-        var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrdersAsync(30, null, Token, TestContext.Current.CancellationToken);
 
         // Then 权限失败直接中止整批。
         if (!result.IsErr)
@@ -247,7 +249,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 读取整店订单。
-        var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrdersAsync(30, null, Token, TestContext.Current.CancellationToken);
 
         // Then 即使首单已读取也不交付部分数据给保存步骤。
         if (!result.IsErr)
@@ -272,7 +274,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 读取订单列表。
-        var result = await CreateClient(http).ReadOrderIndexAsync(30, 20, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrderIndexAsync(30, 20, null, Token, TestContext.Current.CancellationToken);
 
         // Then 整批失败，不能把错误值当作空时间。
         if (!result.IsErr)
@@ -303,7 +305,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 读取整店订单。
-        var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrdersAsync(30, null, Token, TestContext.Current.CancellationToken);
 
         // Then 整批失败，连同首单也不会交给保存步骤。
         if (!result.IsErr)
@@ -323,7 +325,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 读取订单列表。
-        var result = await CreateClient(http).ReadOrderIndexAsync(30, 20, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrderIndexAsync(30, 20, null, Token, TestContext.Current.CancellationToken);
 
         // Then 批次失败，错误状态文本不会被转成空值。
         if (!result.IsErr)
@@ -345,7 +347,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 读取该店订单并补查时间。
-        var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrdersAsync(30, null, Token, TestContext.Current.CancellationToken);
 
         // Then 批次失败，不保存缺少创建时间的快照。
         if (!result.IsErr)
@@ -372,7 +374,7 @@ public sealed class OrderReaderTests
         using var http = new HttpClient(handler);
 
         // When 读取该店订单。
-        var result = await CreateClient(http).ReadOrdersAsync(30, null, TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).ReadOrdersAsync(30, null, Token, TestContext.Current.CancellationToken);
 
         // Then 原样保留有效字段，合法缺省仍为空。
         if (result.IsErr)
@@ -389,24 +391,26 @@ public sealed class OrderReaderTests
     {
         // Given Token 可见店铺分两页返回，且没有调用授权状态接口。
         using var handler = new ErpHandler(
-            ("/open-api/shop/get_shops", """!{"success":true,"data_count":2,"page_count":2,"data":{"items":[{"sid":"30","platform":"TemuPop","name":"店铺三十"}]}}"""),
-            ("/open-api/shop/get_shops", """!{"success":true,"data_count":2,"page_count":2,"data":{"items":[{"sid":"31","platform":"TemuPop","name":"店铺三十一"}]}}"""));
+            ("/open-api/shop/get_shops", TwoVisibleShopsFirstPage),
+            ("/open-api/shop/get_shops", TwoVisibleShopsSecondPage));
         using var http = new HttpClient(handler);
 
         // When 一次性读取全部可见店铺。
-        var result = await CreateClient(http).GetAllShopsAsync("TemuPop", TestContext.Current.CancellationToken);
+        var result = await new WxwErpClient(http).GetAllShopsAsync("TemuPop", Token, TestContext.Current.CancellationToken);
 
         // Then 合并所有分页，且没有额外的授权状态请求。
         if (result.IsErr)
             throw new XunitException(result.Error.Message);
-        Assert.Equal(["30", "31"], result.Value.Select(shop => shop.Sid));
-        Assert.Equal(["店铺三十", "店铺三十一"], result.Value.Select(shop => shop.Name));
+        Assert.Equal(["31", "30"], result.Value.Select(shop => shop.Sid));
+        Assert.Equal(["店铺三十一", "店铺三十"], result.Value.Select(shop => shop.Name));
         handler.AssertCompleted();
     }
 
     private const string OneOrder = """{"data_count":1,"page_count":1}""";
     private const string TimeNotFound = """!{"success":false,"message":"_暂未找到信息"}""";
     private const string Shops = """!{"success":true,"data_count":1,"page_count":1,"data":{"items":[{"sid":"30","platform":"TemuPop"}]}}""";
+    private const string TwoVisibleShopsFirstPage = """!{"success":true,"data_count":2,"page_count":2,"data":{"items":[{"sid":"31","platform":"TemuPop","name":"店铺三十一"}]}}""";
+    private const string TwoVisibleShopsSecondPage = """!{"success":true,"data_count":2,"page_count":2,"data":{"items":[{"sid":"30","platform":"TemuPop","name":"店铺三十"}]}}""";
     private const string Detail = """
         {"orderId":"ERP-1","shop":{"sid":30,"platform":"TemuPop"},"status":{"key":"Normal"},
         "platformOrders":[{"oid":"PO-1","status":{"key":"4","text":"发货"}}],
@@ -427,8 +431,6 @@ public sealed class OrderReaderTests
         {"id":"{{id}}","orderid":"ERP-1","sub_orders":[{"id":"PO-1","sid":30,"status":"已发货"}{{(sid == 30 ? "" : ",{\"id\":\"PO-2\",\"sid\":" + sid + "}")}}],
         "times":[{"name":"_付款","time":"2025-08-12 13:01"}]}
         """;
-
-    private static WxwErpClient CreateClient(HttpClient http) => new(http, new TestErpTokenStore("fake-token"));
 
     private sealed class ErpHandler(params (string Path, string Data)[] responses) : HttpMessageHandler
     {

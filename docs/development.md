@@ -192,8 +192,8 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 
 | 接口 | 行为 |
 | --- | --- |
-| `GET /api/erp/config` | 返回配置状态、上游地址和 `orderSyncEnabled`；不返回 Token |
-| `PUT /api/erp/config` | 管理员提交 `{ accessToken }` 保存或更换 Token，成功返回 `204`，后续 ERP 请求使用新值 |
+| `GET /api/erp/config` | 查询配置记录是否存在，返回 `configured`、`baseUrl` 和 `orderSyncEnabled`。查询失败返回 `503` |
+| `PUT /api/erp/config` | 管理员提交 `{ accessToken }` 保存或更换 Token，成功返回 `204`。下一次读取凭证的操作使用新值 |
 | `GET /api/erp/shops?page=1&pageSize=20&platform=&status=&keyword=` | 只读本地店铺目录；`status` 为 `valid`、`invalid`、`unknown`；按页返回 `items`、`summary`（含 `lastSyncedAt` 与目录版本 `syncVersion`）与分页信息；每页 1–100 条，超范围页码钳制到最后一页 |
 | `GET /api/erp/platforms` | 返回本地有店铺的平台（名称、展示名、图标、是否生产可用、店铺数）；平台元数据来自上游同步，不在本地写死 |
 | `GET /api/erp/shop-sync` | 返回店铺同步的当前或最近一次状态（运行中、开始/完成时间、总数、已检查、有效/无效/未知、错误、单调递增的 `version`） |
@@ -201,9 +201,11 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 | `GET /api/erp/shops/{sid}/order-sync` | 仅 Development / Production 提供；查询该店最近任务，无任务返回 `204` |
 | `GET /api/erp/order-sync-settings` | 仅 Development / Production 提供；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes` |
 | `PUT /api/erp/order-sync-settings` | 仅 Development / Production 提供；保存启用状态和店铺选择；启用时至少选择一家店铺 |
-| `GET /api/erp/order-sync-settings/shops` | 仅 Development / Production 提供；分页拉取本地店铺基础信息，不查询平台授权状态 |
+| `GET /api/erp/order-sync-settings/shops` | 仅 Development / Production 提供。使用同一 Token 向上游分页读取可见的 TemuPop 店铺。凭证缺失或读取失败返回 `503`，上游查询失败返回 `502` |
 
-订单同步接口在 Development 和 Production 中启用。每次店铺查询或订单同步开始时读取当前 Token，同一操作后续的分页和详情请求继续使用该值。
+每轮授权店铺同步、每家店的订单同步和每次定时同步选店请求，分别通过 scoped `IErpTokenStore.GetAsync` 读取并解密一次 Token。读取失败由存储层返回 `OpResult`。配置状态只检查记录是否存在，因此旧密文损坏时管理员仍可查看配置并替换凭证。
+
+`IErpClient` 的每个上游方法都显式接收不可变的 `ErpAccessToken`。同一操作的分页、详情和并发状态查询共用该快照。`WxwErpClient` 只处理 HTTP 和上游响应，并发期间各请求无需访问凭证存储。参见 [EF Core 对 DbContext 并行使用的说明](https://learn.microsoft.com/en-us/ef/core/dbcontext-configuration/#avoiding-dbcontext-threading-issues)。
 
 本地店铺接口只读 PostgreSQL；数据库暂时不可用时返回 `503`，不会回源上游。旧 `/api/erp/authorization/*` 接口、授权快照与事件表已删除。实现见 [ShopDirectoryEndpoints](../OpenERP.Api/Erp/ShopDirectoryEndpoints.cs)、[ShopSyncJob](../OpenERP.Api/Erp/ShopSyncJob.cs)、[ErpHub](../OpenERP.Api/Erp/ErpHub.cs) 和 [OrderSyncEndpoints](../OpenERP.Api/Orders/OrderSyncEndpoints.cs)。
 
@@ -250,7 +252,7 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 - 周期来自 API 配置 `OrderSync:SchedulerIntervalMinutes`（默认 `30`，允许 `1`–`1440` 分钟），启动时校验；修改后需重启 API，保存设置本身不需要重启。每轮受理后等待一个周期再尝试下一轮；若上一轮仍在运行，本轮跳过并等下一周期。启用后首次执行同样等待一个周期。
 - 设置保存在 PostgreSQL 的 `OrderSyncSettings` 单行表（`Id` 固定为 `1`，数据库检查约束拒绝第二行），迁移为 `AddOrderSyncSettings`。保存后 API 唤醒调度器重新读取设置；启用后首次执行仍等待一个完整周期。
 - 启用时必须至少选择一家店铺，空选返回 `400`，前端也会禁用保存。历史空选数据不会触发同步。启用还要求已配置私有 ERP AccessToken；未配置时保存启用状态返回 `503`，前端禁用开关和保存。
-- 选店列表来自本地店铺目录（分页拉取，只取基础信息），不受店铺表格分页限制；提供「全选可见店铺」和清空辅助。保存设置时不再调用 ERP 校验店铺可见性：Token 权限变化后该店会在定时轮次中记录失败，其他店铺继续，可在卡片中清空或重新选择。
+- 选店列表通过 `GET /api/erp/order-sync-settings/shops` 从上游分页拉取可见 TemuPop 店铺的基础信息，提供「全选可见店铺」和清空辅助。保存设置时不再调用 ERP 校验店铺可见性：Token 权限变化后该店会在定时轮次中记录失败，其他店铺继续，可在卡片中清空或重新选择。
 - 定时批次按顺序逐店同步，单店失败只记录该店失败并继续后续店铺，不在同一周期内自动退避重试；下一周期会重新扫描全部选中店铺，批次结束后也可手动补跑。重复同步复用订单记录的幂等 upsert，不会写入重复订单。
 - 手动与定时共用全局单任务互斥：定时批次运行期间手动同步返回 `409`；手动同步运行期间定时周期直接跳过并等待下一周期。关闭定时同步只阻止后续周期，已受理的批次会继续执行完当前店铺列表。
 - 不做跨进程或重启的作业持久化、断点恢复：任务状态仍在 API 内存中，重启后丢失；定时同步会在下一个周期重新执行选中店铺，已保存订单不受影响。

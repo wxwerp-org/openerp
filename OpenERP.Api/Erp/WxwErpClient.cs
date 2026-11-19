@@ -4,27 +4,10 @@ using OpResult;
 
 namespace OpenERP.Api.Erp;
 
-public sealed partial class WxwErpClient(HttpClient http, IErpTokenStore tokens) : IErpClient
+public sealed partial class WxwErpClient(HttpClient http) : IErpClient
 {
-    // ERP Token 只发往这里指定的上游站点。
-    private const string BaseUrl = "https://v3-api.wxwerp.com";
-
-    public async Task<ErpConfiguration> GetConfigurationAsync(CancellationToken cancellationToken) =>
-        new(await tokens.IsConfiguredAsync(cancellationToken), BaseUrl);
-
-    public async Task<(OpResult<ShopPage> Result, int Status)> GetShopsAsync(
-        int page, int pageSize, string? platform, CancellationToken ct)
-    {
-        if (page < 1 || pageSize is < 1 or > 100)
-            return (OpResults.Err("页码必须大于 0，每页数量必须在 1 至 100 之间。"), 400);
-
-        var accessToken = await tokens.GetAsync(ct);
-        // 店铺列表只读上游基础信息；授权状态由本地同步任务落库。
-        return await GetShopListAsync(accessToken, page, pageSize, platform, ct);
-    }
-
     public async Task<OpResult<ErpShopStatus>> GetShopStatusAsync(
-        string sid, string accessToken, CancellationToken ct)
+        string sid, ErpAccessToken accessToken, CancellationToken ct)
     {
         var (response, _) = await PostAsync(accessToken, "/open-api/shop/get_status", new { sid }, ct);
         if (response.IsErr)
@@ -39,15 +22,9 @@ public sealed partial class WxwErpClient(HttpClient http, IErpTokenStore tokens)
             TryBoolean(data, "isSupportUpdateNumber")));
     }
 
-    public async Task<(OpResult<IReadOnlyList<ErpPlatform>> Result, int Status)> GetPlatformsAsync(CancellationToken ct) =>
-        await GetPlatformsAsync(await tokens.GetAsync(ct), ct);
-
     public async Task<(OpResult<IReadOnlyList<ErpPlatform>> Result, int Status)> GetPlatformsAsync(
-        string accessToken, CancellationToken ct)
+        ErpAccessToken accessToken, CancellationToken ct)
     {
-        if (accessToken.Length == 0)
-            return (OpResults.Err("尚未配置私有 ERP AccessToken。"), 503);
-
         // platforms 分组由店铺列表接口随全量店铺统计返回，不需要逐平台查询。
         var (groupsResponse, groupsStatus) = await PostAsync(
             accessToken, "/open-api/shop/get_shops", new { page = 1, page_size = 1 }, ct);
@@ -82,24 +59,19 @@ public sealed partial class WxwErpClient(HttpClient http, IErpTokenStore tokens)
             .ToArray()), 200);
     }
 
-    public async Task<OpResult<IReadOnlyList<ErpShop>>> GetAllShopsAsync(string? platform, CancellationToken ct) =>
-        await GetAllShopsAsync(platform, await tokens.GetAsync(ct), ct);
-
     public async Task<OpResult<IReadOnlyList<ErpShop>>> GetAllShopsAsync(
-        string? platform, string accessToken, CancellationToken ct)
+        string? platform, ErpAccessToken accessToken, CancellationToken ct)
     {
         const int pageSize = 100;
         const int maxPages = 100;
         var shops = new List<ErpShop>();
-        if (accessToken.Length == 0)
-            return OpResults.Err("尚未配置私有 ERP AccessToken。");
 
         for (var page = 1; ; page++)
         {
             if (page > maxPages)
                 return OpResults.Err("ERP 店铺数量超出选店接口可读取范围。");
 
-            var (result, _) = await GetShopListAsync(accessToken, page, pageSize, platform, ct);
+            var (result, _) = await GetShopsAsync(page, pageSize, platform, accessToken, ct);
             if (result.IsErr)
                 return result.Error;
 
@@ -113,7 +85,7 @@ public sealed partial class WxwErpClient(HttpClient http, IErpTokenStore tokens)
     }
 
     private async Task<Dictionary<string, ErpPlatformMetadata>> ReadPlatformMetadataAsync(
-        string accessToken, CancellationToken ct)
+        ErpAccessToken accessToken, CancellationToken ct)
     {
         // 平台枚举只用于补充展示名、图标和生产可用标记；读取失败时使用店铺分组自带的展示名。
         var (response, _) = await PostAsync(accessToken, "/open-api/system/get_platforms", new { }, ct);
@@ -139,13 +111,11 @@ public sealed partial class WxwErpClient(HttpClient http, IErpTokenStore tokens)
         return metadata;
     }
 
-    private async Task<(OpResult<ShopPage> Result, int Status)> GetShopListAsync(
-        string accessToken, int page, int pageSize, string? platform, CancellationToken ct)
+    public async Task<(OpResult<ShopPage> Result, int Status)> GetShopsAsync(
+        int page, int pageSize, string? platform, ErpAccessToken accessToken, CancellationToken ct)
     {
         if (page < 1 || pageSize is < 1 or > 100)
             return (OpResults.Err("页码必须大于 0，每页数量必须在 1 至 100 之间。"), 400);
-        if (accessToken.Length == 0)
-            return (OpResults.Err("尚未配置私有 ERP AccessToken。"), 503);
 
         var normalizedPlatform = string.IsNullOrWhiteSpace(platform) ? null : platform.Trim();
         object request = normalizedPlatform is null
@@ -181,11 +151,14 @@ public sealed partial class WxwErpClient(HttpClient http, IErpTokenStore tokens)
     }
 
     private async Task<(OpResult<JsonElement> Result, int Status)> PostAsync(
-        string accessToken, string path, object body, CancellationToken ct)
+        ErpAccessToken accessToken, string path, object body, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, BaseUrl + path);
-        if (!request.Headers.TryAddWithoutValidation("AccessToken", accessToken) ||
-            accessToken.Contains('\r') || accessToken.Contains('\n'))
+        if (accessToken.Value.Length == 0)
+            return (OpResults.Err("尚未配置私有 ERP AccessToken。"), 503);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, ErpConfiguration.UpstreamBaseUrl + path);
+        if (!request.Headers.TryAddWithoutValidation("AccessToken", accessToken.Value) ||
+            accessToken.Value.Contains('\r') || accessToken.Value.Contains('\n'))
             return (OpResults.Err("ERP AccessToken 配置格式不正确。"), 503);
         request.Content = JsonContent.Create(body);
         try

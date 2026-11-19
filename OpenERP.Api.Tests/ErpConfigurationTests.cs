@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenERP.Api.Erp;
@@ -13,6 +16,39 @@ namespace OpenERP.Api.Tests;
 
 public sealed class ErpConfigurationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DatabaseConnectionFailureReturnsAReadableError(bool readToken)
+    {
+        // Given 本机端口已绑定但未监听，没有数据库能接受连接。
+        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        var port = ((IPEndPoint)socket.LocalEndPoint!).Port;
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql($"Host=127.0.0.1;Port={port};Username=test;Database=test;Pooling=false;Timeout=1")
+            .Options;
+        await using var db = new AppDbContext(options);
+        var store = new ErpTokenStore(db, new EphemeralDataProtectionProvider());
+        var ct = TestContext.Current.CancellationToken;
+
+        // When 查询配置或解析凭证。Then 调用方收到对应的业务错误，可以直接返回或记录。
+        if (readToken)
+        {
+            var token = await store.GetAsync(ct);
+            if (token.IsOk)
+                throw new Xunit.Sdk.XunitException("数据库不可用时仍返回了凭证。");
+            Assert.Equal("读取私有 ERP AccessToken 失败，请稍后重试。", token.Error.Message);
+        }
+        else
+        {
+            var config = await store.GetConfigurationAsync(ct);
+            if (config.IsOk)
+                throw new Xunit.Sdk.XunitException("数据库不可用时仍返回了配置。");
+            Assert.Equal("读取私有 ERP 配置失败，请稍后重试。", config.Error.Message);
+        }
+    }
+
     [Theory]
     [InlineData("Development", true)]
     [InlineData("Staging", false)]
