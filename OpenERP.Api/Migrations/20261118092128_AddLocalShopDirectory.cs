@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -54,7 +54,8 @@ namespace OpenERP.Api.Migrations
                     Total = table.Column<int>(type: "integer", nullable: false),
                     Valid = table.Column<int>(type: "integer", nullable: false),
                     Invalid = table.Column<int>(type: "integer", nullable: false),
-                    Unknown = table.Column<int>(type: "integer", nullable: false)
+                    Unknown = table.Column<int>(type: "integer", nullable: false),
+                    Version = table.Column<long>(type: "bigint", nullable: false)
                 },
                 constraints: table =>
                 {

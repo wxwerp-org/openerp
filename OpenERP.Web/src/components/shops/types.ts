@@ -14,6 +14,7 @@ export type ShopSummary = {
   invalid: number
   unknown: number
   lastSyncedAt: string | null
+  syncVersion: number
 }
 
 export type ShopPlatformOption = {

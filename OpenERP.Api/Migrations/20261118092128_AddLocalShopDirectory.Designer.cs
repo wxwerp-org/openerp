@@ -208,6 +208,9 @@ namespace OpenERP.Api.Migrations
                     b.Property<int>("Valid")
                         .HasColumnType("integer");
 
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.ToTable("ShopSyncStates", null, t =>

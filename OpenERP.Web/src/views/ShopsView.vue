@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { apiRequest } from '../account/session'
 import AppIcon from '../components/navigation/AppIcon.vue'
 import { buildPageList } from '../components/controls/pager'
@@ -11,7 +11,7 @@ import type {
   ShopStatusFilter,
   ShopSummary,
 } from '../components/shops/types'
-import { useErpHub, type ShopSyncStatus } from '../composables/useErpHub'
+import { useErpHub } from '../composables/useErpHub'
 
 type ShopsStatus = 'idle' | 'loading' | 'success' | 'error'
 type ConfigStatus = 'loading' | 'ready' | 'error'
@@ -34,7 +34,13 @@ const configError = ref('')
 const platforms = ref<ShopPlatformOption[]>([])
 const shopsStatus = ref<ShopsStatus>('idle')
 const shops = ref<Shop[]>([])
-const summary = ref<ShopSummary>({ valid: 0, invalid: 0, unknown: 0, lastSyncedAt: null })
+const summary = ref<ShopSummary>({
+  valid: 0,
+  invalid: 0,
+  unknown: 0,
+  lastSyncedAt: null,
+  syncVersion: 0,
+})
 const totalCount = ref(0)
 const pageCount = ref(0)
 const currentPage = ref(1)
@@ -56,12 +62,9 @@ const syncStatus = hub.status
 
 let isMounted = false
 let nowTimer: number | undefined
-let stopStatusListener: (() => void) | null = null
 let activeController: AbortController | null = null
 let requestVersion = 0
-let lastRunning = false
-let lastCompletedAt: string | null = null
-let hasStatusBaseline = false
+let refreshing = false
 
 const isLoading = computed(() => shopsStatus.value === 'loading')
 const hasFilters = computed(() => Boolean(platform.value || statusFilter.value || keyword.value))
@@ -100,22 +103,28 @@ const detailPlatformName = computed(() =>
 const hubNotice = computed(
   () => hubState.value === 'disconnected' || hubState.value === 'reconnecting',
 )
+// 目录响应先读状态版本再读店铺行；状态版本更大说明本地列表尚未包含最近一次完成同步。
+const directoryStale = computed(() => {
+  const current = syncStatus.value
+  return (
+    shopsStatus.value === 'success' &&
+    current !== null &&
+    !current.running &&
+    current.version > summary.value.syncVersion
+  )
+})
+
+watch(directoryStale, (stale) => {
+  if (stale) void refreshAfterSync()
+})
 
 onMounted(async () => {
   isMounted = true
   nowTimer = window.setInterval(() => {
     now.value = Date.now()
   }, 30_000)
-  stopStatusListener = hub.onStatus((next) => {
-    const completed = lastRunning && !next.running
-    const completedAtChanged = hasStatusBaseline && next.completedAt !== lastCompletedAt
-    lastRunning = next.running
-    lastCompletedAt = next.completedAt
-    hasStatusBaseline = true
-    if (completed || completedAtChanged) void refreshAfterSync()
-  })
 
-  await Promise.allSettled([loadConfig(), loadPlatforms(), loadShops(1), loadSyncStatus()])
+  await Promise.allSettled([loadConfig(), loadPlatforms(), loadShops(1), hub.refreshStatus()])
   if (isMounted) await hub.connect()
 })
 
@@ -123,11 +132,10 @@ onUnmounted(() => {
   isMounted = false
   if (nowTimer !== undefined) window.clearInterval(nowTimer)
   nowTimer = undefined
-  stopStatusListener?.()
-  stopStatusListener = null
   requestVersion += 1
   activeController?.abort()
   activeController = null
+  refreshing = false
   void hub.disconnect()
 })
 
@@ -163,19 +171,18 @@ async function loadPlatforms(): Promise<void> {
   }
 }
 
-async function loadSyncStatus(): Promise<void> {
+async function refreshAfterSync(): Promise<void> {
+  if (refreshing) return
+  refreshing = true
   try {
-    const response = await apiRequest('/api/erp/shop-sync')
-    if (!response.ok) return
-    const body: unknown = await response.json()
-    if (isShopSyncStatus(body)) {
-      syncStatus.value = body
-      lastRunning = body.running
-      lastCompletedAt = body.completedAt
-      hasStatusBaseline = true
+    // 同步可能在本次刷新期间再次完成；只有目录版本真的前进才继续追赶。
+    for (let attempt = 0; attempt < 3 && isMounted && directoryStale.value; attempt += 1) {
+      const before = summary.value.syncVersion
+      await Promise.allSettled([loadPlatforms(), loadShops(currentPage.value)])
+      if (summary.value.syncVersion === before) break
     }
-  } catch {
-    // Hub 连接后仍会推送当前状态。
+  } finally {
+    refreshing = false
   }
 }
 
@@ -221,10 +228,6 @@ async function loadShops(page: number): Promise<void> {
   } finally {
     if (activeController === controller) activeController = null
   }
-}
-
-async function refreshAfterSync(): Promise<void> {
-  await Promise.allSettled([loadPlatforms(), loadShops(currentPage.value)])
 }
 
 function retry(): void {
@@ -390,6 +393,7 @@ function parseShopsResponse(value: unknown): ShopsResponse {
       invalid: numberOr(summaryValue.invalid, 0),
       unknown: numberOr(summaryValue.unknown, 0),
       lastSyncedAt: nullableString(summaryValue.lastSyncedAt),
+      syncVersion: numberOr(summaryValue.syncVersion, 0),
     },
   }
 }
@@ -433,13 +437,6 @@ function parsePlatforms(value: unknown): ShopPlatformOption[] {
       },
     ]
   })
-}
-
-function isShopSyncStatus(value: unknown): value is ShopSyncStatus {
-  if (!isRecord(value) || typeof value.running !== 'boolean') return false
-  return [value.total, value.checked, value.valid, value.invalid, value.unknown].every(
-    (count) => typeof count === 'number',
-  )
 }
 
 function errorMessage(error: unknown, fallback: string): string {

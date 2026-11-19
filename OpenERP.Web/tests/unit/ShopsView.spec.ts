@@ -22,9 +22,8 @@ const hubMock = vi.hoisted(
       status: Ref<ShopSyncStatus | null>
       connect: ReturnType<typeof vi.fn>
       disconnect: ReturnType<typeof vi.fn>
+      refreshStatus: ReturnType<typeof vi.fn>
       startShopSync: ReturnType<typeof vi.fn>
-      onStatus: ReturnType<typeof vi.fn>
-      listener: ((status: ShopSyncStatus) => void) | null
     },
 )
 
@@ -39,17 +38,11 @@ beforeEach(() => {
   hubMock.status = ref<ShopSyncStatus | null>(null)
   hubMock.connect = vi.fn(async () => undefined)
   hubMock.disconnect = vi.fn(async () => undefined)
+  hubMock.refreshStatus = vi.fn(async () => undefined)
   hubMock.startShopSync = vi.fn(async () => {
-    const running = statusBody({ running: true, total: 131, checked: 0 })
+    const running = statusBody({ running: true, total: 131, checked: 0, version: 1 })
     hubMock.status.value = running
     return { accepted: true, status: running, error: null }
-  })
-  hubMock.listener = null
-  hubMock.onStatus = vi.fn((listener: (status: ShopSyncStatus) => void) => {
-    hubMock.listener = listener
-    return () => {
-      hubMock.listener = null
-    }
   })
 })
 
@@ -194,13 +187,23 @@ describe('授权店铺页', () => {
     expect(hubMock.startShopSync).toHaveBeenCalledTimes(1)
     expect(firstButton(wrapper, '同步中 0/131').attributes('disabled')).toBeDefined()
 
-    hubMock.status.value = statusBody({ running: true, total: 131, checked: 10, valid: 10 })
-    hubMock.listener?.(hubMock.status.value)
+    hubMock.status.value = statusBody({
+      running: true,
+      total: 131,
+      checked: 10,
+      valid: 10,
+      version: 1,
+    })
     await flushPromises()
     expect(firstButton(wrapper, '同步中 10/131')).toBeTruthy()
 
-    hubMock.status.value = statusBody({ running: false, total: 1, checked: 1, valid: 1 })
-    hubMock.listener?.(hubMock.status.value)
+    hubMock.status.value = statusBody({
+      running: false,
+      total: 1,
+      checked: 1,
+      valid: 1,
+      version: 2,
+    })
     await flushPromises()
     expect(firstButton(wrapper, '立即同步')).toBeTruthy()
     expect(shopsCalls()).toBeGreaterThan(initialShopsCalls)
@@ -272,16 +275,19 @@ describe('授权店铺页', () => {
       invalid: 0,
       unknown: 0,
       lastSyncedAt: initialCompletedAt,
+      syncVersion: 1,
     })
-    installFetch((url) =>
-      url === '/api/erp/shop-sync'
-        ? jsonResponse(statusBody({ completedAt: initialCompletedAt }))
-        : base(url),
-    )
+    installFetch(base)
     wrapper = await mountView()
     const before = shopsCalls()
 
-    hubMock.listener?.(statusBody({ completedAt: nextCompletedAt, total: 1, checked: 1, valid: 1 }))
+    hubMock.status.value = statusBody({
+      completedAt: nextCompletedAt,
+      total: 1,
+      checked: 1,
+      valid: 1,
+      version: 2,
+    })
     await flushPromises()
     await flushPromises()
 
@@ -290,22 +296,59 @@ describe('授权店铺页', () => {
 
   it('Given 重连收到的完成时间未变化 When 应用状态 Then 不重复刷新本地列表', async () => {
     const completedAt = '2026-11-18T05:20:00Z'
-    const base = defaultHandler([shop()], {
-      valid: 1,
-      invalid: 0,
-      unknown: 0,
-      lastSyncedAt: completedAt,
-    })
-    installFetch((url) =>
-      url === '/api/erp/shop-sync' ? jsonResponse(statusBody({ completedAt })) : base(url),
+    installFetch(
+      defaultHandler([shop()], {
+        valid: 1,
+        invalid: 0,
+        unknown: 0,
+        lastSyncedAt: completedAt,
+        syncVersion: 1,
+      }),
     )
     wrapper = await mountView()
     const before = shopsCalls()
 
-    hubMock.listener?.(statusBody({ completedAt }))
+    hubMock.status.value = statusBody({ completedAt, version: 1 })
     await flushPromises()
 
     expect(shopsCalls()).toBe(before)
+  })
+
+  it('Given 初次加载与状态读取竞态 When 目录版本落后 Then 按完成版本刷新一次', async () => {
+    let calls = 0
+    const first = defaultHandler([shop()], {
+      valid: 1,
+      invalid: 0,
+      unknown: 0,
+      lastSyncedAt: '2026-11-18T05:20:00Z',
+      syncVersion: 1,
+    })
+    const settled = defaultHandler([shop()], {
+      valid: 1,
+      invalid: 0,
+      unknown: 0,
+      lastSyncedAt: '2026-11-18T05:30:00Z',
+      syncVersion: 2,
+    })
+    installFetch((url) => {
+      if (!url.startsWith('/api/erp/shops')) return first(url)
+      calls += 1
+      return calls === 1 ? first(url) : settled(url)
+    })
+    hubMock.refreshStatus = vi.fn(async () => {
+      hubMock.status.value = statusBody({
+        completedAt: '2026-11-18T05:30:00Z',
+        total: 1,
+        checked: 1,
+        valid: 1,
+        version: 2,
+      })
+    })
+
+    wrapper = await mountView()
+
+    expect(calls).toBe(2)
+    expect(wrapper.findAll('.shops-table tbody tr')).toHaveLength(1)
   })
 })
 
@@ -342,6 +385,7 @@ function statusBody(overrides: Partial<ShopSyncStatus> = {}): ShopSyncStatus {
     invalid: 0,
     unknown: 0,
     error: null,
+    version: 0,
     ...overrides,
   }
 }
@@ -380,8 +424,15 @@ function jsonResponse(value: unknown, status = 200): Response {
 
 function defaultHandler(
   items: ShopRow[],
-  summary: { valid: number; invalid: number; unknown: number; lastSyncedAt: string | null },
+  summary: {
+    valid: number
+    invalid: number
+    unknown: number
+    lastSyncedAt: string | null
+    syncVersion?: number
+  },
 ) {
+  const summaryWithVersion = { ...summary, syncVersion: summary.syncVersion ?? 0 }
   return (url: string): Response => {
     if (url === '/api/erp/config') return configResponse()
     if (url === '/api/erp/platforms') return platformsResponse()
@@ -411,7 +462,7 @@ function defaultHandler(
       pageSize,
       totalCount: filtered.length,
       pageCount,
-      summary,
+      summary: summaryWithVersion,
     })
   }
 }

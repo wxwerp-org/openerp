@@ -57,6 +57,7 @@ function status(overrides: Partial<ShopSyncStatus> = {}): ShopSyncStatus {
     invalid: 0,
     unknown: 0,
     error: null,
+    version: 0,
     ...overrides,
   }
 }
@@ -91,34 +92,40 @@ describe('ERP Hub 状态同步', () => {
 
     const connecting = hub.connect()
     await vi.waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(1))
-    hubMock.handlers.get('ShopSyncUpdated')?.(status({ completedAt: 'newer' }))
-    pending.resolve(jsonResponse(status({ running: true, completedAt: null })))
+    hubMock.handlers.get('ShopSyncUpdated')?.(status({ completedAt: 'newer', version: 2 }))
+    pending.resolve(jsonResponse(status({ running: true, completedAt: null, version: 1 })))
     await connecting
 
-    expect(hub.status.value).toEqual(status({ completedAt: 'newer' }))
+    expect(hub.status.value).toEqual(status({ completedAt: 'newer', version: 2 }))
   })
 
   it('Given 启动命令响应晚于完成广播 When 返回旧运行状态 Then 不覆盖完成状态', async () => {
-    vi.mocked(apiRequest).mockResolvedValueOnce(jsonResponse(status()))
+    vi.mocked(apiRequest).mockResolvedValueOnce(jsonResponse(status({ version: 1 })))
     const hub = useErpHub()
     await hub.connect()
 
     const pending = deferred<ShopSyncStartResult>()
     hubMock.connection.invoke.mockReturnValueOnce(pending.promise)
     const starting = hub.startShopSync()
-    hubMock.handlers.get('ShopSyncUpdated')?.(status({ completedAt: 'done', total: 1, checked: 1 }))
-    pending.resolve({ accepted: true, status: status({ running: true }), error: null })
+    hubMock.handlers.get('ShopSyncUpdated')?.(
+      status({ completedAt: 'done', total: 1, checked: 1, version: 2 }),
+    )
+    pending.resolve({ accepted: true, status: status({ running: true, version: 1 }), error: null })
     await starting
 
-    expect(hub.status.value).toEqual(status({ completedAt: 'done', total: 1, checked: 1 }))
+    expect(hub.status.value).toEqual(
+      status({ completedAt: 'done', total: 1, checked: 1, version: 2 }),
+    )
   })
 
   it('Given 期间没有更新 When 刷新响应返回 Then 应用该状态', async () => {
-    vi.mocked(apiRequest).mockResolvedValueOnce(jsonResponse(status({ completedAt: 'initial' })))
+    vi.mocked(apiRequest).mockResolvedValueOnce(
+      jsonResponse(status({ completedAt: 'initial', version: 1 })),
+    )
     const hub = useErpHub()
 
     await hub.connect()
 
-    expect(hub.status.value).toEqual(status({ completedAt: 'initial' }))
+    expect(hub.status.value).toEqual(status({ completedAt: 'initial', version: 1 }))
   })
 })

@@ -75,6 +75,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         Assert.Equal(1, summary.GetProperty("invalid").GetInt32());
         Assert.Equal(1, summary.GetProperty("unknown").GetInt32());
         Assert.Equal(lastSyncedAt, summary.GetProperty("lastSyncedAt").GetDateTimeOffset());
+        Assert.Equal(5, summary.GetProperty("syncVersion").GetInt64());
 
         var shops = body.GetProperty("items").EnumerateArray().ToArray();
         var alpha = Assert.Single(shops, shop => shop.GetProperty("name").GetString() == "Alpha 店");
@@ -210,9 +211,10 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         Assert.Equal(1, idle.GetProperty("invalid").GetInt32());
         Assert.Equal(1, idle.GetProperty("unknown").GetInt32());
         Assert.Equal(JsonValueKind.Null, idle.GetProperty("error").ValueKind);
+        Assert.Equal(5, idle.GetProperty("version").GetInt64());
 
         // Given 任务正在运行。
-        var running = new ShopSyncStatus(true, completedAt.AddMinutes(1), completedAt, 10, 4, 2, 1, 1, null);
+        var running = new ShopSyncStatus(true, completedAt.AddMinutes(1), completedAt, 10, 4, 2, 1, 1, null, 6);
         await using var runningApp = await StartAppAsync(ct, new FakeShopSyncJob(running));
 
         // When 再次查询。
@@ -223,6 +225,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         Assert.True(progress.GetProperty("running").GetBoolean());
         Assert.Equal(10, progress.GetProperty("total").GetInt32());
         Assert.Equal(4, progress.GetProperty("checked").GetInt32());
+        Assert.Equal(6, progress.GetProperty("version").GetInt64());
     }
 
     [Fact]
@@ -287,7 +290,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
             });
         db.ShopSyncStates.Add(new ShopSyncState
         {
-            Id = 1, LastCompletedAt = completedAt, Total = 3, Valid = 1, Invalid = 1, Unknown = 1
+            Id = 1, Version = 5, LastCompletedAt = completedAt, Total = 3, Valid = 1, Invalid = 1, Unknown = 1
         });
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -317,7 +320,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
 
     private sealed class FakeShopSyncJob(ShopSyncStatus? status = null) : IShopSyncJob
     {
-        public ShopSyncStatus Status { get; } = status ?? new(false, null, null, 0, 0, 0, 0, 0, null);
+        public ShopSyncStatus Status { get; } = status ?? new(false, null, null, 0, 0, 0, 0, 0, null, 0);
 
         public Task<OpResult<ShopSyncStatus>> TryStartAsync(CancellationToken cancellationToken) =>
             Task.FromResult<OpResult<ShopSyncStatus>>(OpResults.Err("测试中不触发同步。"));
