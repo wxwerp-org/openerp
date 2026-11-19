@@ -49,7 +49,7 @@ jobs:
       - name: 验证 Release 附件和本次构建的镜像
         run: |
           source_file="$RUNNER_TEMP/aspire-output/docker-compose.yaml"
-          compose_file="$RUNNER_TEMP/compose.yaml"
+          compose_file="$RUNNER_TEMP/docker-compose.yaml"
           release_image="ghcr.io/${GITHUB_REPOSITORY,,}/openerp:$ReleaseTag"
           test "$(docker compose -f "$source_file" config --images)" = "$release_image"
           yq --from-file deploy/compose.yq "$source_file" > "$compose_file"
@@ -74,4 +74,4 @@ jobs:
       - name: 上传同一 Release 的部署附件
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload --repo "$GITHUB_REPOSITORY" -- "$ReleaseTag" "$RUNNER_TEMP/compose.yaml"
+        run: gh release upload --repo "$GITHUB_REPOSITORY" -- "$ReleaseTag" "$RUNNER_TEMP/docker-compose.yaml"
