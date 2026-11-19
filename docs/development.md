@@ -43,13 +43,13 @@ aspire start --isolated
 
 ## 代码导航
 
-| 目录 | 内容 |
-| --- | --- |
-| [OpenERP.Web](../OpenERP.Web/) | Vue 前端与单元测试 |
-| [OpenERP.Api](../OpenERP.Api/) | API、ERP 对接、订单同步与数据存储 |
-| [OpenERP.AppHost](../OpenERP.AppHost/) | 本地服务编排 |
-| [OpenERP.ServiceDefaults](../OpenERP.ServiceDefaults/) | 健康检查、遥测与服务发现 |
-| [OpenERP.Api.Tests](../OpenERP.Api.Tests/) | 后端单元测试和集成测试 |
+| 目录                                                   | 内容                              |
+| ------------------------------------------------------ | --------------------------------- |
+| [OpenERP.Web](../OpenERP.Web/)                         | Vue 前端与单元测试                |
+| [OpenERP.Api](../OpenERP.Api/)                         | API、ERP 对接、订单同步与数据存储 |
+| [OpenERP.AppHost](../OpenERP.AppHost/)                 | 本地服务编排                      |
+| [OpenERP.ServiceDefaults](../OpenERP.ServiceDefaults/) | 健康检查、遥测与服务发现          |
+| [OpenERP.Api.Tests](../OpenERP.Api.Tests/)             | 后端单元测试和集成测试            |
 
 [router/index.ts](../OpenERP.Web/src/router/index.ts) 定义工作台、授权店铺、产品、订单、业务配置、用户与新品开发路由，[views](../OpenERP.Web/src/views/) 存放页面，[components](../OpenERP.Web/src/components/) 提供可复用工作台卡片、导航和控件，[ui](../OpenERP.Web/src/ui/) 提供 Tailwind 主题 token 与 `App*` 通用组件。前端无按页面拆分的全局样式目录，样式由工具类与 [theme.css](../OpenERP.Web/src/ui/theme.css) 统一承载，约定见[前端样式架构](#前端样式架构)。
 
@@ -105,8 +105,23 @@ pnpm --dir OpenERP.Web format
 - 优先复用 [src/ui](../OpenERP.Web/src/ui/) 的组件及其 props 表达上下文差异（尺寸档、色调、变体），页面和卡片只组合工具类，不复制组件内部结构。
 - 类名必须是可静态扫描的字面量：不要在模板里拼接类名，按状态用互斥分支选择字面量。同一元素避免出现同属性冲突的工具类（如 `h-32` 与 `h-40` 并存），把公共部分与状态差异拆开。
 - 不使用 `!important`。Tailwind 的 `max-[…]:` 变体是严格小于，需要“小于等于”语义时使用 `[@media(max-width:…)]:` 任意变体。
-- `<style scoped>` 仅用于伪元素、滚动条、粘性表格、复杂组合选择器、图表内部与原生 `<dialog>` 定位等工具类无法干净表达的场景，且只能引用 token；其余样式一律走工具类。
-- 测试钩子使用 `data-testid`、role 与 ARIA，不依赖视觉类名；样式迁移时同步迁移选择器，不弱化断言。
+- `<style scoped>` 仅用于工具类无法干净表达的场景：伪元素、滚动条、粘性表格、复杂组合选择器、图表内部、原生 `<dialog>` 定位、几何形状（如工作台引导卡的箭头切角 `clip-path`）。颜色必须引用 token，尺寸同样优先使用 token 或在注释中说明实测来源；其余样式一律走工具类。
+- 需要影响 `body` 等全局节点的布局例外（如登录页解除桌面最小宽度、报表页窄屏收缩）用 SFC 内的 `:global(...)` 保持未分层（unlayered），以便压过 `@layer base` 的 reset。
+- 测试钩子使用 `data-testid`、role 与 ARIA，不依赖视觉类名；样式迁移时同步迁移选择器，不弱化断言。断言「视觉隐藏但保留无障碍名称」时，jsdom 单测只能检查 `sr-only` 约定，浏览器用例应改为断言实际裁剪尺寸（≤1px）等可观察结果。
+
+### 前端视觉回归（视觉探针）
+
+样式重构或布局调整后，用视觉探针核对渲染结果。探针按固定场景（视口、路由、API mock、交互步骤）截图并采集控件/排版/布局指标，产物写入 `OpenERP.Web/artifacts`（已忽略提交）。
+
+```bash
+# 采集当前代码到指定目录（会自动构建并启动预览服务）
+VISUAL_PROBE=1 VISUAL_OUT=OpenERP.Web/artifacts/issue93/after pnpm --dir OpenERP.Web visual:capture
+
+# 对比两批产物：控件、调色板、布局指标按默认 4px 容差比较
+pnpm --dir OpenERP.Web visual:compare OpenERP.Web/artifacts/issue93/before OpenERP.Web/artifacts/issue93/after
+```
+
+需要逐像素复核时，可用图像工具直接比较两批产物 `screenshots/` 下的同名 PNG。探针只覆盖桌面固定布局；移动端/窄屏行为以 Playwright 用例的视口断言为准。
 
 ### 测试环境
 
@@ -137,10 +152,10 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 常规后端测试自行准备隔离 PostgreSQL，不需要连接开发数据库。真实 ERP 验收通过进程环境变量启用：
 
-| 变量 | 用途与前提 |
-| --- | --- |
+| 变量                     | 用途与前提                                                                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `OPENERP_TEST_ERP_TOKEN` | 启用 SID `644928` 的[只读分页验证](../OpenERP.Api.Tests/OrderLiveAcceptanceTests.cs)（需超过 100 单），以及 SID `30` 的[报表核对](order-snapshot-report.md#验证)（只读源端，写入测试专用数据库） |
-| `OPENERP_TEST_POSTGRES` | 与上述 Token 一起启用 SID `30` 的源端与入库结果比对；指向已完成该店手动同步的数据库 |
+| `OPENERP_TEST_POSTGRES`  | 与上述 Token 一起启用 SID `30` 的源端与入库结果比对；指向已完成该店手动同步的数据库                                                                                                              |
 
 使用 `OPENERP_TEST_POSTGRES` 的比对用例的前置步骤是在浏览器完成 SID `30` 的两次手动同步；测试本身只读源端和数据库，不执行同步或建表。未设置相应变量时用例跳过。凭证仅通过进程环境提供，不写入文档或版本库；测试命令见本页[构建与测试](#构建与测试)。
 
@@ -192,17 +207,17 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 
 前端遇到网络错误或 `503` 时不能据此退出登录；收到 `401` 后先通过刷新接口确认登录是否仍有效。刷新成功后，读取请求最多重试一次；业务写请求不自动重放，以避免网络中断或令牌过期时重复执行操作。数据库不可用等服务故障应作为服务错误处理，不能当作用户已退出。
 
-| 接口 | 用途 |
-| --- | --- |
-| `GET /api/auth/csrf` | 匿名获取 `{ requestToken }` 及对应 CSRF Cookie |
-| `GET /api/auth/status` | 匿名查询 `{ initialized }`，响应禁止缓存 |
-| `POST /api/auth/initialize` | 未初始化时提交 `{ newPassword }` 设置管理员密码 |
-| `POST /api/auth/login` | 提交 `{ username, password }` 登录，返回 `{ accessToken, accessTokenExpiresAt, account }` |
-| `POST /api/auth/refresh` | 不需要请求体；刷新凭证有效时返回 `{ accessToken, accessTokenExpiresAt, account }` |
-| `GET /api/auth/me` | 查询当前账户 |
-| `POST /api/auth/logout` | 不需要请求体；撤销当前刷新凭证 |
-| `POST /api/auth/change-password` | 提交 `{ oldPassword, newPassword }` 修改密码 |
-| `PUT /api/account/profile` | 提交 `{ name, phone, email }` 保存资料 |
+| 接口                             | 用途                                                                                      |
+| -------------------------------- | ----------------------------------------------------------------------------------------- |
+| `GET /api/auth/csrf`             | 匿名获取 `{ requestToken }` 及对应 CSRF Cookie                                            |
+| `GET /api/auth/status`           | 匿名查询 `{ initialized }`，响应禁止缓存                                                  |
+| `POST /api/auth/initialize`      | 未初始化时提交 `{ newPassword }` 设置管理员密码                                           |
+| `POST /api/auth/login`           | 提交 `{ username, password }` 登录，返回 `{ accessToken, accessTokenExpiresAt, account }` |
+| `POST /api/auth/refresh`         | 不需要请求体；刷新凭证有效时返回 `{ accessToken, accessTokenExpiresAt, account }`         |
+| `GET /api/auth/me`               | 查询当前账户                                                                              |
+| `POST /api/auth/logout`          | 不需要请求体；撤销当前刷新凭证                                                            |
+| `POST /api/auth/change-password` | 提交 `{ oldPassword, newPassword }` 修改密码                                              |
+| `PUT /api/account/profile`       | 提交 `{ name, phone, email }` 保存资料                                                    |
 
 前端通过应用同源的 HTTPS `/api` 地址访问后端。初始化、登录、刷新和退出要求 `X-CSRF-TOKEN` 请求头及对应 CSRF Cookie，先请求 `/api/auth/csrf` 取得令牌。防伪校验继续使用存放于 PostgreSQL 的 Data Protection 密钥。Bearer 认证的业务写请求，包括密码修改、资料保存和文件上传，无需附带 CSRF 令牌。业务 API（包括 `/api/ping`、ERP 和文件）默认需要登录，健康检查保持匿名。
 
@@ -214,16 +229,16 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 
 上游地址固定为 `https://v3-api.wxwerp.com`。管理员在「系统设置 → 基础 → ERP 接入」填写或更换 Token。API 使用 ASP.NET Core Data Protection 保护 Token，并保存在 PostgreSQL 中。备份数据库时一并保留 Data Protection 密钥表。页面只显示保存状态。验证凭证与店铺权限时，以实际 ERP 请求的结果为准。
 
-| 接口 | 行为 |
-| --- | --- |
-| `GET /api/erp/config` | 查询配置记录是否存在，返回 `configured`、`baseUrl` 和 `orderSyncEnabled`。查询失败返回 `503` |
-| `PUT /api/erp/config` | 管理员提交 `{ accessToken }` 保存或更换 Token，成功返回 `204`。下一次读取凭证的操作使用新值 |
+| 接口                                                               | 行为                                                                                                                                                                                      |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/erp/config`                                              | 查询配置记录是否存在，返回 `configured`、`baseUrl` 和 `orderSyncEnabled`。查询失败返回 `503`                                                                                              |
+| `PUT /api/erp/config`                                              | 管理员提交 `{ accessToken }` 保存或更换 Token，成功返回 `204`。下一次读取凭证的操作使用新值                                                                                               |
 | `GET /api/erp/shops?page=1&pageSize=20&platform=&status=&keyword=` | 只读本地店铺目录；`status` 为 `valid`、`invalid`、`unknown`；按页返回 `items`、`summary`（含 `lastSyncedAt` 与目录版本 `syncVersion`）与分页信息；每页 1–100 条，超范围页码钳制到最后一页 |
-| `GET /api/erp/platforms` | 返回本地有店铺的平台（名称、展示名、图标、是否生产可用、店铺数）；平台元数据来自上游同步，不在本地写死 |
-| `GET /api/erp/shop-sync` | 返回店铺同步的当前或最近一次状态（运行中、开始/完成时间、总数、已检查、有效/无效/未知、错误、单调递增的 `version`） |
-| `GET /api/erp/order-sync-settings` | 仅 Development / Production 提供；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes` |
-| `PUT /api/erp/order-sync-settings` | 仅 Development / Production 提供；保存启用状态和店铺选择；启用时至少选择一家店铺 |
-| `GET /api/erp/order-sync-settings/shops` | 仅 Development / Production 提供。使用同一 Token 向上游分页读取可见的 TemuPop 店铺。凭证缺失或读取失败返回 `503`，上游查询失败返回 `502` |
+| `GET /api/erp/platforms`                                           | 返回本地有店铺的平台（名称、展示名、图标、是否生产可用、店铺数）；平台元数据来自上游同步，不在本地写死                                                                                    |
+| `GET /api/erp/shop-sync`                                           | 返回店铺同步的当前或最近一次状态（运行中、开始/完成时间、总数、已检查、有效/无效/未知、错误、单调递增的 `version`）                                                                       |
+| `GET /api/erp/order-sync-settings`                                 | 仅 Development / Production 提供；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes`                                                                                           |
+| `PUT /api/erp/order-sync-settings`                                 | 仅 Development / Production 提供；保存启用状态和店铺选择；启用时至少选择一家店铺                                                                                                          |
+| `GET /api/erp/order-sync-settings/shops`                           | 仅 Development / Production 提供。使用同一 Token 向上游分页读取可见的 TemuPop 店铺。凭证缺失或读取失败返回 `503`，上游查询失败返回 `502`                                                  |
 
 每轮授权店铺同步、每家店的订单同步和每次定时同步选店请求，分别通过 scoped `IErpTokenStore.GetAsync` 读取并解密一次 Token。读取失败由存储层返回 `OpResult`。配置状态只检查记录是否存在，因此旧密文损坏时管理员仍可查看配置并替换凭证。
 

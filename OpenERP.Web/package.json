@@ -15,7 +15,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "visual:capture": "VISUAL_PROBE=1 playwright test tests/e2e/visual-probe.spec.ts"
+    "visual:capture": "VISUAL_PROBE=1 playwright test tests/e2e/visual-probe.spec.ts",
+    "visual:compare": "node scripts/compare-visual.mjs"
   },
   "dependencies": {
     "@microsoft/signalr": "^11.0.0",
