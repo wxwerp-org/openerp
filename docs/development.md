@@ -197,8 +197,6 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 | `GET /api/erp/shops?page=1&pageSize=20&platform=&status=&keyword=` | 只读本地店铺目录；`status` 为 `valid`、`invalid`、`unknown`；按页返回 `items`、`summary`（含 `lastSyncedAt` 与目录版本 `syncVersion`）与分页信息；每页 1–100 条，超范围页码钳制到最后一页 |
 | `GET /api/erp/platforms` | 返回本地有店铺的平台（名称、展示名、图标、是否生产可用、店铺数）；平台元数据来自上游同步，不在本地写死 |
 | `GET /api/erp/shop-sync` | 返回店铺同步的当前或最近一次状态（运行中、开始/完成时间、总数、已检查、有效/无效/未知、错误、单调递增的 `version`） |
-| `POST /api/erp/shops/{sid}/order-sync` | 仅 Development / Production 提供；受理返回 `202`，已有同步返回 `409`，未配置 Token 返回 `503` |
-| `GET /api/erp/shops/{sid}/order-sync` | 仅 Development / Production 提供；查询该店最近任务，无任务返回 `204` |
 | `GET /api/erp/order-sync-settings` | 仅 Development / Production 提供；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes` |
 | `PUT /api/erp/order-sync-settings` | 仅 Development / Production 提供；保存启用状态和店铺选择；启用时至少选择一家店铺 |
 | `GET /api/erp/order-sync-settings/shops` | 仅 Development / Production 提供。使用同一 Token 向上游分页读取可见的 TemuPop 店铺。凭证缺失或读取失败返回 `503`，上游查询失败返回 `502` |
@@ -225,18 +223,19 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 
 ### SignalR 同步
 
-- 单 Hub：`/api/hubs/erp`。普通读取（列表、平台、配置、同步状态）继续使用 HTTP；只有长时同步与进度使用 SignalR。
+- 单 Hub：`/api/hubs/erp`。普通读取（订单列表、店铺目录、平台、配置、店铺同步状态）继续使用 HTTP；只有长时同步与进度使用 SignalR。
 - 浏览器通过 `access_token` 查询参数连接 Hub。JWT 中间件只对 `/api/hubs` 路径读取该参数，其他路径忽略，避免 token 泄漏到普通接口。
 - 客户端方法 `StartShopSync()` 返回 `accepted`、当前状态与错误；服务端事件 `ShopSyncUpdated(ShopSyncStatus)` 在连接建立、同步开始、每 10 家店检查、完成或失败时推送。状态带单调递增 `version`，客户端据此丢弃迟到的 HTTP/invoke 旧快照。
+- 订单列表通过 `StartOrderSync(sid)` 启动手动同步，返回 `accepted`、该店状态与错误。受理前检查凭证配置是否存在，查询失败时返回具体错误和该店最近状态。受理后若凭证无法解密，任务在 `shop` 阶段推送失败终态。连接或重连时，`OrderSyncSnapshot` 提供当前进程的 `epoch` 和每店最近状态。手动与定时任务通过 `OrderSyncUpdated` 推送带版本的状态，包含阶段、进度、入库计数和跳过原因。成功或部分成功后，页面按当前筛选刷新本地订单。
 - 客户端使用 `withAutomaticReconnect`；access token 由 `accessTokenFactory` 每次读取最新值，配合会话刷新处理 20 分钟 JWT 到期。连接断开时页面仍可浏览本地数据，但同步按钮不可用。
 - Hub 映射开启 `CloseOnAuthenticationExpiration`：JWT 到期即关闭连接，客户端用刷新后的 access token 重连，避免连接无限期沿用旧凭证。
-- `StartShopSync` 执行前按当前数据库会话校验一次登录状态；会话已撤销时拒绝命令并断开连接。这是官方文档给出的“在 Hub 方法内按当前数据校验”补偿，不是逐消息重新认证；普通 HTTP 接口仍按请求执行完整会话校验。
+- `StartShopSync` 和 `StartOrderSync` 执行前按当前数据库会话校验一次登录状态；会话已撤销时拒绝命令并断开连接。这是官方文档给出的“在 Hub 方法内按当前数据校验”补偿，不是逐消息重新认证；普通 HTTP 接口仍按请求执行完整会话校验。
 - 撤销会话后、命令被调用前，旧连接仍可能收到同步状态广播；业务数据读取走 HTTP 并立即返回 `401`，广播只包含同步计数/时间/错误。
 - 当前假设单个 API 实例；多实例部署需要 SignalR backplane，非本期范围。
 
 ## 本地订单列表
 
-工作台的订单列表和[商品量报表](order-snapshot-report.md)都读取 PostgreSQL 中的订单快照。订单列表使用已认证的 `GET /api/orders`，支持 `shopSid`、`platform`、`number`、`status`、`createdFrom`、`createdTo` 和分页。它按主单计数和翻页，每页默认 20 条。订单号片段和状态同时指定时，两个条件须命中同一个平台订单；返回整张主单上的全部号码，并标出命中项。行数和件数均按整张主单计算。
+工作台的订单列表和[商品量报表](order-snapshot-report.md)都读取 PostgreSQL 中的订单快照。订单列表使用已认证的 `GET /api/orders`，支持 `shopSid`、`platform`、`number`、`status`、`createdFrom`、`createdTo` 和分页。它按主单计数和翻页，每页默认 20 条。订单号片段和状态同时指定时，两个条件须命中同一个平台订单；返回整张主单上的全部号码，并标出命中项。行数和件数均按整张主单计算。店铺名称来自本地目录，订单所属店铺已从目录移除时，仍可通过 SID 展示和筛选。
 
 订单列表按来源创建日期（`YYYY-MM-DD`）筛选，含起止日，默认展示全部历史。wxw 可配置年月日的显示顺序，本地保留了时间原值。像 `08-09-2025` 这样有两种有效解释的日期按未知处理。有效的创建时间按倒序排列，缺少有效时间的订单排在末尾，指定日期范围时排除。创建和出库时间按来源的日期和精度显示。筛选及分页无需访问上游。
 
@@ -252,13 +251,13 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 
 ## 定时同步边界
 
-- 定时同步与手动同步同样只在 Development / Production 提供。临时订单同步页 `/orders/sync` 的「定时同步」卡片只配置是否启用和选择店铺，不提供周期配置。
+- 定时同步与手动同步同样只在 Development / Production 提供。订单列表工具栏「同步历史订单」面板中的「定时同步」卡片只配置是否启用和选择店铺，不提供周期配置。
 - 周期来自 API 配置 `OrderSync:SchedulerIntervalMinutes`（默认 `30`，允许 `1`–`1440` 分钟），启动时校验；修改后需重启 API，保存设置本身不需要重启。每轮受理后等待一个周期再尝试下一轮；若上一轮仍在运行，本轮跳过并等下一周期。启用后首次执行同样等待一个周期。
 - 设置保存在 PostgreSQL 的 `OrderSyncSettings` 单行表（`Id` 固定为 `1`，数据库检查约束拒绝第二行），迁移为 `AddOrderSyncSettings`。保存后 API 唤醒调度器重新读取设置；启用后首次执行仍等待一个完整周期。
 - 启用时必须至少选择一家店铺，空选返回 `400`，前端也会禁用保存。历史空选数据不会触发同步。启用还要求已配置私有 ERP AccessToken；未配置时保存启用状态返回 `503`，前端禁用开关和保存。
-- 选店列表通过 `GET /api/erp/order-sync-settings/shops` 从上游分页拉取可见 TemuPop 店铺的基础信息，提供「全选可见店铺」和清空辅助。保存设置时不再调用 ERP 校验店铺可见性：Token 权限变化后该店会在定时轮次中记录失败，其他店铺继续，可在卡片中清空或重新选择。
+- 选店列表通过 `GET /api/erp/order-sync-settings/shops` 从上游分页拉取可见 TemuPop 店铺的基础信息，独立于本地店铺表格的分页，提供「全选可见店铺」和清空辅助。保存设置时不再调用 ERP 校验店铺可见性：Token 权限变化后该店会在定时轮次中记录失败，其他店铺继续，可在卡片中清空或重新选择。
 - 定时批次按顺序逐店同步，单店失败只记录该店失败并继续后续店铺，不在同一周期内自动退避重试；下一周期会重新扫描全部选中店铺，批次结束后也可手动补跑。重复同步复用订单记录的幂等 upsert，不会写入重复订单。
-- 手动与定时共用全局单任务互斥：定时批次运行期间手动同步返回 `409`；手动同步运行期间定时周期直接跳过并等待下一周期。关闭定时同步只阻止后续周期，已受理的批次会继续执行完当前店铺列表。
+- 手动与定时共用全局单任务互斥：定时批次运行期间手动同步命令返回 `accepted: false`；手动同步运行期间定时周期直接跳过并等待下一周期。关闭定时同步只阻止后续周期，已受理的批次会继续执行完当前店铺列表。
 - 不做跨进程或重启的作业持久化、断点恢复：任务状态仍在 API 内存中，重启后丢失；定时同步会在下一个周期重新执行选中店铺，已保存订单不受影响。
 
 相关实现：[定时同步设置](../OpenERP.Api/Orders/OrderSyncSettings.cs)、[调度器](../OpenERP.Api/Orders/OrderSyncScheduler.cs)、[接口](../OpenERP.Api/Orders/OrderSyncEndpoints.cs)。
