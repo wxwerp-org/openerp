@@ -1,4 +1,4 @@
-import { devices, expect, test } from '@playwright/test'
+import { devices, expect, test, type Page } from '@playwright/test'
 import { bearerHeaders, enterWorkspace } from './authentication'
 
 // 浏览器截图使用固定接口样本，真实业务数据由后端验收覆盖。
@@ -46,12 +46,22 @@ test.beforeEach(async ({ page }) => {
   await enterWorkspace(page)
 })
 
-async function openReport(page: Parameters<typeof enterWorkspace>[0]): Promise<void> {
+/** 订单明细卡底部的分页条（AppPager 以 footer 渲染）。 */
+function ordersPager(page: Page) {
+  return page.locator('[data-testid="report-pagination"]')
+}
+
+/** 报表内容滚动区，负责页面纵向滚动。 */
+function reportScroll(page: Page) {
+  return page.locator('[data-testid="report-scroll"]')
+}
+
+async function openReport(page: Page): Promise<void> {
   await page.goto('/')
-  await page.locator('[data-group="stats"] .nav-group-head').click()
+  await page.locator('[data-group="stats"] button[aria-expanded]').click()
   await page.locator('[data-nav-page="order-report"]').click()
   await expect(page).toHaveURL(/\/reports\/orders$/)
-  await expect(page.locator('.page-order-snapshot-report')).toBeVisible()
+  await expect(page.locator('#page-order-snapshot-report')).toBeVisible()
 }
 
 test('Given 商品量报表有平台店铺和订单样本 When 从统计导航打开并展开订单 Then 展示筛选、快照口径与完整商品行', async ({
@@ -65,34 +75,36 @@ test('Given 商品量报表有平台店铺和订单样本 When 从统计导航�
   })
 
   await openReport(page)
-  await expect(page.locator('.page-tab.active .tab-label')).toHaveText('商品量报表')
+  await expect(page.locator('[data-testid="page-tab"] [aria-current="page"]')).toHaveText(
+    '商品量报表',
+  )
 
   // 页签页标题只由顶部页签承载，页内不再渲染可见标题。
-  const headings = page.locator('.page-order-snapshot-report h1')
+  const headings = page.locator('#page-order-snapshot-report h1')
   await expect(headings).toHaveCount(1)
-  await expect(headings).toHaveClass(/visually-hidden/)
+  await expect(headings).toHaveClass(/sr-only/)
   await expect(headings).toHaveText('商品量报表')
 
   await expect(
     page.getByText('按本地来源订单计数；件数为当前商品行数量合计，包含禁用/追加行。'),
   ).toBeVisible()
-  await expect(page.locator('.report-scope')).toHaveClass(/notice/)
-  await expect(page.locator('.report-scope use')).toHaveAttribute('href', '#i-info')
+  await expect(page.locator('[data-testid="report-scope"]')).toHaveAttribute('role', 'note')
+  await expect(page.locator('[data-testid="report-scope"] use')).toHaveAttribute('href', '#i-info')
   await expect(page.locator('[aria-label="订单总数"]')).toHaveText('1')
   await expect(page.locator('[aria-label="商品件数"]')).toHaveText('5')
   await expect(page.locator('[aria-label="有订单店铺数"]')).toHaveText('1')
   await expect(page.locator('[aria-label="平均每单件数"]')).toHaveText('5')
 
-  // 工作台骨架：筛选区复用 dash-header，卡片位于 dash-grid 内获得工作台白底与圆角。
-  await expect(page.locator('.report-searchbar')).toHaveClass(/dash-header/)
-  const grid = page.locator('.report-analysis-grid')
-  await expect(grid).toHaveClass(/dash-grid/)
-  const chrome = await page.locator('.page-order-snapshot-report').evaluate((shell) => {
-    const overview = shell.querySelector('.report-overview-card') as HTMLElement
-    const gridEl = shell.querySelector('.report-analysis-grid') as HTMLElement
-    const scroll = shell.querySelector('.dash-scroll') as HTMLElement
-    const rank = shell.querySelector('.snapshot-rank-card') as HTMLElement
-    const dist = shell.querySelector('.snapshot-dist-card') as HTMLElement
+  // 工作台骨架：筛选条承载平台/店铺筛选与工具栏，概览与图表卡片位于同一分析网格内。
+  const searchbar = page.locator('[data-testid="report-searchbar"]')
+  await expect(searchbar.locator('[data-testid="report-platform-filter"]')).toHaveCount(1)
+  await expect(searchbar.locator('[data-testid="report-toolbar"]')).toHaveCount(1)
+  const chrome = await page.locator('#page-order-snapshot-report').evaluate((shell) => {
+    const overview = shell.querySelector('[data-testid="report-overview"]') as HTMLElement
+    const scroll = shell.querySelector('[data-testid="report-scroll"]') as HTMLElement
+    const gridEl = scroll.firstElementChild as HTMLElement
+    const rank = shell.querySelector('[data-testid="report-shop-ranking"]') as HTMLElement
+    const dist = shell.querySelector('[data-testid="report-platform-distribution"]') as HTMLElement
     return {
       canvas: getComputedStyle(scroll).backgroundColor,
       gap: getComputedStyle(gridEl).columnGap,
@@ -110,28 +122,33 @@ test('Given 商品量报表有平台店铺和订单样本 When 从统计导航�
   expect(chrome.distColumnStart).toBe('span 4')
 
   // 图表组件渲染真实快照数值：排行按商品件数取前 5，分布按平台聚合占比。
-  await expect(page.locator('.snapshot-rank-card')).toContainText('按商品件数取前 5 家店铺')
-  await expect(page.locator('.snapshot-rank-card')).toContainText('店铺 30')
-  await expect(page.locator('.snapshot-dist-card')).toContainText('总订单数')
-  await expect(page.locator('.snapshot-dist-card')).toContainText('100.0%')
-  await expect(page.locator('.snapshot-dist-card')).toContainText('Temu 半托管')
+  const rankCard = page.locator('[data-testid="report-shop-ranking"]')
+  const distCard = page.locator('[data-testid="report-platform-distribution"]')
+  await expect(rankCard).toContainText('按商品件数取前 5 家店铺')
+  await expect(rankCard).toContainText('店铺 30')
+  await expect(distCard).toContainText('总订单数')
+  await expect(distCard).toContainText('100.0%')
+  await expect(distCard).toContainText('Temu 半托管')
 
   // 图表之外仍保留完整分店汇总表。
-  await expect(page.locator('.report-groups-panel .report-groups-table tbody tr')).toHaveCount(1)
+  await expect(page.locator('[data-testid="report-groups-table"] tbody tr')).toHaveCount(1)
 
   // 表格复用列表页外壳：滚动区可聚焦并带区域语义，表格有显式列宽。
   const ordersRegion = page.getByRole('region', { name: '订单明细表格' })
   await expect(ordersRegion).toHaveCount(1)
   await expect(ordersRegion).toHaveAttribute('tabindex', '0')
+  await expect(ordersRegion).toHaveAttribute('aria-label', '订单明细表格')
   await expect(
-    ordersRegion.locator('xpath=ancestor::div[contains(@class,"table-area")]'),
+    page
+      .locator('[data-testid="report-orders-panel"]')
+      .getByRole('region', { name: '订单明细表格' }),
   ).toHaveCount(1)
-  await expect(page.locator('.report-groups-table colgroup col')).toHaveCount(4)
-  await expect(page.locator('.report-orders-table colgroup col')).toHaveCount(8)
+  await expect(page.locator('[data-testid="report-groups-table"] colgroup col')).toHaveCount(4)
+  await expect(page.locator('[data-testid="report-orders-table"] colgroup col')).toHaveCount(8)
 
   // 刷新、分页与下拉统一使用 AppIcon；刷新为图标按钮。
   const refresh = page.getByRole('button', { name: '刷新' })
-  await expect(refresh).toHaveClass(/btn-icon/)
+  await expect(refresh.locator('svg')).toHaveCount(1)
   await expect(refresh.locator('use')).toHaveAttribute('href', '#i-refresh')
   await expect(page.getByRole('button', { name: '上一页' }).locator('use')).toHaveAttribute(
     'href',
@@ -143,17 +160,23 @@ test('Given 商品量报表有平台店铺和订单样本 When 从统计导航�
   )
   await expect(page.getByLabel('每页条数')).toBeVisible()
   await expect(page.getByLabel('前往页码')).toBeVisible()
-  await expect(page.locator('.page-size use')).toHaveAttribute('href', '#i-chev-down')
-  await expect(page.locator('.report-select use')).toHaveAttribute('href', '#i-chev-down')
+  await expect(page.locator('label:has(select[aria-label="每页条数"]) use')).toHaveAttribute(
+    'href',
+    '#i-chev-down',
+  )
+  await expect(page.locator('[data-testid="report-platform-filter"] use')).toHaveAttribute(
+    'href',
+    '#i-chev-down',
+  )
   expect(
     await page.getByLabel('平台筛选').evaluate((element) => getComputedStyle(element).appearance),
   ).toBe('none')
 
-  // 工作台外壳：页面自身不滚动，滚动交给 dash-scroll；分页位于订单卡底部且在视口内。
-  const paginationBox = await page.locator('.report-pagination').boundingBox()
+  // 工作台外壳：页面自身不滚动，滚动交给分析区；分页位于订单卡底部且在视口内。
+  const paginationBox = await ordersPager(page).boundingBox()
   expect(paginationBox).not.toBeNull()
   expect(paginationBox!.y + paginationBox!.height).toBeLessThanOrEqual(900)
-  const pageShell = await page.locator('.page-order-snapshot-report').evaluate((element) => ({
+  const pageShell = await page.locator('#page-order-snapshot-report').evaluate((element) => ({
     overflowY: getComputedStyle(element).overflowY,
   }))
   expect(pageShell.overflowY).toBe('hidden')
@@ -167,7 +190,7 @@ test('Given 商品量报表有平台店铺和订单样本 When 从统计导航�
   await page.locator('summary[aria-label="店铺筛选"]').click()
 
   await page.getByRole('button', { name: '展开订单 ERP-ORDER-30 商品明细' }).click()
-  const expanded = page.locator('.report-order-details')
+  const expanded = page.locator('[data-testid="report-order-details"]')
   await expect(expanded.getByText('PO-ORDER-30')).toBeVisible()
   await expect(expanded.getByText('SKU-30')).toBeVisible()
   await expect(expanded.getByText('禁用')).toBeVisible()
@@ -196,8 +219,8 @@ test('Given 报表接口返回空结果 When 查询完成 Then 空态使用共�
   })
 
   await openReport(page)
-  await expect(page.locator('.report-groups-panel .empty-overlay')).toContainText('暂无分店汇总')
-  await expect(page.locator('.report-orders-panel .empty-overlay')).toContainText(
+  await expect(page.locator('[data-testid="report-groups-empty"]')).toContainText('暂无分店汇总')
+  await expect(page.locator('[data-testid="report-orders-empty"]')).toContainText(
     '暂无符合条件的本地订单',
   )
   await expect(page.getByRole('button', { name: '上一页' })).toBeDisabled()
@@ -225,7 +248,7 @@ test('Given 报表数据暂不可用 When 加载失败后重试 Then 错误提�
   const alert = page.getByRole('alert')
   await expect(alert).toContainText('报表数据暂不可用')
   await expect(alert.locator('use')).toHaveAttribute('href', '#i-warning')
-  await expect(page.locator('.report-orders-panel .empty-overlay')).toContainText('报表加载失败')
+  await expect(page.locator('[data-testid="report-orders-empty"]')).toContainText('报表加载失败')
 
   failed = false
   await page.getByRole('button', { name: '重试' }).click()
@@ -270,8 +293,8 @@ test('Given 视口高度仅 500px When 打开多分组报表 Then 滚动主区�
 
   await openReport(page)
 
-  // 工作台外壳：dash-scroll 承担页面纵向滚动。
-  const scrollMetrics = await page.locator('.dash-scroll').evaluate((element) => ({
+  // 工作台外壳：分析区的滚动容器承担页面纵向滚动。
+  const scrollMetrics = await reportScroll(page).evaluate((element) => ({
     overflowY: getComputedStyle(element).overflowY,
     scrollHeight: element.scrollHeight,
     clientHeight: element.clientHeight,
@@ -280,11 +303,8 @@ test('Given 视口高度仅 500px When 打开多分组报表 Then 滚动主区�
   expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight)
 
   // 两个表格区在自身可聚焦区域内滚动。
-  for (const selector of [
-    '.report-groups-panel .table-scroll',
-    '.report-orders-panel .table-scroll',
-  ]) {
-    const metrics = await page.locator(selector).evaluate((element) => {
+  for (const name of ['分店汇总表格', '订单明细表格']) {
+    const metrics = await page.getByRole('region', { name }).evaluate((element) => {
       element.scrollTop = element.scrollHeight
       return {
         scrollTop: element.scrollTop,
@@ -297,10 +317,10 @@ test('Given 视口高度仅 500px When 打开多分组报表 Then 滚动主区�
   }
 
   // 主区域滚动到底后分页仍完整可见。
-  await page.locator('.dash-scroll').evaluate((element) => {
+  await reportScroll(page).evaluate((element) => {
     element.scrollTop = element.scrollHeight
   })
-  const pagination = await page.locator('.report-pagination').boundingBox()
+  const pagination = await ordersPager(page).boundingBox()
   expect(pagination).not.toBeNull()
   expect(pagination!.y + pagination!.height).toBeLessThanOrEqual(500)
 })
@@ -318,15 +338,15 @@ test('Given 跳页请求尚未返回 When 输入框因加载禁用而失焦 Then
   })
 
   await openReport(page)
-  await page.locator('.page-jump input').fill('3')
-  await page.locator('.page-jump input').press('Enter')
-  await expect(page.locator('.page-num')).toHaveText('3')
+  await page.getByLabel('前往页码').fill('3')
+  await page.getByLabel('前往页码').press('Enter')
+  await expect(ordersPager(page).locator('[aria-current="page"]')).toHaveText('3')
 
   expect(requestedPages).toEqual(['1', '3'])
 })
 
 // 按请求页码回显的分页 mock，供窄屏与触屏用例翻页。
-async function routePagedReport(page: Parameters<typeof enterWorkspace>[0]): Promise<void> {
+async function routePagedReport(page: Page): Promise<void> {
   await page.route('**/api/reports/order-snapshot?**', async (route) => {
     const requested = Number(new URL(route.request().url()).searchParams.get('page') ?? '1')
     await route.fulfill({ json: { ...manyReport(), page: requested } })
@@ -353,16 +373,22 @@ test('Given 375×812 窄屏视口 When 打开商品量报表 Then 卡片单列�
   // 窄屏收敛为 56px 导航轨道（侧边栏宽度带过渡，轮询到稳定值）。
   await expect
     .poll(async () =>
-      page.locator('.sidebar').evaluate((element) => element.getBoundingClientRect().width),
+      page
+        .locator('[data-testid="sidebar"]')
+        .evaluate((element) => element.getBoundingClientRect().width),
     )
     .toBe(56)
 
   const layout = await page.evaluate(() => {
-    const rank = document.querySelector('.report-rank-card') as HTMLElement
-    const dist = document.querySelector('.report-dist-card') as HTMLElement
-    const overview = document.querySelector('.report-overview-body') as HTMLElement
-    const ordersScroll = document.querySelector('.report-orders-panel .table-scroll') as HTMLElement
-    const groupsScroll = document.querySelector('.report-groups-panel .table-scroll') as HTMLElement
+    const rank = document.querySelector('[data-testid="report-shop-ranking"]') as HTMLElement
+    const dist = document.querySelector(
+      '[data-testid="report-platform-distribution"]',
+    ) as HTMLElement
+    const overview = document.querySelector(
+      '[data-testid="report-overview"] > div:last-child',
+    ) as HTMLElement
+    const ordersScroll = document.querySelector('[aria-label="订单明细表格"]') as HTMLElement
+    const groupsScroll = document.querySelector('[aria-label="分店汇总表格"]') as HTMLElement
     return {
       rankColumn: getComputedStyle(rank).gridColumnStart,
       distColumn: getComputedStyle(dist).gridColumnStart,
@@ -382,9 +408,9 @@ test('Given 375×812 窄屏视口 When 打开商品量报表 Then 卡片单列�
   // 筛选、展开、分页在窄屏仍完整可用。
   await page.getByLabel('平台筛选').selectOption('TemuPop')
   await page.getByRole('button', { name: '展开订单 ERP-ORDER-0 商品明细' }).click()
-  await expect(page.locator('.report-order-details')).toBeVisible()
+  await expect(page.locator('[data-testid="report-order-details"]')).toBeVisible()
   await page.getByRole('button', { name: '下一页' }).click()
-  await expect(page.locator('.page-num')).toHaveText('2')
+  await expect(ordersPager(page).locator('[aria-current="page"]')).toHaveText('2')
 })
 
 test('Given 375px 下打开过报表 When 离开报表路由 Then 恢复桌面最小宽度约束', async ({ page }) => {
@@ -397,9 +423,9 @@ test('Given 375px 下打开过报表 When 离开报表路由 Then 恢复桌面�
   expect(await page.evaluate(() => getComputedStyle(document.body).minWidth)).toBe('0px')
 
   // 单页应用内离开报表路由：回到工作台即恢复桌面最小宽度约束。
-  await page.locator('.side-nav .nav-link[data-nav-page="dashboard"]').click()
+  await page.locator('[data-testid="side-nav"] [data-nav-page="dashboard"]').click()
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.locator('.page-order-snapshot-report')).toHaveCount(0)
+  await expect(page.locator('#page-order-snapshot-report')).toHaveCount(0)
   const restored = await page.evaluate(() => ({
     bodyMinWidth: getComputedStyle(document.body).minWidth,
     scrollWidth: document.documentElement.scrollWidth,
@@ -422,15 +448,20 @@ test('Given 1440px 桌面视口 When 打开报表 Then 保持双列卡片且页�
   }))
   expect(pageMetrics.scrollWidth).toBeLessThanOrEqual(pageMetrics.innerWidth)
 
-  const layout = await page.evaluate(() => ({
-    rankColumn: getComputedStyle(document.querySelector('.report-rank-card') as HTMLElement)
-      .gridColumnStart,
-    distColumn: getComputedStyle(document.querySelector('.report-dist-card') as HTMLElement)
-      .gridColumnStart,
-    overviewColumns: getComputedStyle(
-      document.querySelector('.report-overview-body') as HTMLElement,
-    ).gridTemplateColumns.split(' ').length,
-  }))
+  const layout = await page.evaluate(() => {
+    const rank = document.querySelector('[data-testid="report-shop-ranking"]') as HTMLElement
+    const dist = document.querySelector(
+      '[data-testid="report-platform-distribution"]',
+    ) as HTMLElement
+    const overview = document.querySelector(
+      '[data-testid="report-overview"] > div:last-child',
+    ) as HTMLElement
+    return {
+      rankColumn: getComputedStyle(rank).gridColumnStart,
+      distColumn: getComputedStyle(dist).gridColumnStart,
+      overviewColumns: getComputedStyle(overview).gridTemplateColumns.split(' ').length,
+    }
+  })
   expect(layout.rankColumn).toBe('span 8')
   expect(layout.distColumn).toBe('span 4')
   expect(layout.overviewColumns).toBe(4)
@@ -458,11 +489,11 @@ test.describe('触屏窄屏', () => {
         return element ? element.getBoundingClientRect().height : 0
       }
       return {
-        expand: box('.report-orders-table .link-btn'),
-        pageButton: box('.report-pagination .page-btn'),
-        refresh: box('.report-searchbar .btn-icon'),
-        navLink: box('.sidebar .nav-link'),
-        navGroupHead: box('.sidebar .nav-group-head'),
+        expand: box('[data-testid="report-orders-table"] button[aria-label^="展开订单"]'),
+        pageButton: box('[data-testid="report-pagination"] button[aria-label="第 2 页"]'),
+        refresh: box('[data-testid="report-toolbar"] button[aria-label="刷新"]'),
+        navLink: box('[data-testid="side-nav"] [data-nav-page="dashboard"]'),
+        navGroupHead: box('[data-testid="sidebar"] button[aria-expanded]'),
       }
     })
     expect((await targets).expand).toBeGreaterThanOrEqual(44)
@@ -473,7 +504,7 @@ test.describe('触屏窄屏', () => {
 
     await page.getByLabel('平台筛选').selectOption('TemuPop')
     await page.getByRole('button', { name: '下一页' }).click()
-    await expect(page.locator('.page-num')).toHaveText('2')
+    await expect(ordersPager(page).locator('[aria-current="page"]')).toHaveText('2')
   })
 })
 
@@ -495,8 +526,10 @@ test.describe('宽视口触屏', () => {
     expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true)
 
     const nav = await page.evaluate(() => {
-      const sidebar = document.querySelector('.sidebar') as HTMLElement
-      const link = document.querySelector('.sidebar .nav-link') as HTMLElement
+      const sidebar = document.querySelector('[data-testid="sidebar"]') as HTMLElement
+      const link = document.querySelector(
+        '[data-testid="side-nav"] [data-nav-page="dashboard"]',
+      ) as HTMLElement
       const linkBox = link.getBoundingClientRect()
       return {
         sidebarWidth: sidebar.getBoundingClientRect().width,
@@ -505,7 +538,7 @@ test.describe('宽视口触屏', () => {
       }
     })
     expect(nav.sidebarWidth).toBe(200)
-    // nav-link 宽度为侧栏内容区 100%（含内边距的整行），只要求不被压成 44px 方块。
+    // 导航项宽度为侧栏内容区 100%（含内边距的整行），只要求不被压成 44px 方块。
     expect(nav.linkWidth).toBeGreaterThan(100)
     expect(nav.linkHeight).toBe(38)
   })
@@ -588,7 +621,7 @@ test('Given 真实宿主本地订单 When 打开商品量报表 Then 页面与�
   )
 
   await openReport(page)
-  await expect(page.locator('.report-orders-table tbody tr')).not.toHaveCount(0)
+  await expect(page.locator('[data-testid="report-orders-table"] tbody tr')).not.toHaveCount(0)
 
   // 真实模式：不注册报表路由拦截，直接比对真实 API 与页面渲染。
   const response = await page.request.get('/api/reports/order-snapshot?page=1&pageSize=20', {
@@ -605,16 +638,20 @@ test('Given 真实宿主本地订单 When 打开商品量报表 Then 页面与�
     Number((await page.locator(`[aria-label="${label}"]`).innerText()).replace(/,/g, ''))
   expect(await statText('订单总数')).toBe(report.summary.orderCount)
   expect(await statText('商品件数')).toBe(report.summary.itemQuantity)
-  await expect(page.locator('.report-orders-table tbody tr')).toHaveCount(report.orders.length)
-  await expect(page.locator('.report-groups-table tbody tr')).toHaveCount(report.groups.length)
+  await expect(page.locator('[data-testid="report-orders-table"] tbody tr')).toHaveCount(
+    report.orders.length,
+  )
+  await expect(page.locator('[data-testid="report-groups-table"] tbody tr')).toHaveCount(
+    report.groups.length,
+  )
 
   // 种子覆盖两个平台店铺：平台分布与店铺排行均有独立条目（占比在可视列表和无障碍表各一次，只数可视行）。
-  const distList = page.locator('.snapshot-dist-list')
+  const distList = page.locator('[data-testid="report-platform-legend"]')
   await expect(distList.getByText('50.0%')).toHaveCount(2)
   await expect(distList).toContainText('Temu 半托管')
-  await expect(distList.getByText('Temu', { exact: true })).toHaveCount(1)
-  await expect(page.locator('.snapshot-rank-card')).toContainText('店铺 30')
-  await expect(page.locator('.snapshot-rank-card')).toContainText('店铺 31')
+  await expect(distList.getByText('Temu 半托管', { exact: true })).toHaveCount(1)
+  await expect(page.locator('[data-testid="report-shop-ranking"]')).toContainText('店铺 30')
+  await expect(page.locator('[data-testid="report-shop-ranking"]')).toContainText('店铺 31')
 
   await page.screenshot({
     path: testInfo.outputPath('order-report-real-desktop.png'),
@@ -625,7 +662,9 @@ test('Given 真实宿主本地订单 When 打开商品量报表 Then 页面与�
   // 侧栏宽度带过渡，等收敛到 56px 轨道再截图；移开鼠标避免悬停浮层遮挡。
   await expect
     .poll(async () =>
-      page.locator('.sidebar').evaluate((element) => element.getBoundingClientRect().width),
+      page
+        .locator('[data-testid="sidebar"]')
+        .evaluate((element) => element.getBoundingClientRect().width),
     )
     .toBe(56)
   await page.mouse.move(320, 700)
@@ -659,17 +698,32 @@ test('Given 空报表 When 表格没有数据 Then 空态提示完整位于表�
 
   await openReport(page)
 
-  for (const selector of ['.report-groups-panel', '.report-orders-panel']) {
-    const geometry = await page.locator(selector).evaluate((panel) => {
-      const area = panel.querySelector('.table-area')!.getBoundingClientRect()
-      const message = panel.querySelector('.empty-overlay span')!.getBoundingClientRect()
-      return {
-        areaTop: area.top,
-        areaBottom: area.bottom,
-        messageTop: message.top,
-        messageBottom: message.bottom,
-      }
-    })
+  const panels = [
+    {
+      panel: '[data-testid="report-groups-panel"]',
+      area: '[data-testid="report-groups-area"]',
+      empty: '[data-testid="report-groups-empty"]',
+    },
+    {
+      panel: '[data-testid="report-orders-panel"]',
+      area: '[data-testid="report-orders-area"]',
+      empty: '[data-testid="report-orders-empty"]',
+    },
+  ]
+  for (const { panel, area, empty } of panels) {
+    const geometry = await page.locator(panel).evaluate(
+      (element, selectors) => {
+        const areaBox = element.querySelector(selectors.area)!.getBoundingClientRect()
+        const messageBox = element.querySelector(`${selectors.empty} span`)!.getBoundingClientRect()
+        return {
+          areaTop: areaBox.top,
+          areaBottom: areaBox.bottom,
+          messageTop: messageBox.top,
+          messageBottom: messageBox.bottom,
+        }
+      },
+      { area, empty },
+    )
     expect(geometry.messageTop).toBeGreaterThanOrEqual(geometry.areaTop)
     expect(geometry.messageBottom).toBeLessThanOrEqual(geometry.areaBottom)
   }
@@ -683,23 +737,59 @@ test('Given 850px 桌面 When 分析区保持双列 Then 圆环与中心总数�
 
   await openReport(page)
 
-  const geometry = await page.locator('.snapshot-dist-card').evaluate((card) => {
-    const cardBox = card.getBoundingClientRect()
-    const chartBox = card.querySelector('.snapshot-donut-chart')!.getBoundingClientRect()
-    const centerBox = card.querySelector('.snapshot-donut-center')!.getBoundingClientRect()
-    return {
-      cardLeft: cardBox.left,
-      cardRight: cardBox.right,
-      chartLeft: chartBox.left,
-      chartRight: chartBox.right,
-      centerLeft: centerBox.left,
-      centerRight: centerBox.right,
-    }
-  })
+  const geometry = await page
+    .locator('[data-testid="report-platform-distribution"]')
+    .evaluate((card) => {
+      const cardBox = card.getBoundingClientRect()
+      const chart = card.querySelector('[data-testid="report-platform-chart"]') as SVGElement
+      const chartBox = chart.getBoundingClientRect()
+      const centerBox = (chart.nextElementSibling as HTMLElement).getBoundingClientRect()
+      return {
+        cardLeft: cardBox.left,
+        cardRight: cardBox.right,
+        chartLeft: chartBox.left,
+        chartRight: chartBox.right,
+        centerLeft: centerBox.left,
+        centerRight: centerBox.right,
+      }
+    })
   expect(geometry.chartLeft).toBeGreaterThanOrEqual(geometry.cardLeft)
   expect(geometry.chartRight).toBeLessThanOrEqual(geometry.cardRight)
   expect(geometry.centerLeft).toBeGreaterThanOrEqual(geometry.cardLeft)
   expect(geometry.centerRight).toBeLessThanOrEqual(geometry.cardRight)
+})
+
+test('Given 1920px 桌面 When 平台分布横向排列 Then 圆环和分布列表均完整可见', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.route('**/api/reports/order-snapshot?**', async (route) => {
+    await route.fulfill({ json: manyReport() })
+  })
+
+  await openReport(page)
+
+  const geometry = await page
+    .locator('[data-testid="report-platform-distribution"]')
+    .evaluate((card) => {
+      const cardBox = card.getBoundingClientRect()
+      const chart = card.querySelector('[data-testid="report-platform-chart"]') as SVGElement
+      const chartBox = chart.getBoundingClientRect()
+      const listBox = (
+        card.querySelector('[data-testid="report-platform-legend"]') as HTMLElement
+      ).getBoundingClientRect()
+      return {
+        cardLeft: cardBox.left,
+        cardRight: cardBox.right,
+        chartLeft: chartBox.left,
+        chartRight: chartBox.right,
+        listLeft: listBox.left,
+        listRight: listBox.right,
+        listWidth: listBox.width,
+      }
+    })
+  expect(geometry.chartLeft).toBeGreaterThanOrEqual(geometry.cardLeft)
+  expect(geometry.chartRight).toBeLessThanOrEqual(geometry.listLeft)
+  expect(geometry.listWidth).toBeGreaterThan(0)
+  expect(geometry.listRight).toBeLessThanOrEqual(geometry.cardRight)
 })
 
 test('Given 细指针窄窗口 When 展示多页报表 Then 分页控件换行且翻页可用', async ({ page }) => {
@@ -709,7 +799,7 @@ test('Given 细指针窄窗口 When 展示多页报表 Then 分页控件换行�
   await openReport(page)
   expect(await page.evaluate(() => matchMedia('(pointer: fine)').matches)).toBe(true)
 
-  const controls = await page.locator('.report-pagination').evaluate((footer) => {
+  const controls = await ordersPager(page).evaluate((footer) => {
     const footerBox = footer.getBoundingClientRect()
     return Array.from(footer.querySelectorAll('button, label, input')).map((control) => {
       const box = control.getBoundingClientRect()
@@ -728,9 +818,9 @@ test('Given 细指针窄窗口 When 展示多页报表 Then 分页控件换行�
   }
 
   await page.getByRole('button', { name: '下一页' }).click()
-  await expect(page.locator('.page-num')).toHaveText('2')
+  await expect(ordersPager(page).locator('[aria-current="page"]')).toHaveText('2')
   await page.getByRole('button', { name: '上一页' }).click()
-  await expect(page.locator('.page-num')).toHaveText('1')
+  await expect(ordersPager(page).locator('[aria-current="page"]')).toHaveText('1')
 })
 
 test('Given 667×375 矮屏 When 滚动导航至设置 Then 尾部入口可达且子菜单浮层不被裁切', async ({
@@ -741,9 +831,9 @@ test('Given 667×375 矮屏 When 滚动导航至设置 Then 尾部入口可达�
     await route.fulfill({ json: reportSample })
   })
   await page.goto('/reports/orders')
-  await expect(page.locator('.page-order-snapshot-report')).toBeVisible()
+  await expect(page.locator('#page-order-snapshot-report')).toBeVisible()
 
-  const navigation = page.locator('.side-nav')
+  const navigation = page.locator('[data-testid="side-nav"]')
   const metrics = await navigation.evaluate((element) => {
     element.scrollTop = element.scrollHeight
     return {
@@ -757,10 +847,10 @@ test('Given 667×375 矮屏 When 滚动导航至设置 Then 尾部入口可达�
   expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight)
   expect(metrics.scrollTop).toBeGreaterThan(0)
 
-  const settings = page.locator('[data-group="settings"] .nav-group-head')
+  const settings = page.locator('[data-group="settings"] button[aria-expanded]')
   await settings.evaluate((element) => element.scrollIntoView({ block: 'center' }))
   await settings.hover()
-  const submenu = page.locator('[data-group="settings"] .nav-flyout')
+  const submenu = page.locator('[data-testid="nav-flyout"]')
   await expect(submenu).toBeVisible()
   await expect
     .poll(async () => submenu.evaluate((element) => element.getBoundingClientRect().bottom))
@@ -773,34 +863,6 @@ test('Given 667×375 矮屏 When 滚动导航至设置 Then 尾部入口可达�
   expect(submenuBox!.y + submenuBox!.height).toBeLessThanOrEqual(375)
 })
 
-test('Given 1920px 桌面 When 平台分布横向排列 Then 圆环和分布列表均完整可见', async ({ page }) => {
-  await page.setViewportSize({ width: 1920, height: 1080 })
-  await page.route('**/api/reports/order-snapshot?**', async (route) => {
-    await route.fulfill({ json: manyReport() })
-  })
-
-  await openReport(page)
-
-  const geometry = await page.locator('.snapshot-dist-card').evaluate((card) => {
-    const cardBox = card.getBoundingClientRect()
-    const chartBox = card.querySelector('.snapshot-donut-chart')!.getBoundingClientRect()
-    const listBox = card.querySelector('.snapshot-dist-list')!.getBoundingClientRect()
-    return {
-      cardLeft: cardBox.left,
-      cardRight: cardBox.right,
-      chartLeft: chartBox.left,
-      chartRight: chartBox.right,
-      listLeft: listBox.left,
-      listRight: listBox.right,
-      listWidth: listBox.width,
-    }
-  })
-  expect(geometry.chartLeft).toBeGreaterThanOrEqual(geometry.cardLeft)
-  expect(geometry.chartRight).toBeLessThanOrEqual(geometry.listLeft)
-  expect(geometry.listWidth).toBeGreaterThan(0)
-  expect(geometry.listRight).toBeLessThanOrEqual(geometry.cardRight)
-})
-
 test('Given 窄屏悬停子菜单 When 指针从分组缓慢移入浮层 Then 菜单保持打开并可进入业务配置', async ({
   page,
 }) => {
@@ -809,12 +871,12 @@ test('Given 窄屏悬停子菜单 When 指针从分组缓慢移入浮层 Then �
     await route.fulfill({ json: reportSample })
   })
   await page.goto('/reports/orders')
-  await expect(page.locator('.page-order-snapshot-report')).toBeVisible()
+  await expect(page.locator('#page-order-snapshot-report')).toBeVisible()
 
-  const settings = page.locator('[data-group="settings"] .nav-group-head')
+  const settings = page.locator('[data-group="settings"] button[aria-expanded]')
   await settings.evaluate((element) => element.scrollIntoView({ block: 'center' }))
   await settings.hover()
-  const submenu = page.locator('[data-group="settings"] .nav-flyout')
+  const submenu = page.locator('[data-testid="nav-flyout"]')
   await expect(submenu).toBeVisible()
   await expect
     .poll(async () => submenu.evaluate((element) => element.getBoundingClientRect().bottom))

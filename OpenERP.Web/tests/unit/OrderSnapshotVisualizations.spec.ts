@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import type { OrderSnapshotReport, ReportShop } from '../../src/reports/orderSnapshot'
 import OrderSnapshotShopRanking from '../../src/components/reports/OrderSnapshotShopRanking.vue'
@@ -45,6 +45,32 @@ function widthOf(element: Element): number {
   return Number.parseFloat(element.getAttribute('style')?.match(/width:\s*([\d.]+)%/)?.[1] ?? 'NaN')
 }
 
+// 排行图的可视行是 figure 内语义列表的 li；单元格顺序为排名、店铺、条形槽、条形值。
+function rankRows(wrapper: VueWrapper) {
+  return wrapper.findAll('figure ul > li')
+}
+
+function rankShops(wrapper: VueWrapper): string[] {
+  return rankRows(wrapper).map((row) => row.findAll('span')[1]!.text())
+}
+
+function rankValues(wrapper: VueWrapper): string[] {
+  return rankRows(wrapper).map((row) => row.get('b').text())
+}
+
+function rankBarWidths(wrapper: VueWrapper): number[] {
+  return rankRows(wrapper).map((row) => widthOf(row.findAll('span')[3]!.element))
+}
+
+// 分布图的可视图例与无障碍等价表分别由测试钩子和 table 语义定位。
+function distributionLegend(wrapper: VueWrapper) {
+  return wrapper.get('[data-testid="report-platform-legend"]')
+}
+
+function distributionRows(wrapper: VueWrapper) {
+  return wrapper.findAll('[data-testid="report-platform-legend"] > div')
+}
+
 describe('店铺排行组件', () => {
   it('Given 多店铺分组 When 挂载 Then 默认按商品件数展示 Top 5、按钮状态与条形同步', () => {
     const wrapper = mount(OrderSnapshotShopRanking, { props: { groups: rankingGroups } })
@@ -54,23 +80,10 @@ describe('店铺排行组件', () => {
     expect(buttons[0]!.attributes('aria-pressed')).toBe('true')
     expect(buttons[1]!.attributes('aria-pressed')).toBe('false')
 
-    expect(wrapper.findAll('.snapshot-rank-row')).toHaveLength(5)
-    expect(wrapper.findAll('.snapshot-rank-shop').map((node) => node.text())).toEqual([
-      '店铺 B',
-      '店铺 E',
-      '店铺 F',
-      '店铺 A',
-      '店铺 D',
-    ])
-    expect(wrapper.findAll('.snapshot-rank-value').map((node) => node.text())).toEqual([
-      '20',
-      '15',
-      '12',
-      '10',
-      '8',
-    ])
-    const bars = wrapper.findAll('.snapshot-rank-bar > span')
-    expect(bars.map((bar) => widthOf(bar.element))).toEqual([100, 75, 60, 50, 40])
+    expect(rankRows(wrapper)).toHaveLength(5)
+    expect(rankShops(wrapper)).toEqual(['店铺 B', '店铺 E', '店铺 F', '店铺 A', '店铺 D'])
+    expect(rankValues(wrapper)).toEqual(['20', '15', '12', '10', '8'])
+    expect(rankBarWidths(wrapper)).toEqual([100, 75, 60, 50, 40])
   })
 
   it('Given 多店铺分组 When 切换到订单数 Then 选中按钮、Top 5 顺序、原始数量和条形同步更新', async () => {
@@ -82,23 +95,9 @@ describe('店铺排行组件', () => {
     expect(buttons[0]!.attributes('aria-pressed')).toBe('false')
     expect(buttons[1]!.attributes('aria-pressed')).toBe('true')
 
-    expect(wrapper.findAll('.snapshot-rank-shop').map((node) => node.text())).toEqual([
-      '店铺 C',
-      '店铺 E',
-      '店铺 D',
-      '店铺 F',
-      '店铺 B',
-    ])
-    expect(wrapper.findAll('.snapshot-rank-value').map((node) => node.text())).toEqual([
-      '10',
-      '8',
-      '6',
-      '5',
-      '4',
-    ])
-    expect(wrapper.findAll('.snapshot-rank-bar > span').map((bar) => widthOf(bar.element))).toEqual(
-      [100, 80, 60, 50, 40],
-    )
+    expect(rankShops(wrapper)).toEqual(['店铺 C', '店铺 E', '店铺 D', '店铺 F', '店铺 B'])
+    expect(rankValues(wrapper)).toEqual(['10', '8', '6', '5', '4'])
+    expect(rankBarWidths(wrapper)).toEqual([100, 80, 60, 50, 40])
   })
 
   it('Given 任意数据 When 渲染 Then 提供 figure 可见说明与视觉隐藏等价数据表', () => {
@@ -106,9 +105,10 @@ describe('店铺排行组件', () => {
 
     const figure = wrapper.get('figure')
     expect(figure.get('figcaption').text()).toContain('前 5')
-    expect(figure.get('figcaption').classes()).not.toContain('visually-hidden')
+    expect(figure.get('figcaption').classes()).not.toContain('sr-only')
 
-    const table = figure.get('table.visually-hidden')
+    const table = figure.get('table')
+    expect(table.classes()).toContain('sr-only')
     expect(table.get('caption').text()).toContain('排行')
     expect(table.findAll('th[scope="col"]')).toHaveLength(3)
     expect(table.findAll('tbody tr')).toHaveLength(5)
@@ -118,24 +118,24 @@ describe('店铺排行组件', () => {
   it('Given 空分组 When 挂载 Then 显示空态且不渲染排行条形', () => {
     const wrapper = mount(OrderSnapshotShopRanking, { props: { groups: [] } })
 
-    expect(wrapper.get('.snapshot-empty').text()).toContain('暂无')
-    expect(wrapper.find('.snapshot-rank-row').exists()).toBe(false)
+    expect(wrapper.get('p').text()).toContain('暂无')
+    expect(wrapper.find('figure ul > li').exists()).toBe(false)
     expect(wrapper.find('figure').exists()).toBe(false)
   })
 
   it('Given 加载中 When 挂载 Then 显示中性加载占位且不渲染空态或图表', () => {
     const wrapper = mount(OrderSnapshotShopRanking, { props: { groups: [], loading: true } })
 
-    expect(wrapper.get('.snapshot-loading').text()).toContain('正在加载')
-    expect(wrapper.find('.snapshot-empty').exists()).toBe(false)
+    expect(wrapper.get('p').text()).toContain('正在加载')
+    expect(wrapper.text()).not.toContain('暂无')
     expect(wrapper.find('figure').exists()).toBe(false)
   })
 
   it('Given 加载完成且为空 When 挂载 Then 仍显示空态而不是加载占位', () => {
     const wrapper = mount(OrderSnapshotShopRanking, { props: { groups: [], loading: false } })
 
-    expect(wrapper.get('.snapshot-empty').text()).toContain('暂无')
-    expect(wrapper.find('.snapshot-loading').exists()).toBe(false)
+    expect(wrapper.get('p').text()).toContain('暂无')
+    expect(wrapper.text()).not.toContain('正在加载')
   })
 
   it('Given 大数量 When 挂载 Then 可视值与等价表统一千分位', () => {
@@ -143,8 +143,8 @@ describe('店铺排行组件', () => {
       props: { groups: groups([[shop({ key: 'shop-big', label: '店铺 大' }), 1, 12345]]) },
     })
 
-    expect(wrapper.get('.snapshot-rank-value').text()).toBe('12,345')
-    expect(wrapper.get('table.visually-hidden tbody tr').text()).toContain('12,345')
+    expect(rankValues(wrapper)).toEqual(['12,345'])
+    expect(wrapper.get('figure table tbody tr').text()).toContain('12,345')
   })
 })
 
@@ -154,11 +154,11 @@ describe('平台分布组件', () => {
       props: { groups: distributionGroups, totalOrders: 11 },
     })
 
-    expect(wrapper.get('.snapshot-donut-center strong').text()).toBe('11')
-    expect(wrapper.get('.snapshot-donut-center span').text()).toContain('总订单')
+    const figure = wrapper.get('figure')
+    expect(figure.get('strong').text()).toBe('11')
+    expect(figure.get('strong + span').text()).toContain('总订单')
 
-    const legend = wrapper.get('.snapshot-dist-list')
-    const rows = legend.findAll('.snapshot-dist-row')
+    const rows = distributionRows(wrapper)
     expect(rows).toHaveLength(2)
     expect(rows[0]!.text()).toContain('Temu 半托管')
     expect(rows[0]!.text()).toContain('8')
@@ -173,7 +173,7 @@ describe('平台分布组件', () => {
       props: { groups: distributionGroups, totalOrders: 11 },
     })
 
-    const svg = wrapper.get('.snapshot-donut-chart')
+    const svg = wrapper.get('[data-testid="report-platform-chart"]')
     expect(svg.attributes('aria-hidden')).toBe('true')
     const arcs = svg.findAll('circle[pathLength="100"]')
     expect(arcs).toHaveLength(2)
@@ -194,9 +194,10 @@ describe('平台分布组件', () => {
 
     const figure = wrapper.get('figure')
     expect(figure.get('figcaption').text()).toContain('平台')
-    expect(figure.get('figcaption').classes()).not.toContain('visually-hidden')
+    expect(figure.get('figcaption').classes()).not.toContain('sr-only')
 
-    const table = figure.get('table.visually-hidden')
+    const table = figure.get('table')
+    expect(table.classes()).toContain('sr-only')
     expect(table.get('caption').text()).toContain('平台')
     expect(table.findAll('th[scope="col"]')).toHaveLength(3)
     expect(table.findAll('tbody tr')).toHaveLength(2)
@@ -208,9 +209,9 @@ describe('平台分布组件', () => {
       props: { groups: [], totalOrders: 0 },
     })
 
-    expect(wrapper.get('.snapshot-empty').text()).toContain('暂无')
+    expect(wrapper.get('p').text()).toContain('暂无')
     expect(wrapper.find('svg').exists()).toBe(false)
-    expect(wrapper.find('.snapshot-dist-row').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="report-platform-legend"] > div').exists()).toBe(false)
     expect(wrapper.find('figure').exists()).toBe(false)
   })
 
@@ -219,8 +220,8 @@ describe('平台分布组件', () => {
       props: { groups: [], totalOrders: 0, loading: true },
     })
 
-    expect(wrapper.get('.snapshot-loading').text()).toContain('正在加载')
-    expect(wrapper.find('.snapshot-empty').exists()).toBe(false)
+    expect(wrapper.get('p').text()).toContain('正在加载')
+    expect(wrapper.text()).not.toContain('暂无')
     expect(wrapper.find('figure').exists()).toBe(false)
   })
 
@@ -229,8 +230,8 @@ describe('平台分布组件', () => {
       props: { groups: [], totalOrders: 0, loading: false },
     })
 
-    expect(wrapper.get('.snapshot-empty').text()).toContain('暂无')
-    expect(wrapper.find('.snapshot-loading').exists()).toBe(false)
+    expect(wrapper.get('p').text()).toContain('暂无')
+    expect(wrapper.text()).not.toContain('正在加载')
   })
 
   it('Given 大数量 When 挂载 Then 总订单数、可视值与等价表统一千分位', () => {
@@ -238,8 +239,8 @@ describe('平台分布组件', () => {
       props: { groups: groups([[shop({ key: 'shop-big' }), 12345, 1]]), totalOrders: 12345 },
     })
 
-    expect(wrapper.get('.snapshot-donut-center strong').text()).toBe('12,345')
-    expect(wrapper.get('.snapshot-dist-list').text()).toContain('12,345')
-    expect(wrapper.get('table.visually-hidden').text()).toContain('12,345')
+    expect(wrapper.get('figure strong').text()).toBe('12,345')
+    expect(distributionLegend(wrapper).text()).toContain('12,345')
+    expect(wrapper.get('figure table').text()).toContain('12,345')
   })
 })

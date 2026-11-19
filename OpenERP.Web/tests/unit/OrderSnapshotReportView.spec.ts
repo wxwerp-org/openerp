@@ -172,26 +172,22 @@ describe('本地订单商品量快照报表', () => {
 
     // 页签页只保留一个隐藏标题，不再重复渲染可见标题。
     expect(wrapper.findAll('h1')).toHaveLength(1)
-    expect(wrapper.get('h1').classes()).toContain('visually-hidden')
+    expect(wrapper.get('h1').classes()).toContain('sr-only')
     expect(wrapper.get('h1').text()).toBe('商品量报表')
 
-    // 工作台骨架：筛选区复用 dash-header，卡片网格承载全部卡片。
-    expect(wrapper.get('.report-searchbar').classes()).toContain('dash-header')
-    const grid = wrapper.get('.report-analysis-grid')
-    expect(grid.classes()).toContain('dash-grid')
-    expect(wrapper.find('.report-toolbar').exists()).toBe(false)
+    // 工作台骨架：筛选条、工具栏与平台/店铺筛选由稳定测试钩子和可访问名称定位。
+    const searchbar = wrapper.get('[data-testid="report-searchbar"]')
+    expect(searchbar.find('[data-testid="report-platform-filter"]').exists()).toBe(true)
+    expect(searchbar.find('[data-testid="report-toolbar"]').exists()).toBe(true)
+    expect(searchbar.find('summary[aria-label="店铺筛选"]').exists()).toBe(true)
 
-    // 概览卡与两个可视化卡片是 dash-grid 直接子卡片，获得工作台白底/圆角。
-    const overview = wrapper.get('.report-overview-card')
-    expect(overview.classes()).toContain('card')
-    expect(overview.element.parentElement?.classList.contains('dash-grid')).toBe(true)
-    const rankCard = wrapper.get('.snapshot-rank-card')
-    expect(rankCard.classes()).toContain('card')
-    expect(rankCard.element.parentElement?.classList.contains('dash-grid')).toBe(true)
+    // 概览卡与两个可视化卡片是同一分析区内的直接兄弟卡片。
+    const overview = wrapper.get('[data-testid="report-overview"]')
+    const rankCard = wrapper.get('[data-testid="report-shop-ranking"]')
+    const distCard = wrapper.get('[data-testid="report-platform-distribution"]')
+    expect(overview.element.parentElement).not.toBeNull()
     expect(rankCard.element.parentElement).toBe(overview.element.parentElement)
-    const distCard = wrapper.get('.snapshot-dist-card')
-    expect(distCard.classes()).toContain('card')
-    expect(distCard.element.parentElement?.classList.contains('dash-grid')).toBe(true)
+    expect(distCard.element.parentElement).toBe(overview.element.parentElement)
 
     // 图表组件渲染真实快照数值：排行按商品件数降序，分布按平台聚合占比。
     expect(rankCard.text()).toContain('店铺排行')
@@ -201,48 +197,55 @@ describe('本地订单商品量快照报表', () => {
     expect(distCard.text()).toContain('33.3%')
 
     // Top 5 图表之外仍保留完整分店汇总表（全部 3 家店铺）。
-    expect(wrapper.findAll('.report-groups-panel .report-groups-table tbody tr')).toHaveLength(3)
+    expect(wrapper.findAll('[data-testid="report-groups-table"] tbody tr')).toHaveLength(3)
     expect(wrapper.text()).toContain('店铺 31')
 
-    // 表格复用列表页外壳：table-area > table-scroll.is-y 且滚动区可聚焦。
+    // 表格复用列表页外壳：滚动区可聚焦并带区域语义，表格有显式列宽。
     const ordersScroll = wrapper.get('[aria-label="订单明细表格"]')
-    expect(ordersScroll.classes()).toContain('table-scroll')
-    expect(ordersScroll.classes()).toContain('is-y')
     expect(ordersScroll.attributes('role')).toBe('region')
     expect(ordersScroll.attributes('tabindex')).toBe('0')
-    expect(ordersScroll.element.parentElement?.className).toContain('table-area')
+    expect(ordersScroll.find('[data-testid="report-orders-table"]').exists()).toBe(true)
+    expect(
+      wrapper.find('[data-testid="report-orders-panel"] [aria-label="订单明细表格"]').exists(),
+    ).toBe(true)
     const groupsScroll = wrapper.get('[aria-label="分店汇总表格"]')
     expect(groupsScroll.attributes('role')).toBe('region')
     expect(groupsScroll.attributes('tabindex')).toBe('0')
-    expect(wrapper.findAll('.report-orders-table colgroup col')).toHaveLength(8)
-    expect(wrapper.findAll('.report-groups-table colgroup col')).toHaveLength(4)
+    expect(groupsScroll.find('[data-testid="report-groups-table"]').exists()).toBe(true)
+    expect(
+      wrapper.find('[data-testid="report-groups-panel"] [aria-label="分店汇总表格"]').exists(),
+    ).toBe(true)
+    expect(wrapper.findAll('[data-testid="report-orders-table"] colgroup col')).toHaveLength(8)
+    expect(wrapper.findAll('[data-testid="report-groups-table"] colgroup col')).toHaveLength(4)
 
     // 刷新、分页与下拉统一使用 AppIcon，不再出现字符箭头。
-    expect(wrapper.get('button[aria-label="刷新"]').classes()).toContain('btn-icon')
     expect(wrapper.get('button[aria-label="刷新"] use').attributes('href')).toBe('#i-refresh')
     expect(wrapper.get('button[aria-label="上一页"] use').attributes('href')).toBe('#i-chev-left')
     expect(wrapper.get('button[aria-label="下一页"] use').attributes('href')).toBe('#i-chev-right')
-    expect(wrapper.find('.page-size select[aria-label="每页条数"]').exists()).toBe(true)
-    expect(wrapper.get('.page-size use').attributes('href')).toBe('#i-chev-down')
-    expect(wrapper.get('.page-jump input').attributes('aria-label')).toBe('前往页码')
-    expect(wrapper.get('.report-select').classes()).toContain('field-box')
-    expect(wrapper.get('.report-select use').attributes('href')).toBe('#i-chev-down')
-    expect(wrapper.get('summary[aria-label="店铺筛选"]').classes()).toContain('control')
+    const pageSizeSelect = wrapper.get('select[aria-label="每页条数"]')
+    expect(
+      pageSizeSelect.element.closest('label')?.querySelector('use')?.getAttribute('href'),
+    ).toBe('#i-chev-down')
+    expect(wrapper.get('input[aria-label="前往页码"]').attributes('aria-label')).toBe('前往页码')
+    const platformFilter = wrapper.get('[data-testid="report-platform-filter"]')
+    expect(platformFilter.find('select[aria-label="平台筛选"]').exists()).toBe(true)
+    expect(platformFilter.find('use').attributes('href')).toBe('#i-chev-down')
     expect(wrapper.get('summary[aria-label="店铺筛选"] use').attributes('href')).toBe(
       '#i-chev-down',
     )
-    expect(wrapper.get('.report-scope').classes()).toContain('notice')
-    expect(wrapper.get('.report-scope use').attributes('href')).toBe('#i-info')
+    const scope = wrapper.get('[data-testid="report-scope"]')
+    expect(scope.attributes('role')).toBe('note')
+    expect(scope.get('use').attributes('href')).toBe('#i-info')
     expect(
-      wrapper.get('[aria-label="订单总数"]').element.closest('.report-overview-card'),
+      wrapper.get('[aria-label="订单总数"]').element.closest('[data-testid="report-overview"]'),
     ).not.toBeNull()
-    expect(wrapper.get('.report-groups-panel').classes()).toContain('card')
-    expect(wrapper.get('.report-orders-panel').classes()).toContain('card')
-    expect(wrapper.get('.page-num').text()).toBe('1')
+    expect(wrapper.find('[data-testid="report-groups-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="report-orders-panel"]').exists()).toBe(true)
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('1')
     expect(wrapper.find('button[aria-label="第 2 页"]').exists()).toBe(true)
 
     // 加载完成后不再处于 aria-busy。
-    expect(grid.attributes('aria-busy')).toBeUndefined()
+    expect(wrapper.find('[aria-busy]').exists()).toBe(false)
 
     await wrapper.get('button[aria-label="展开订单 ERP-001 商品明细"]').trigger('click')
     expect(wrapper.text()).toContain('PO-001')
@@ -297,19 +300,19 @@ describe('本地订单商品量快照报表', () => {
     })
     wrapper = await mountReport()
 
-    expect(wrapper.find('.page-ellipsis').exists()).toBe(true)
+    expect(wrapper.text()).toContain('…')
     expect(wrapper.find('button[aria-label="第 7 页"]').exists()).toBe(true)
     await wrapper.get('button[aria-label="第 3 页"]').trigger('click')
     await flushPromises()
     expect(requested.at(-1)!.searchParams.get('page')).toBe('3')
 
-    await wrapper.get('.page-jump input').setValue('6')
-    await wrapper.get('.page-jump input').trigger('keyup.enter')
+    await wrapper.get('input[aria-label="前往页码"]').setValue('6')
+    await wrapper.get('input[aria-label="前往页码"]').trigger('keyup.enter')
     await flushPromises()
     expect(requested.at(-1)!.searchParams.get('page')).toBe('6')
 
-    await wrapper.get('.page-jump input').setValue('99')
-    await wrapper.get('.page-jump input').trigger('keyup.enter')
+    await wrapper.get('input[aria-label="前往页码"]').setValue('99')
+    await wrapper.get('input[aria-label="前往页码"]').trigger('keyup.enter')
     await flushPromises()
     expect(requested.at(-1)!.searchParams.get('page')).toBe('7')
   })
@@ -324,15 +327,15 @@ describe('本地订单商品量快照报表', () => {
     })
     wrapper = await mountReport()
 
-    await wrapper.get('.page-jump input').setValue('3')
-    await wrapper.get('.page-jump input').trigger('keyup.enter')
+    await wrapper.get('input[aria-label="前往页码"]').setValue('3')
+    await wrapper.get('input[aria-label="前往页码"]').trigger('keyup.enter')
     // Chromium 在输入框被禁用时触发原生 blur；VTU 的 trigger 会跳过 disabled 元素，故直接派发。
-    wrapper.get('.page-jump input').element.dispatchEvent(new Event('blur'))
+    wrapper.get('input[aria-label="前往页码"]').element.dispatchEvent(new Event('blur'))
     pending.resolve(jsonResponse(reportBody({ page: 3, pageCount: 7 })))
     await flushPromises()
 
     expect(requested.map((url) => url.searchParams.get('page'))).toEqual(['1', '3'])
-    expect(wrapper.get('.page-num').text()).toBe('3')
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('3')
   })
 
   it('Given 筛选请求尚未完成 When 新筛选结果先返回且旧响应晚到 Then 只展示最新查询结果', async () => {
@@ -352,10 +355,12 @@ describe('本地订单商品量快照报表', () => {
     wrapper = mount(OrderSnapshotReportView)
     await wrapper.get('select[aria-label="平台筛选"]').setValue('AliExpress')
     expect(wrapper.get('[role="status"]').text()).toContain('正在加载')
-    expect(wrapper.get('.report-analysis-grid').attributes('aria-busy')).toBe('true')
-    expect(wrapper.get('.report-orders-panel .empty-overlay').text()).toContain('正在加载')
-    expect(wrapper.get('.snapshot-rank-card').text()).toContain('正在加载店铺排行')
-    expect(wrapper.get('.snapshot-dist-card').text()).toContain('正在加载平台分布')
+    expect(wrapper.get('[aria-busy]').attributes('aria-busy')).toBe('true')
+    expect(wrapper.get('[data-testid="report-orders-empty"]').text()).toContain('正在加载')
+    expect(wrapper.get('[data-testid="report-shop-ranking"]').text()).toContain('正在加载店铺排行')
+    expect(wrapper.get('[data-testid="report-platform-distribution"]').text()).toContain(
+      '正在加载平台分布',
+    )
     expect(wrapper.text()).not.toContain('暂无店铺排行数据')
     expect(wrapper.text()).not.toContain('暂无平台分布数据')
     await wrapper.get('select[aria-label="平台筛选"]').setValue('TemuPop')
@@ -376,7 +381,7 @@ describe('本地订单商品量快照报表', () => {
     expect(wrapper.get('[aria-label="订单总数"]').text()).toBe('7')
     expect(wrapper.get('[aria-label="商品件数"]').text()).toBe('19')
     expect(wrapper.text()).not.toContain('999')
-    expect(wrapper.get('.report-analysis-grid').attributes('aria-busy')).toBeUndefined()
+    expect(wrapper.find('[aria-busy]').exists()).toBe(false)
   })
 
   it('Given 大数量汇总 When 加载完成 Then 概览数量与平均每单件数使用千分位', async () => {
@@ -402,20 +407,22 @@ describe('本地订单商品量快照报表', () => {
     )
     wrapper = await mountReport()
 
-    expect(wrapper.get('.report-orders-panel .empty-overlay').text()).toContain(
+    expect(wrapper.get('[data-testid="report-orders-empty"]').text()).toContain(
       '暂无符合条件的本地订单',
     )
-    expect(wrapper.get('.report-groups-panel .empty-overlay').text()).toContain('暂无分店汇总')
+    expect(wrapper.get('[data-testid="report-groups-empty"]').text()).toContain('暂无分店汇总')
     expect(wrapper.get('[aria-label="订单总数"]').text()).toBe('0')
     expect(wrapper.get('[aria-label="商品件数"]').text()).toBe('0')
     expect(wrapper.get('[aria-label="有订单店铺数"]').text()).toBe('0')
     expect(wrapper.get('[aria-label="平均每单件数"]').text()).toBe('—')
-    expect(wrapper.text()).toContain('暂无店铺排行数据')
-    expect(wrapper.text()).toContain('暂无平台分布数据')
+    expect(wrapper.get('[data-testid="report-shop-ranking"]').text()).toContain('暂无店铺排行数据')
+    expect(wrapper.get('[data-testid="report-platform-distribution"]').text()).toContain(
+      '暂无平台分布数据',
+    )
     expect(wrapper.text()).not.toContain('NaN')
     expect(wrapper.get('button[aria-label="上一页"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('button[aria-label="下一页"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('.page-num').text()).toBe('1')
+    expect(wrapper.get('[aria-current="page"]').text()).toBe('1')
   })
 
   it('Given 数据服务暂不可用 When 请求失败后重试 Then 显示 ProblemDetails 标题并恢复报表', async () => {
@@ -427,8 +434,8 @@ describe('本地订单商品量快照报表', () => {
     wrapper = await mountReport()
 
     expect(wrapper.get('[role="alert"]').text()).toContain('报表数据暂不可用')
-    expect(wrapper.get('.notice.red use').attributes('href')).toBe('#i-warning')
-    expect(wrapper.get('.report-orders-panel .empty-overlay').text()).toContain('报表加载失败')
+    expect(wrapper.get('[role="alert"] use').attributes('href')).toBe('#i-warning')
+    expect(wrapper.get('[data-testid="report-orders-empty"]').text()).toContain('报表加载失败')
     expect(wrapper.find('button[aria-label="重试"]').exists()).toBe(true)
     failed = false
     await wrapper.get('button[aria-label="重试"]').trigger('click')
