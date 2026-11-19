@@ -11,8 +11,10 @@ const props = withDefaults(
     showPageList?: boolean
     disabled?: boolean
     as?: 'nav' | 'div' | 'footer'
-    /** 左右内边距档：列表页默认 4px，店铺页旧样式为 12px。 */
-    paddingX?: 4 | 12
+    /** 左右内边距档：列表页默认 4px，报表页旧样式为 8px，店铺页旧样式为 12px。 */
+    paddingX?: 4 | 8 | 12
+    /** 报表页旧样式给分页按钮加了键盘焦点环。 */
+    focusRing?: boolean
   }>(),
   {
     label: '分页',
@@ -20,6 +22,7 @@ const props = withDefaults(
     disabled: false,
     as: 'nav',
     paddingX: 4,
+    focusRing: false,
   },
 )
 
@@ -27,8 +30,12 @@ const emit = defineEmits<{
   'update:page': [page: number]
 }>()
 
-const pageButtonClass =
-  'inline-flex h-28 w-28 shrink-0 items-center justify-center rounded-4 border border-transparent bg-white text-body hover:bg-page-btn-hover hover:text-primary disabled:cursor-default disabled:text-btn-disabled-text disabled:hover:bg-transparent disabled:hover:text-btn-disabled-text'
+const pageButtonClass = computed(() => [
+  'inline-flex h-28 w-28 shrink-0 items-center justify-center rounded-4 border border-transparent bg-white text-body hover:bg-page-btn-hover hover:text-primary disabled:cursor-default disabled:text-btn-disabled-text disabled:hover:bg-transparent disabled:hover:text-btn-disabled-text',
+  props.focusRing
+    ? 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
+    : '',
+])
 
 const total = computed(() => Math.max(1, Math.floor(props.pageCount) || 1))
 const pages = computed<PageItem[]>(() => buildPageList(props.page, total.value))
@@ -48,7 +55,7 @@ function go(page: number): void {
     :aria-label="as === 'nav' ? label : undefined"
     :data-disabled="String(disabled)"
     class="flex h-[var(--control-h)] flex-none items-center justify-end gap-8 bg-white text-12/18 text-body whitespace-nowrap"
-    :class="paddingX === 12 ? 'px-12' : 'px-4'"
+    :class="paddingX === 12 ? 'px-12' : paddingX === 8 ? 'px-8' : 'px-4'"
   >
     <slot name="prefix" />
     <button

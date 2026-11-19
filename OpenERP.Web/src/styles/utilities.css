@@ -1,22 +1,4 @@
-/* Native dialog positioning */
-dialog.form-layer,
-dialog.notice-layer,
-dialog.profile-layer {
-  position: fixed;
-  inset: 38px 0 0 var(--sidebar-width, 200px);
-  width: auto;
-  height: auto;
-  max-width: none;
-  max-height: none;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-dialog::backdrop {
-  background: transparent;
-}
-
+/* 工作台卡片仍在用；Phase 3d 迁移后删除。 */
 .visually-hidden {
   position: absolute !important;
   width: 1px !important;

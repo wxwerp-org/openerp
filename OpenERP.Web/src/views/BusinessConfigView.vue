@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AppIcon from '../ui/AppIcon.vue'
+import AppToast from '../ui/AppToast.vue'
 import BaseConfig from '../settings/BaseConfig.vue'
 import ErpConfig from '../settings/ErpConfig.vue'
 import GenericConfig from '../settings/GenericConfig.vue'
@@ -35,6 +36,10 @@ const { toast, showToast } = useToast()
 const group = computed(() => groups[activeGroup.value])
 const showBase = computed(() => activeGroup.value === 'base' && activeItem.value === '基础')
 
+const firstItemClass = 'flex h-32 w-full cursor-pointer items-center pl-16 text-left text-12/18'
+const secondItemClass =
+  'flex h-32 w-full cursor-pointer items-center truncate rounded-4 px-8 text-left text-12/32'
+
 function selectGroup(key: string): void {
   activeGroup.value = key
   activeItem.value = groups[key].items[0]
@@ -46,42 +51,65 @@ function showEditToast(): void {
 </script>
 
 <template>
-  <section id="page-business" class="page page-business active">
-    <div class="business-wrap">
-      <div id="settingsFirst" class="settings-first">
+  <section id="page-business" class="flex h-full w-full min-h-0 overflow-hidden bg-page-alt">
+    <div class="flex h-full w-full min-h-0 bg-page-alt">
+      <div
+        id="settingsFirst"
+        class="min-h-0 w-120 flex-none overflow-y-auto border-r border-line bg-page-alt pt-12"
+      >
         <button
           v-for="(item, key) in groups"
           :key="key"
-          class="settings-first-item"
-          :class="{ active: activeGroup === key }"
+          :class="[
+            firstItemClass,
+            activeGroup === key
+              ? 'bg-primary-soft font-medium text-primary'
+              : 'text-body-strong hover:bg-primary-faint',
+          ]"
           type="button"
           :data-settings-group="key"
           @click="selectGroup(key)"
         >
           {{ item.title }}
         </button>
-        <div class="settings-first-divider"></div>
+        <div class="mx-16 mt-10 mb-8 h-1 bg-line"></div>
         <button
-          class="settings-first-item user-entry"
+          :class="[firstItemClass, 'text-body hover:bg-primary-faint']"
           type="button"
           @click="$router.push('/users')"
         >
-          <AppIcon name="i-user" />用户管理
+          <AppIcon name="i-user" :size="13" class="mr-6 text-settings-user-icon" />用户管理
         </button>
       </div>
-      <div class="settings-second">
-        <div class="settings-second-head">
-          <h1 id="settingsSecondTitle">{{ group.title }}</h1>
-          <button class="settings-help" type="button" title="帮助" aria-label="帮助">
+      <div class="flex min-h-0 w-200 flex-none flex-col border-r border-line bg-white">
+        <div
+          class="flex h-56 flex-none items-center justify-between border-b border-line px-20 py-12"
+        >
+          <h1
+            id="settingsSecondTitle"
+            class="text-20/28 font-semibold whitespace-nowrap text-body-strong"
+          >
+            {{ group.title }}
+          </h1>
+          <button
+            class="flex h-24 w-24 items-center justify-center rounded-[50%] border border-settings-help-border bg-white text-settings-help-icon hover:border-primary hover:text-primary"
+            type="button"
+            title="帮助"
+            aria-label="帮助"
+          >
             <AppIcon name="i-help" />
           </button>
         </div>
-        <div id="settingsSecondMenu" class="settings-second-menu">
+        <div id="settingsSecondMenu" class="min-h-0 flex-1 overflow-y-auto p-12">
           <button
             v-for="item in group.items"
             :key="item"
-            class="settings-second-item"
-            :class="{ active: activeItem === item }"
+            :class="[
+              secondItemClass,
+              activeItem === item
+                ? 'bg-primary-soft font-medium text-primary'
+                : 'text-body-strong hover:bg-primary-faint hover:text-primary',
+            ]"
             type="button"
             :data-settings-item="item"
             @click="activeItem = item"
@@ -90,8 +118,11 @@ function showEditToast(): void {
           </button>
         </div>
       </div>
-      <div id="settingsContent" class="settings-content">
-        <div class="settings-content-inner config-fade">
+      <div
+        id="settingsContent"
+        class="min-h-0 min-w-0 flex-1 overflow-y-auto bg-page-alt px-24 pt-30 pb-24"
+      >
+        <div class="w-full min-w-0 animate-config-fade">
           <BaseConfig v-if="showBase" @edit="showEditToast" />
           <ErpConfig v-else-if="activeGroup === 'base' && activeItem === 'ERP 接入'" />
           <GenericConfig
@@ -103,6 +134,6 @@ function showEditToast(): void {
         </div>
       </div>
     </div>
-    <div v-show="toast" class="toast" role="status">{{ toast }}</div>
+    <AppToast :message="toast" />
   </section>
 </template>

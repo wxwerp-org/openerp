@@ -50,7 +50,7 @@ describe('表单与配置语义', () => {
     const wrapper = mount(ProductFormDialog, { props: { open: true }, attachTo: document.body })
     await nextTick()
 
-    expect(wrapper.find('.form-item.is-error').exists()).toBe(false)
+    expect(wrapper.find('[data-invalid="true"]').exists()).toBe(false)
     expect(wrapper.find('label[for="productNameInput"]').exists()).toBe(true)
     expect(wrapper.find('label[for="productSkuInput"]').exists()).toBe(true)
     expect(wrapper.find('label[for="productTypeSelect"]').exists()).toBe(true)
@@ -67,7 +67,7 @@ describe('表单与配置语义', () => {
   it('Given 基础配置 When 点击编辑 Then 与通用配置一样发出 edit 事件', async () => {
     const wrapper = mount(BaseConfig)
 
-    await wrapper.get('.config-edit').trigger('click')
+    await wrapper.get('[data-testid="config-row"] button').trigger('click')
 
     expect(wrapper.emitted('edit')).toHaveLength(1)
     expect(wrapper.find('input[name]').exists()).toBe(true)

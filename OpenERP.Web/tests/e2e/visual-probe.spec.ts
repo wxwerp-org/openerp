@@ -347,7 +347,7 @@ const scenarios: Scenario[] = [
         .getByRole('button', { name: /^展开订单/ })
         .first()
         .click()
-      await page.locator('.report-order-details').waitFor()
+      await page.locator('[data-testid="report-order-details"]').waitFor()
     },
   },
   {
@@ -377,7 +377,7 @@ const scenarios: Scenario[] = [
   {
     name: 'settings-base-1440',
     path: '/settings',
-    waitFor: async (page) => page.locator('.config-row').first().waitFor(),
+    waitFor: async (page) => page.locator('[data-testid="config-row"]').first().waitFor(),
   },
   {
     name: 'settings-erp-1440',
@@ -387,10 +387,10 @@ const scenarios: Scenario[] = [
         route.fulfill({ json: { configured: true } }),
       )
     },
-    waitFor: async (page) => page.locator('.config-row').first().waitFor(),
+    waitFor: async (page) => page.locator('[data-testid="config-row"]').first().waitFor(),
     afterGoto: async (page) => {
       await page.locator('[data-settings-item="ERP 接入"]').click()
-      await page.locator('.erp-config-status [role="status"]').waitFor()
+      await page.locator('[data-testid="erp-config-status"] [role="status"]').waitFor()
     },
   },
   {

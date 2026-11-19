@@ -131,12 +131,14 @@ async function mountPanel(): Promise<VueWrapper> {
 
 function findButton(wrapper: VueWrapper, text: string) {
   return wrapper
-    .findAll('.sync-settings-card button')
+    .findAll('[data-testid="sync-settings-card"] button')
     .find((button) => button.text().includes(text))
 }
 
 async function setScheduleEnabled(wrapper: VueWrapper, enabled: boolean): Promise<void> {
-  await wrapper.get('.sync-settings-card input[aria-label="启用定时同步"]').setValue(enabled)
+  await wrapper
+    .get('[data-testid="sync-settings-card"] input[aria-label="启用定时同步"]')
+    .setValue(enabled)
   await flushPromises()
 }
 
@@ -182,7 +184,7 @@ describe('订单同步面板定时同步设置', () => {
     wrapper = await mountPanel()
 
     // Then 设置卡片不存在，也不请求定时同步设置。
-    expect(wrapper.find('.sync-settings-card').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="sync-settings-card"]').exists()).toBe(false)
     const scheduleCalls = fetchMock.mock.calls.filter(([input]) =>
       String(input).includes('/order-sync-settings'),
     )
@@ -299,9 +301,9 @@ describe('订单同步面板定时同步设置', () => {
     expect(wrapper.text()).toContain('已选店铺 99')
 
     // When 选择 42 并取消 99 后保存。
-    await wrapper.get('.sync-shop-option input[value="42"]').setValue(true)
+    await wrapper.get('[data-testid="sync-shop-option"] input[value="42"]').setValue(true)
     await wrapper
-      .findAll('.sync-shop-option')
+      .findAll('[data-testid="sync-shop-option"]')
       .find((option) => option.text().includes('99'))!
       .get('input')
       .setValue(false)
@@ -328,7 +330,7 @@ describe('订单同步面板定时同步设置', () => {
 
     // Then 显示可读错误，卡片和已选店铺仍然保留。
     expect(wrapper.text()).toContain('保存定时同步设置失败')
-    expect(wrapper.find('.sync-settings-card').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="sync-settings-card"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('表格店铺')
   })
 
@@ -379,7 +381,7 @@ describe('订单同步面板定时同步设置', () => {
     expect(wrapper.text()).toContain('表格店铺')
     expect(
       (
-        wrapper.get('.sync-settings-card input[aria-label="启用定时同步"]')
+        wrapper.get('[data-testid="sync-settings-card"] input[aria-label="启用定时同步"]')
           .element as HTMLInputElement
       ).checked,
     ).toBe(true)
@@ -423,7 +425,8 @@ describe('订单同步面板定时同步设置', () => {
       false,
     )
     expect(
-      wrapper.get<HTMLInputElement>('.sync-shop-option input[value="42"]').element.checked,
+      wrapper.get<HTMLInputElement>('[data-testid="sync-shop-option"] input[value="42"]').element
+        .checked,
     ).toBe(true)
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
   })
@@ -441,7 +444,9 @@ describe('订单同步面板定时同步设置', () => {
     // Then 设置可读取，但选店、开关和保存都要求先配置 Token。
     expect(wrapper.text()).toContain('配置私有 ERP AccessToken 后可选择店铺。')
     expect(
-      wrapper.get('.sync-settings-card input[aria-label="启用定时同步"]').attributes('disabled'),
+      wrapper
+        .get('[data-testid="sync-settings-card"] input[aria-label="启用定时同步"]')
+        .attributes('disabled'),
     ).toBeDefined()
     expect(findButton(wrapper, '保存')?.attributes('disabled')).toBeDefined()
   })

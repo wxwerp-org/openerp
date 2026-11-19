@@ -47,8 +47,8 @@ const shellClass = computed(() => [
 
 const inputClass = computed(() => [
   props.size === 'md'
-    ? 'h-[calc(var(--control-h-lg)-2px)] w-full min-w-0 rounded-4 border-0 bg-transparent px-11 text-12/30 outline-none'
-    : 'h-[calc(var(--control-h)-2px)] min-w-0 border-0 bg-transparent px-10 text-12/28 outline-none',
+    ? 'h-[calc(var(--control-h-lg)-2px)] w-full min-w-0 rounded-4 border-0 border-current bg-transparent px-11 py-0 text-12/30 outline-none'
+    : 'h-[calc(var(--control-h)-2px)] min-w-0 border-0 border-current bg-transparent px-10 py-0 text-12/28 outline-none',
   props.readonly ? 'cursor-default text-muted' : 'text-ink',
   'placeholder:text-placeholder',
 ])

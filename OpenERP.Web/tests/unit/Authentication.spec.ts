@@ -348,7 +348,7 @@ describe('真实账号操作', () => {
     await app.get('#profileName').setValue('第二会话')
     await app.get('#saveProfile').trigger('click')
     await flushPromises()
-    expect(app.find('#profileLayer .account-error').exists()).toBe(!refocus)
+    expect(app.find('#profileLayer [data-testid="account-error"]').exists()).toBe(!refocus)
     expect(app.get('[data-testid="account-button"]').text()).toContain(
       refocus ? '第二会话' : '第一会话',
     )

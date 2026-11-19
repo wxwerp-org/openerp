@@ -46,7 +46,7 @@ describe('账户弹窗', () => {
     await wrapper.get('[data-account-action="profile"]').trigger('click')
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(wrapper.get('#profileLayer').classes()).toContain('open')
+    expect(wrapper.get('#profileLayer').attributes('open')).toBeDefined()
     expect(wrapper.get('#profileName').element).toHaveProperty('value', adminAccount.name)
     expect(document.activeElement?.id).toBe('profileName')
   })
@@ -57,7 +57,7 @@ describe('账户弹窗', () => {
     await wrapper.get('[data-account-action="password"]').trigger('click')
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(wrapper.get('#passwordLayer').classes()).toContain('open')
+    expect(wrapper.get('#passwordLayer').attributes('open')).toBeDefined()
     expect(document.activeElement?.id).toBe('oldPassword')
     await wrapper.get('#oldPassword').setValue('old-password')
     await wrapper.get('#newPassword').setValue('new-password')
