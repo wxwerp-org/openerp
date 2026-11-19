@@ -3,6 +3,25 @@ name: 前端检查
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - 'OpenERP.Web/**'
+      - '.github/workflows/ci-web.yml'
+      - '.node-version'
+      - '.editorconfig'
+      - '.gitattributes'
+      # 发布宿主检查通过 AppHost 构建 Web 镜像并核对 Compose 配置。
+      - 'OpenERP.AppHost/**'
+      - 'aspire.config.json'
+      - '.config/dotnet-tools.json'
+      - 'global.json'
+      - 'Directory.Build.props'
+      - 'OpenERP.Api/OpenERP.Api.csproj'
+      - 'OpenERP.Api/packages.lock.json'
+      - 'OpenERP.Api/Properties/launchSettings.json'
+      - 'OpenERP.Core/OpenERP.Core.csproj'
+      - 'OpenERP.Core/packages.lock.json'
+      - 'OpenERP.ServiceDefaults/OpenERP.ServiceDefaults.csproj'
+      - 'OpenERP.ServiceDefaults/packages.lock.json'
   # 合入 main 后对同一套前端检查再跑一次，作为主干门禁。
   push:
     branches: [main]
