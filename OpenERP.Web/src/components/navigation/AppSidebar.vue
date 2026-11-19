@@ -209,7 +209,9 @@ function openFlyoutOnHover(group: NavGroup, event: MouseEvent): void {
 }
 
 function toggleGroup(group: NavGroup, event: MouseEvent): void {
-  if (props.collapsed) {
+  // 仅手动折叠时才展开侧栏；视口强制轨道（报表窄屏）下无法真正展开，
+  // 点击分组应打开子项浮层，避免点击无响应。
+  if (props.collapsed && !props.rail) {
     emit('update:collapsed', false)
     collapsedGroups.value.delete(group.id)
     return
@@ -367,7 +369,7 @@ function subItemState(active: boolean): string[] {
           class="group flex items-center rounded-4 text-left text-13/[19.5px] whitespace-nowrap transition-[background,color] duration-150"
           :class="[...headLayout(), ...headState(isGroupActive(group))]"
           type="button"
-          :aria-expanded="!isGroupCollapsed(group)"
+          :aria-expanded="isRail ? flyoutGroup === group.id : !isGroupCollapsed(group)"
           @click="toggleGroup(group, $event)"
         >
           <AppIcon

@@ -33,7 +33,17 @@ describe('导航与临时状态质量', () => {
     expect(wrapper.get('[data-testid="sidebar"]').attributes('data-rail')).toBe('true')
     await sales.trigger('click')
     expect(wrapper.find('[data-group="sales"] [data-testid="nav-flyout"]').exists()).toBe(true)
+    expect(sales.attributes('aria-expanded')).toBe('true')
     expect(wrapper.emitted('update:collapsed')).toBeUndefined()
+
+    // 手动折叠与视口轨道同时存在时，点击仍打开浮层而不是做无效的展开。
+    const both = mount(AppSidebar, {
+      props: { activePage: 'order-report', collapsed: true, rail: true },
+      attachTo: document.body,
+    })
+    await both.get('[data-group="sales"] button[aria-expanded]').trigger('click')
+    expect(both.find('[data-group="sales"] [data-testid="nav-flyout"]').exists()).toBe(true)
+    expect(both.emitted('update:collapsed')).toBeUndefined()
   })
 
   it('Given 账户按钮 When 按方向下键和 Escape Then 打开菜单并聚焦首项后关闭归还焦点', async () => {
