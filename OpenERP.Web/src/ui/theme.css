@@ -1,0 +1,195 @@
+@layer theme, base, components, legacy, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source('../');
+
+/**
+ * 旧全局样式在迁移期统一进入 legacy 层兜底；页面/组件迁移后逐块删除对应规则。
+ * 迁移完成后本段 import 与 src/styles 一起删除，只保留 theme token 与 base reset。
+ */
+@import '../styles/base.css' layer(legacy);
+@import '../styles/layout.css' layer(legacy);
+@import '../styles/controls.css' layer(legacy);
+@import '../styles/dashboard.css' layer(legacy);
+@import '../styles/lists.css' layer(legacy);
+@import '../styles/forms.css' layer(legacy);
+@import '../styles/orders.css' layer(legacy);
+@import '../styles/account-dialogs.css' layer(legacy);
+@import '../styles/pages.css' layer(legacy);
+@import '../styles/responsive.css' layer(legacy);
+@import '../styles/utilities.css' layer(legacy);
+
+/**
+ * 唯一设计 token 源。数值来自迁移前 src/styles 与 SFC scoped 样式的实测值，
+ * 迁移期间不允许重新设计视觉值。
+ */
+@theme static {
+  /* 清空 Tailwind 默认设计变量，避免误用默认色板/字号/圆角/阴影。 */
+  --color-*: initial;
+  --text-*: initial;
+  --font-*: initial;
+  --leading-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+
+  --spacing: 1px;
+
+  --font-sans:
+    Verdana, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+
+  --color-white: #fff;
+  --color-primary: #005bf5;
+  --color-primary-hover: #0047c7;
+  --color-primary-soft: rgba(0, 91, 245, 0.1);
+  --color-primary-faint: rgba(0, 91, 245, 0.06);
+  --color-primary-line: #b9d2ff;
+  --color-primary-disabled: #a9c4f5;
+  --color-ink: #0b1019;
+  --color-ink-alt: #172033;
+  --color-body: #55585f;
+  --color-body-strong: #33363c;
+  --color-body-alt: #333b4a;
+  --color-muted: #888c94;
+  --color-muted-alt: #64748b;
+  --color-placeholder: #a6abb4;
+  --color-surface: #fff;
+  --color-page: #f2f5fa;
+  --color-page-soft: #f7f9fd;
+  --color-page-alt: #f5f6f9;
+  --color-toolbar: #f0f2f5;
+  --color-nav: #f8f9fb;
+  --color-topnav: #f6f7f9;
+  --color-line: #e6e8eb;
+  --color-line-soft: #ebedf0;
+  --color-border: #e7eaf0;
+  --color-border-nav: #e8eaed;
+  --color-input: #cad2e0;
+  --color-input-hover: #aeb9c9;
+  --color-danger: #e52e2e;
+  --color-success: #00941e;
+  --color-warning: #b96800;
+  --color-accent: #209ff4;
+
+  --color-tag-red-bg: #fff3f3;
+  --color-tag-red-border: #ffd4d4;
+  --color-tag-green-bg: #f3fdf5;
+  --color-tag-green-border: #b9e6c4;
+  --color-tag-blue-bg: #f0f5ff;
+  --color-tag-blue-border: #c7daff;
+  --color-tag-amber-bg: #fff9ee;
+  --color-tag-amber-border: #f6deb5;
+  --color-tag-gray-bg: #f7f8fa;
+  --color-tag-gray-border: #e1e4e9;
+
+  --color-nav-hover: #eff1f4;
+  --color-nav-active: #eaf2ff;
+  --color-nav-text: #3c424b;
+  --color-nav-icon: #7a818b;
+  --color-nav-icon-muted: #a2a8b1;
+  --color-sidebar-foot: #8a9099;
+  --color-scroll-thumb: #cbd5e1;
+  --color-scroll-thumb-nav: #d5dae1;
+  --color-scroll-track: #f2f5fa;
+
+  --color-soft-bg: rgba(11, 16, 25, 0.1);
+  --color-soft-bg-hover: rgba(11, 16, 25, 0.16);
+  --color-btn-hover-bg: #f8fafd;
+  --color-btn-disabled-bg: #f7f9fc;
+  --color-btn-disabled-text: #c7cdd6;
+  --color-row-hover: #fafcff;
+  --color-row-hover-alt: #f9fbff;
+  --color-row-hover-soft: #fbfcfe;
+  --color-row-soft: #f8fafd;
+  --color-row-soft-alt: #f7f9fd;
+  --color-check-border: #c3cbd8;
+  --color-num-muted: #b0b7c3;
+
+  --color-chart-grid: #ecf0f5;
+  --color-chart-axis: #a6abb4;
+  --color-chart-line: #005bf5;
+  --color-chart-line-alt: #8fc0ff;
+  --color-chart-fill: #f0f6ff;
+  --color-chart-dot: #f5a623;
+  --color-chart-point-border: #c9d9ef;
+  --color-chart-tooltip-border: #e6e8eb;
+  --color-chart-tooltip-title: #888c94;
+  --color-chart-tooltip-value: #0b1019;
+  --color-donut-track: #eff4fb;
+  --color-chart-1: #005bf5;
+  --color-chart-2: #65a6ff;
+  --color-chart-3: #a8cbff;
+  --color-chart-4: #d5e5ff;
+  --color-star: #f3ad27;
+  --color-review-bar-track: #f0f3f8;
+  --color-review-bar-fill: #8fc0ff;
+
+  --color-mask: rgba(16, 24, 40, 0.45);
+  --color-mask-strong: rgba(11, 16, 25, 0.38);
+  --color-mask-notice: rgba(15, 23, 42, 0.52);
+  --color-mask-overlay: rgba(0, 0, 0, 0.46);
+  --color-toast-bg: #303741;
+  --color-scrim: rgba(0, 0, 0, 0.1);
+
+  --text-10: 10px;
+  --text-10--line-height: 14px;
+  --text-11: 11px;
+  --text-11--line-height: 16px;
+  --text-12: 12px;
+  --text-12--line-height: 18px;
+  --text-13: 13px;
+  --text-13--line-height: 20px;
+  --text-14: 14px;
+  --text-14--line-height: 22px;
+  --text-15: 15px;
+  --text-15--line-height: 22px;
+  --text-16: 16px;
+  --text-16--line-height: 24px;
+  --text-18: 18px;
+  --text-18--line-height: 28px;
+  --text-20: 20px;
+  --text-20--line-height: 28px;
+  --text-22: 22px;
+  --text-22--line-height: 32px;
+  --text-24: 24px;
+  --text-24--line-height: 32px;
+
+  --leading-15: 15px;
+  --leading-16: 16px;
+  --leading-17: 17px;
+  --leading-18: 18px;
+  --leading-20: 20px;
+  --leading-22: 22px;
+  --leading-24: 24px;
+  --leading-26: 26px;
+  --leading-28: 28px;
+  --leading-30: 30px;
+  --leading-32: 32px;
+  --leading-56: 56px;
+
+  --radius-2: 2px;
+  --radius-3: 3px;
+  --radius-4: 4px;
+  --radius-6: 6px;
+  --radius-8: 8px;
+  --radius-full: 9999px;
+
+  --shadow-header: 0 4px 14px rgba(177, 199, 226, 0.2);
+  --shadow-card-hover: 0 4px 8px rgba(81, 133, 192, 0.11);
+  --shadow-card-hover-lg: 0 6px 12px rgba(81, 133, 192, 0.09);
+  --shadow-stat: 0 4px 10px rgba(81, 133, 192, 0.11);
+  --shadow-menu: 0 2px 8px rgba(16, 24, 40, 0.1);
+  --shadow-menu-lg: 0 4px 12px rgba(16, 24, 40, 0.12);
+  --shadow-account-menu: 0 6px 18px rgba(16, 24, 40, 0.14);
+  --shadow-dialog: 0 10px 32px rgba(16, 24, 40, 0.22);
+  --shadow-dialog-lg: 0 18px 50px rgba(11, 16, 25, 0.24);
+  --shadow-notice: 0 4px 24px rgba(0, 0, 0, 0.18);
+  --shadow-toast: 0 4px 14px rgba(0, 0, 0, 0.18);
+  --shadow-layer: 0 0 0 100vmax var(--color-page), 0 4px 18px rgba(30, 48, 75, 0.08);
+}
+
+:root {
+  --control-h-sm: 28px;
+  --control-h: 30px;
+  --control-h-lg: 32px;
+}

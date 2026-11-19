@@ -494,7 +494,7 @@ const scenarios: Scenario[] = [
       await page.getByLabel('用户名').fill('admin')
       await page.getByLabel('密码', { exact: true }).fill('wrong-password')
       await page.getByRole('button', { name: '登录', exact: true }).click()
-      await page.getByRole('alert').waitFor()
+      await page.getByRole('alert').first().waitFor()
     },
   },
   {
@@ -510,7 +510,7 @@ const scenarios: Scenario[] = [
     waitFor: async (page) => page.getByRole('heading', { name: '初始化 OpenERP' }).waitFor(),
     afterGoto: async (page) => {
       await page.getByRole('button', { name: '设置管理员密码' }).click()
-      await page.getByRole('alert').waitFor()
+      await page.getByRole('alert').first().waitFor()
     },
   },
   {
