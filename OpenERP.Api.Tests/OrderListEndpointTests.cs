@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using Xunit;
 
@@ -40,6 +41,31 @@ public sealed class OrderListEndpointTests(AspireIntegrationFixture fixture) : I
         await connection.OpenAsync(cleanup.Token);
         await using var drop = new NpgsqlCommand($"""DROP DATABASE "{_database}" """, connection);
         await drop.ExecuteNonQueryAsync(cleanup.Token);
+    }
+
+    [Fact]
+    public async Task Lists_current_shop_names_and_keeps_history_for_missing_shops()
+    {
+        // Given 两家店铺有历史订单，只有一家仍在目录中，另有一家店尚无订单。
+        await SaveAsync(Samples());
+        await using var db = CreateContext();
+        db.Shops.AddRange(new Shop { Sid = 30, Name = "目录中的店", Platform = "TemuPop" },
+            new Shop { Sid = 35, Name = "尚无订单", Platform = "TemuPop" });
+        await db.SaveChangesAsync(Ct);
+        await VerifyAsync(async client =>
+        {
+            // When 读取本地列表；Then 筛选项和表格都显示当前名称，历史店保留 SID。
+            var page = await QueryAsync(client);
+            var shops = page.GetProperty("options").GetProperty("shops").EnumerateArray()
+                .Select(shop => (shop.GetProperty("sid").GetInt32(), shop.GetProperty("name").GetString()));
+            Assert.Equal([(30, "目录中的店"), (31, (string?)null)], shops);
+            Assert.All(page.GetProperty("items").EnumerateArray().Where(row => row.GetProperty("sid").GetInt32() == 30),
+                row => Assert.Equal("目录中的店", row.GetProperty("shopName").GetString()));
+            var history = await QueryAsync(client, "shopSid=31");
+            var row = Assert.Single(history.GetProperty("items").EnumerateArray());
+            Assert.Equal(Id("b"), row.GetProperty("id").GetString());
+            Assert.Null(row.GetProperty("shopName").GetString());
+        });
     }
 
     [Fact]
