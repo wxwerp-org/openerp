@@ -39,6 +39,7 @@ async function mockShops(page: Page, count = 1): Promise<void> {
         invalid: 0,
         unknown: 0,
         error: null,
+        version: 1,
       },
     }),
   )
@@ -64,6 +65,7 @@ async function mockShops(page: Page, count = 1): Promise<void> {
           invalid: 0,
           unknown: 0,
           lastSyncedAt: new Date(Date.now() - 15 * 60_000).toISOString(),
+          syncVersion: 1,
         },
       },
     }),
@@ -103,6 +105,7 @@ async function mockPagedShops(page: Page, totalCount = 45): Promise<void> {
         invalid: 0,
         unknown: 0,
         error: null,
+        version: 1,
       },
     }),
   )
@@ -134,6 +137,7 @@ async function mockPagedShops(page: Page, totalCount = 45): Promise<void> {
           invalid: 0,
           unknown: 0,
           lastSyncedAt: new Date(Date.now() - 15 * 60_000).toISOString(),
+          syncVersion: 1,
         },
       },
     })

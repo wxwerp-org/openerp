@@ -56,6 +56,12 @@ public static class ShopDirectoryEndpoints
 
         try
         {
+            // 先读状态行再读店铺行：同步提交是原子事务，此顺序只会得到“旧版本 + 新数据”，
+            // 客户端会因 status.Version 更大而再次刷新，不会把旧数据标成最新。
+            var state = await db.ShopSyncStates
+                .AsNoTracking()
+                .SingleOrDefaultAsync(syncState => syncState.Id == 1, cancellationToken);
+
             IQueryable<Shop> query = db.Shops.AsNoTracking();
             if (normalizedPlatform is not null)
                 query = query.Where(shop => shop.Platform == normalizedPlatform);
@@ -105,10 +111,7 @@ public static class ShopDirectoryEndpoints
                 shop.TokenError,
                 shop.SyncedAt)).ToArray();
 
-            var state = await db.ShopSyncStates
-                .AsNoTracking()
-                .SingleOrDefaultAsync(syncState => syncState.Id == 1, cancellationToken);
-            var summary = new ShopDirectorySummary(valid, invalid, unknown, state?.LastCompletedAt);
+            var summary = new ShopDirectorySummary(valid, invalid, unknown, state?.LastCompletedAt, state?.Version ?? 0);
             return TypedResults.Ok(new ShopDirectoryPage(
                 items, currentPage, currentPageSize, totalCount, pageCount, summary));
         }
@@ -191,9 +194,9 @@ public sealed record ShopDirectoryItem(
     string? TokenError,
     DateTimeOffset? SyncedAt);
 
-/// <summary>本地汇总；不随状态筛选变化。</summary>
+/// <summary>本地汇总；不随状态筛选变化。SyncVersion 是读取目录时的同步状态版本。</summary>
 public sealed record ShopDirectorySummary(
-    int Valid, int Invalid, int Unknown, DateTimeOffset? LastSyncedAt);
+    int Valid, int Invalid, int Unknown, DateTimeOffset? LastSyncedAt, long SyncVersion);
 
 /// <summary>本地店铺分页结果。</summary>
 public sealed record ShopDirectoryPage(

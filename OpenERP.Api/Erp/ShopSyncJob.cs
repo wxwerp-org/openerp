@@ -17,7 +17,8 @@ internal sealed class ShopSyncJob(
     private const int ProgressInterval = 10;
 
     private readonly object _gate = new();
-    private ShopSyncStatus _state = new(false, null, null, 0, 0, 0, 0, 0, null);
+    private long _version;
+    private ShopSyncStatus _state = new(false, null, null, 0, 0, 0, 0, 0, null, 0);
 
     public ShopSyncStatus Status
     {
@@ -36,6 +37,7 @@ internal sealed class ShopSyncJob(
                 return OpResults.Err("店铺与授权状态同步正在进行中，请稍后再试。");
         }
 
+        long persistedVersion;
         using (var scope = scopeFactory.CreateScope())
         {
             var tokenStore = scope.ServiceProvider.GetRequiredService<IErpTokenStore>();
@@ -45,6 +47,17 @@ internal sealed class ShopSyncJob(
                 return OpResults.Err("读取私有 ERP 配置失败，请稍后重试。");
             if (!configured.Value)
                 return OpResults.Err("尚未配置私有 ERP AccessToken。");
+
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var versionResult = await OpResults.TryInvokeAsync(() => db.ShopSyncStates
+                .AsNoTracking()
+                .Where(state => state.Id == 1)
+                .Select(state => state.Version)
+                .SingleOrDefaultAsync(cancellationToken));
+            if (versionResult.IsErr)
+                return OpResults.Err("读取店铺同步状态失败，请稍后重试。");
+
+            persistedVersion = versionResult.Value;
         }
 
         lock (_gate)
@@ -52,17 +65,10 @@ internal sealed class ShopSyncJob(
             if (_state.Running)
                 return OpResults.Err("店铺与授权状态同步正在进行中，请稍后再试。");
 
-            _state = _state with
-            {
-                Running = true,
-                StartedAt = clock.GetUtcNow(),
-                Error = null,
-                Total = 0,
-                Checked = 0,
-                Valid = 0,
-                Invalid = 0,
-                Unknown = 0
-            };
+            // 版本只在开始、完成与失败时递增；进度沿用开始版本，保证进程重启后版本仍单调。
+            _version = Math.Max(_version, persistedVersion) + 1;
+            _state = new ShopSyncStatus(
+                true, clock.GetUtcNow(), null, 0, 0, 0, 0, 0, null, _version);
             var started = _state;
             _ = Task.Run(RunAsync);
             return OpResults.Ok(started);
@@ -71,8 +77,10 @@ internal sealed class ShopSyncJob(
 
     private async Task RunAsync()
     {
-        var startedAt = Status.StartedAt ?? clock.GetUtcNow();
-        await SafePublishAsync(Status);
+        var started = Status;
+        var startedAt = started.StartedAt ?? clock.GetUtcNow();
+        var startedVersion = started.Version;
+        await SafePublishAsync(started);
         var previousCompletedAt = (DateTimeOffset?)null;
         var previousTotal = 0;
         var previousValid = 0;
@@ -115,6 +123,7 @@ internal sealed class ShopSyncJob(
                 db.ShopSyncStates.Add(stateRow);
             }
 
+            stateRow.Version = startedVersion;
             stateRow.LastStartedAt = startedAt;
             stateRow.LastError = null;
             await db.SaveChangesAsync(cancellationToken);
@@ -171,11 +180,20 @@ internal sealed class ShopSyncJob(
             }));
 
             var completedAt = clock.GetUtcNow();
-            await PersistAsync(db, stateRow, results, platformsResult.Value, counters, completedAt, cancellationToken);
+            var finalVersion = NextVersion();
+            var persisted = await PersistAsync(
+                db, stateRow, results, platformsResult.Value, counters, completedAt, finalVersion, cancellationToken);
+            if (persisted.IsErr)
+            {
+                await FinishFailureAsync(
+                    persisted.Error.Message, startedAt, previousCompletedAt,
+                    previousTotal, previousValid, previousInvalid, previousUnknown);
+                return;
+            }
 
             var final = new ShopSyncStatus(
                 false, startedAt, completedAt, results.Length, results.Length,
-                counters.Valid, counters.Invalid, counters.Unknown, null);
+                counters.Valid, counters.Invalid, counters.Unknown, null, finalVersion);
             SetState(final);
             await SafePublishAsync(final);
         }
@@ -188,13 +206,14 @@ internal sealed class ShopSyncJob(
         }
     }
 
-    private async Task PersistAsync(
+    private async Task<OpResult.OpResult> PersistAsync(
         AppDbContext db,
         ShopSyncState stateRow,
         IReadOnlyList<ShopStatusResult> results,
         IReadOnlyList<ErpPlatform> platforms,
         SyncCounters counters,
         DateTimeOffset completedAt,
+        long version,
         CancellationToken cancellationToken)
     {
         var existingShops = await db.Shops.ToDictionaryAsync(shop => shop.Sid, cancellationToken);
@@ -202,7 +221,7 @@ internal sealed class ShopSyncJob(
         foreach (var result in results)
         {
             if (!int.TryParse(result.Shop.Sid, NumberStyles.None, CultureInfo.InvariantCulture, out var sid) || sid <= 0)
-                throw new InvalidOperationException("ERP 返回了无效的店铺 ID。");
+                return OpResults.Err("ERP 返回了无效的店铺 ID。");
 
             seenSids.Add(sid);
             if (!existingShops.TryGetValue(sid, out var shop))
@@ -246,6 +265,7 @@ internal sealed class ShopSyncJob(
         foreach (var stale in existingPlatforms.Values.Where(platform => !seenPlatforms.Contains(platform.Name)).ToArray())
             db.ShopPlatforms.Remove(stale);
 
+        stateRow.Version = version;
         stateRow.LastCompletedAt = completedAt;
         stateRow.LastError = null;
         stateRow.Total = results.Count;
@@ -253,6 +273,7 @@ internal sealed class ShopSyncJob(
         stateRow.Invalid = counters.Invalid;
         stateRow.Unknown = counters.Unknown;
         await db.SaveChangesAsync(cancellationToken);
+        return OpResults.Ok();
     }
 
     private async Task FinishFailureAsync(
@@ -265,6 +286,7 @@ internal sealed class ShopSyncJob(
         int unknown)
     {
         var error = Clip(message, 500) ?? "同步店铺与授权状态失败，请稍后重试。";
+        var version = NextVersion();
 
         // 先落库再释放 Running，避免重试任务清除错误后旧任务又把过期错误写回。
         try
@@ -279,6 +301,7 @@ internal sealed class ShopSyncJob(
                 db.ShopSyncStates.Add(stateRow);
             }
 
+            stateRow.Version = version;
             stateRow.LastError = error;
             await db.SaveChangesAsync(CancellationToken.None);
         }
@@ -288,7 +311,7 @@ internal sealed class ShopSyncJob(
         }
 
         var failed = new ShopSyncStatus(
-            false, startedAt, previousCompletedAt, total, total, valid, invalid, unknown, error);
+            false, startedAt, previousCompletedAt, total, total, valid, invalid, unknown, error, version);
         SetState(failed);
         await SafePublishAsync(failed);
     }
@@ -298,6 +321,7 @@ internal sealed class ShopSyncJob(
         ShopSyncStatus snapshot;
         lock (_gate)
         {
+            // 进度不递增版本：同一次运行内客户端始终按“运行中”处理，完成后由新版本触发列表刷新。
             _state = _state with
             {
                 Total = total,
@@ -310,6 +334,13 @@ internal sealed class ShopSyncJob(
         }
 
         await SafePublishAsync(snapshot);
+    }
+
+    /// <summary>为一次最终状态（完成或失败）分配新的修订号。</summary>
+    private long NextVersion()
+    {
+        lock (_gate)
+            return ++_version;
     }
 
     private void SetState(ShopSyncStatus state)

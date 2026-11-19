@@ -94,6 +94,7 @@ async function mockDirectory(
         invalid: 1,
         unknown: 1,
         error: null,
+        version: 1,
       },
     }),
   )
@@ -127,6 +128,7 @@ async function mockDirectory(
           invalid: 1,
           unknown: 1,
           lastSyncedAt: new Date(Date.now() - 15 * 60_000).toISOString(),
+          syncVersion: 1,
         },
       },
     })

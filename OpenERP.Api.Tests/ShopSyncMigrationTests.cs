@@ -58,6 +58,7 @@ public sealed class ShopSyncMigrationTests(AspireIntegrationFixture fixture) : I
         Assert.False(await TableExistsAsync("ShopAuthorizationEvents", ct));
         Assert.True(await IndexExistsAsync("Shops", "IX_Shops_Platform_IsTokenOk", ct));
         Assert.True(await ConstraintExistsAsync("ShopSyncStates", "CK_ShopSyncStates_Singleton", ct));
+        Assert.True(await ColumnExistsAsync("ShopSyncStates", "Version", ct));
     }
 
     private async Task<bool> TableExistsAsync(string table, CancellationToken cancellationToken)
@@ -70,6 +71,20 @@ public sealed class ShopSyncMigrationTests(AspireIntegrationFixture fixture) : I
                 WHERE table_schema = 'public' AND table_name = @table)
             """, connection);
         command.Parameters.AddWithValue("table", table);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
+    private async Task<bool> ColumnExistsAsync(string table, string column, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = @table AND column_name = @column)
+            """, connection);
+        command.Parameters.AddWithValue("table", table);
+        command.Parameters.AddWithValue("column", column);
         return (bool)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 

@@ -17,6 +17,7 @@ export type ShopSyncStatus = {
   invalid: number
   unknown: number
   error: string | null
+  version: number
 }
 
 export type ShopSyncStartResult = {
@@ -47,6 +48,7 @@ const emptyStatus: ShopSyncStatus = {
   invalid: 0,
   unknown: 0,
   error: null,
+  version: 0,
 }
 
 function isShopSyncStatus(value: unknown): value is ShopSyncStatus {
@@ -63,7 +65,8 @@ function isShopSyncStatus(value: unknown): value is ShopSyncStatus {
     ].every((count) => typeof count === 'number') &&
     (candidate.startedAt === null || typeof candidate.startedAt === 'string') &&
     (candidate.completedAt === null || typeof candidate.completedAt === 'string') &&
-    (candidate.error === null || typeof candidate.error === 'string')
+    (candidate.error === null || typeof candidate.error === 'string') &&
+    typeof candidate.version === 'number'
   )
 }
 
@@ -72,36 +75,26 @@ export function useErpHub(): {
   status: Ref<ShopSyncStatus | null>
   connect: () => Promise<void>
   disconnect: () => Promise<void>
+  refreshStatus: () => Promise<void>
   startShopSync: () => Promise<ShopSyncStartResult>
-  onStatus: (listener: (status: ShopSyncStatus) => void) => () => void
 } {
   const state = ref<ErpHubState>('idle')
   const status = ref<ShopSyncStatus | null>(null)
   let connection: HubConnection | null = null
   let starting: Promise<void> | null = null
-  let listeners: Array<(status: ShopSyncStatus) => void> = []
-  let statusRevision = 0
 
   function apply(next: ShopSyncStatus): void {
-    statusRevision += 1
+    // 服务端版本是状态的唯一权威：只丢弃更旧的快照，避免旧 HTTP/invoke 响应覆盖新广播。
+    if (status.value && next.version < status.value.version) return
     status.value = next
-    for (const listener of listeners) listener(next)
-  }
-
-  function onStatus(listener: (status: ShopSyncStatus) => void): () => void {
-    listeners.push(listener)
-    return () => {
-      listeners = listeners.filter((item) => item !== listener)
-    }
   }
 
   async function refreshStatus(): Promise<void> {
-    const revision = statusRevision
     try {
       const response = await apiRequest('/api/erp/shop-sync')
       if (!response.ok) return
       const body: unknown = await response.json()
-      if (isShopSyncStatus(body) && revision === statusRevision) apply(body)
+      if (isShopSyncStatus(body)) apply(body)
     } catch {
       // 同步状态读取失败不影响授权页浏览本地数据。
     }
@@ -171,11 +164,9 @@ export function useErpHub(): {
       }
     }
 
-    const revision = statusRevision
     try {
       const result = await connection.invoke<ShopSyncStartResult>(startSyncMethod)
-      if (result?.status && isShopSyncStatus(result.status) && revision === statusRevision)
-        apply(result.status)
+      if (result?.status && isShopSyncStatus(result.status)) apply(result.status)
       return result
     } catch {
       return {
@@ -186,5 +177,5 @@ export function useErpHub(): {
     }
   }
 
-  return { state, status, connect, disconnect, startShopSync, onStatus }
+  return { state, status, connect, disconnect, refreshStatus, startShopSync }
 }

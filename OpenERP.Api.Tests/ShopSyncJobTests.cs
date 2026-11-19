@@ -77,7 +77,9 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
 
         // When 触发一次全量同步。
         var started = await job.TryStartAsync(ct);
-        Assert.False(started.IsErr);
+        if (started.IsErr)
+            throw new XunitException(started.Error.Message);
+        Assert.Equal(8, started.Value.Version);
         var final = await WaitForIdleAsync(job, notifier, ct);
 
         // Then 新增与变更店铺按 SID 写入，旧店铺删除，失败店铺记为未知。
@@ -103,6 +105,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
 
         // Then 同步结果与计数落库，推送最终状态。
         var state = await db.ShopSyncStates.AsNoTracking().SingleAsync(state => state.Id == 1, ct);
+        Assert.Equal(final.Version, state.Version);
         Assert.Equal(3, state.Total);
         Assert.Equal(1, state.Valid);
         Assert.Equal(1, state.Invalid);
@@ -110,6 +113,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         Assert.NotNull(state.LastCompletedAt);
         Assert.Null(state.LastError);
         Assert.False(final.Running);
+        Assert.Equal(9, final.Version);
         Assert.Equal(3, final.Total);
         Assert.Equal(3, final.Checked);
         Assert.Equal(1, final.Valid);
@@ -142,6 +146,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         // Then 店铺数据不变，完成时间保留上次成功时间，错误写入状态。
         Assert.False(final.Running);
         Assert.Equal(previousCompletedAt, final.CompletedAt);
+        Assert.Equal(9, final.Version);
         Assert.Equal(2, final.Total);
         Assert.Equal(1, final.Valid);
         Assert.Equal(1, final.Invalid);
@@ -154,6 +159,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         var state = await db.ShopSyncStates.AsNoTracking().SingleAsync(state => state.Id == 1, ct);
         Assert.Equal(previousCompletedAt, state.LastCompletedAt);
         Assert.Contains("ERP 请求超时", state.LastError);
+        Assert.Equal(final.Version, state.Version);
         Assert.Equal(1, state.Valid);
     }
 
@@ -197,6 +203,40 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         // Then 店铺、平台、状态查询使用同一个 Token。
         Assert.Equal(3, seenTokens.Count);
         Assert.All(seenTokens, token => Assert.Equal("test-token", token));
+    }
+
+    [Fact]
+    public async Task Invalid_upstream_shop_id_fails_with_result_and_keeps_previous_data()
+    {
+        // Given 本地已有上次成功数据，上游返回无法解析的店铺 ID。
+        var ct = TestContext.Current.CancellationToken;
+        await MigrateAsync(ct);
+        var previousCompletedAt = ToDatabasePrecision(DateTimeOffset.UtcNow.AddMinutes(-30));
+        await SeedAsync(ct, previousCompletedAt);
+        var erp = new TestErpClient
+        {
+            GetAllShops = (_, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
+                new("not-a-number", "坏店铺", "TemuPop", "US", null)
+            ]))
+        };
+        var (job, notifier, provider) = await CreateJobAsync(erp, ct);
+        using var providerLifetime = provider;
+
+        // When 触发同步。
+        Assert.False((await job.TryStartAsync(ct)).IsErr);
+        var final = await WaitForIdleAsync(job, notifier, ct);
+
+        // Then 以业务错误结束，不抛给调度器，也不覆盖上次成功数据。
+        Assert.False(final.Running);
+        Assert.Contains("无效的店铺 ID", final.Error);
+        Assert.Equal(previousCompletedAt, final.CompletedAt);
+
+        await using var db = CreateDbContext();
+        var shops = await db.Shops.AsNoTracking().OrderBy(shop => shop.Sid).ToArrayAsync(ct);
+        Assert.Equal([30, 99], shops.Select(shop => shop.Sid));
+        var state = await db.ShopSyncStates.AsNoTracking().SingleAsync(state => state.Id == 1, ct);
+        Assert.Contains("无效的店铺 ID", state.LastError);
+        Assert.Equal(previousCompletedAt, state.LastCompletedAt);
     }
 
     [Fact]
@@ -325,7 +365,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         });
         db.ShopSyncStates.Add(new ShopSyncState
         {
-            Id = 1, LastCompletedAt = finishedAt, Total = 2, Valid = 1, Invalid = 1, Unknown = 0
+            Id = 1, Version = 7, LastCompletedAt = finishedAt, Total = 2, Valid = 1, Invalid = 1, Unknown = 0
         });
         await db.SaveChangesAsync(cancellationToken);
     }

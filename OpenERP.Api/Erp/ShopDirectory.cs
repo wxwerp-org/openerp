@@ -40,6 +40,9 @@ internal sealed class ShopSyncState
 {
     public int Id { get; set; } = 1;
 
+    /// <summary>状态修订号；同步开始、完成或失败时递增，客户端据此丢弃旧快照。</summary>
+    public long Version { get; set; }
+
     public DateTimeOffset? LastStartedAt { get; set; }
 
     public DateTimeOffset? LastCompletedAt { get; set; }
@@ -65,7 +68,8 @@ public sealed record ShopSyncStatus(
     int Valid,
     int Invalid,
     int Unknown,
-    string? Error);
+    string? Error,
+    long Version);
 
 /// <summary>手动触发同步的结果；可预期失败不使用异常。</summary>
 public sealed record ShopSyncStartResult(bool Accepted, ShopSyncStatus Status, string? Error);
@@ -110,7 +114,7 @@ internal static class ShopSyncStatusQueries
             .AsNoTracking()
             .SingleOrDefaultAsync(state => state.Id == 1, cancellationToken);
         if (row is null)
-            return new ShopSyncStatus(false, null, null, 0, 0, 0, 0, 0, null);
+            return new ShopSyncStatus(false, null, null, 0, 0, 0, 0, 0, null, 0);
 
         return new ShopSyncStatus(
             false,
@@ -121,6 +125,7 @@ internal static class ShopSyncStatusQueries
             row.Valid,
             row.Invalid,
             row.Unknown,
-            row.LastError);
+            row.LastError,
+            row.Version);
     }
 }
