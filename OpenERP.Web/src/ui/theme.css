@@ -333,6 +333,11 @@
   --radius-8: 8px;
   --radius-full: 9999px;
 
+  /* 控件高度档：AppSegmented、AppPager 等组件与 `h-[var(--control-h)]` 工具类共用。 */
+  --control-h-sm: 28px;
+  --control-h: 30px;
+  --control-h-lg: 32px;
+
   --shadow-header: 0 4px 14px rgba(177, 199, 226, 0.2);
   --shadow-card-hover: 0 4px 8px rgba(81, 133, 192, 0.11);
   --shadow-card-hover-lg: 0 6px 12px rgba(81, 133, 192, 0.09);
@@ -378,10 +383,4 @@
       transform: none;
     }
   }
-}
-
-:root {
-  --control-h-sm: 28px;
-  --control-h: 30px;
-  --control-h-lg: 32px;
 }

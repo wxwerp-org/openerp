@@ -25,12 +25,12 @@ const wrap = inject(
 )
 
 const classes = computed(() => [
-  'border-b border-b-line-soft text-12/18 text-ellipsis',
+  'border-b border-b-line-soft text-12/18',
   props.surface === 'page-soft' ? 'bg-page-soft' : 'bg-white',
   props.tone === 'ink' ? 'text-ink' : 'text-body',
   wrap.value
     ? 'h-auto overflow-visible py-14 align-top [overflow-wrap:anywhere] whitespace-normal [text-overflow:clip]'
-    : 'h-48 overflow-hidden whitespace-nowrap',
+    : 'h-48 overflow-hidden text-ellipsis whitespace-nowrap',
   props.numeric ? 'text-right tabular-nums' : '',
   props.sticky === 'left'
     ? 'sticky left-0 z-[4] w-28 border-r border-r-line-soft pr-0'

@@ -685,9 +685,9 @@ const pageSizeClass =
 const pageSizeDisabledClass =
   'inline-flex h-28 min-w-100 shrink-0 cursor-default items-center justify-between gap-10 rounded-4 border border-input bg-btn-disabled-bg px-9 text-muted'
 const pageSizeSelectClass =
-  'h-26 min-w-0 cursor-[inherit] appearance-none border-0 border-current bg-transparent p-0 text-12 text-inherit outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
+  'h-26 min-w-0 cursor-[inherit] appearance-none border-0 border-current bg-transparent p-0 text-12 text-inherit outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
 const jumpInputClass =
-  'h-28 w-46 rounded-4 border border-input bg-white px-4 py-0 text-center text-12/18 text-ink outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:bg-btn-disabled-bg disabled:text-muted disabled:focus:border-input'
+  'h-28 w-46 rounded-4 border border-input bg-white px-4 py-0 text-center text-12/18 text-ink outline-none focus:border-primary focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:bg-btn-disabled-bg disabled:text-muted disabled:focus:border-input'
 
 let loadedOnOpen = false
 watch(

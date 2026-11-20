@@ -56,7 +56,7 @@ const pageSizeClass =
 const pageSizeClassDisabled =
   'inline-flex h-28 min-w-100 shrink-0 cursor-default items-center justify-between gap-10 rounded-4 border border-input bg-btn-disabled-bg px-9 text-muted'
 const jumpInputClass =
-  'h-28 w-46 rounded-4 border border-input bg-white px-4 py-0 text-center text-12/18 text-ink outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:bg-btn-disabled-bg disabled:text-muted disabled:focus:border-input'
+  'h-28 w-46 rounded-4 border border-input bg-white px-4 py-0 text-center text-12/18 text-ink outline-none focus:border-primary focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:bg-btn-disabled-bg disabled:text-muted disabled:focus:border-input'
 
 /** 分店汇总表沿用旧 `.grid-table td` 的非换行密度。 */
 const groupCellClass =
@@ -146,7 +146,7 @@ function submitJumpPage(): void {
         <select
           v-model="platform"
           aria-label="平台筛选"
-          class="h-28 min-w-0 flex-1 cursor-pointer appearance-none border-0 border-current bg-transparent px-10 text-12 text-ink outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary pointer-coarse:min-h-44"
+          class="h-28 min-w-0 flex-1 cursor-pointer appearance-none border-0 border-current bg-transparent px-10 text-12 text-ink outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary pointer-coarse:min-h-44"
           @change="updateFilters"
         >
           <option value="">全部平台</option>
@@ -193,7 +193,7 @@ function submitJumpPage(): void {
       <button
         type="button"
         :disabled="status === 'loading'"
-        class="inline-flex h-32 min-h-30 flex-none items-center justify-center gap-5 rounded-4 border border-transparent bg-soft-bg px-10 text-12/30 whitespace-nowrap text-ink hover:bg-soft-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:text-placeholder pointer-coarse:min-h-44"
+        class="inline-flex h-32 min-h-30 flex-none items-center justify-center gap-5 rounded-4 border border-transparent bg-soft-bg px-10 text-12/30 whitespace-nowrap text-ink hover:bg-soft-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default pointer-coarse:min-h-44"
         @click="resetFilters"
       >
         清除筛选
@@ -208,7 +208,8 @@ function submitJumpPage(): void {
         <template v-else>查询本地来源订单的当前商品行快照</template>
       </span>
 
-      <span data-testid="report-toolbar" class="flex shrink-0 items-center gap-6">
+      <!-- 测试钩子用 contents：状态标签与刷新按钮仍作为筛选条的直接 flex 项参与换行。 -->
+      <span data-testid="report-toolbar" class="contents">
         <AppTag v-if="status === 'loading'" tone="gray" role="status">正在加载商品量报表…</AppTag>
         <AppTag v-else-if="status === 'success'" tone="green" role="status">报表已更新</AppTag>
         <AppIconButton
@@ -597,7 +598,7 @@ function submitJumpPage(): void {
                   :value="pageSize"
                   :disabled="paginationDisabled"
                   aria-label="每页条数"
-                  class="h-26 min-w-0 cursor-[inherit] appearance-none border-0 border-current bg-transparent p-0 text-12 text-inherit outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  class="h-26 min-w-0 cursor-[inherit] appearance-none border-0 border-current bg-transparent p-0 text-12 text-inherit outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   @change="changePageSize"
                 >
                   <option v-for="size in pageSizeOptions" :key="size" :value="size">
