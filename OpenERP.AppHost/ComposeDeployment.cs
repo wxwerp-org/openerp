@@ -84,10 +84,7 @@ internal static class ComposeDeployment
             const string publish = WellKnownPipelineSteps.Publish;
             const string push = WellKnownPipelineSteps.Push;
             const string pushImage = WellKnownPipelineTags.PushContainerImage;
-            var bundle = context.Steps.Single(step => step.Name == BundleStep);
-            // EF 在生成 bundle 前读取 API 的 NuGet 资产；干净检出时由 API 构建还原。
-            bundle.DependsOn("build-api");
-            bundle.RequiredBySteps.Remove(publish);
+            context.Steps.Single(step => step.Name == BundleStep).RequiredBySteps.Remove(publish);
             foreach (var step in context.GetSteps(pushImage)
                          .Where(step => step.Resource?.Name is "api" or "web"))
             {
