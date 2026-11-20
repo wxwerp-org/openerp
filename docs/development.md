@@ -173,6 +173,7 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 ```bash
 dotnet tool restore
+dotnet restore OpenERP.slnx --locked-mode
 aspire do build-openerp --non-interactive
 aspire publish --non-interactive -o "$PWD/aspire-output/generated"
 yq --from-file deploy/compose.yq ./aspire-output/generated/docker-compose.yaml > ./aspire-output/docker-compose.yaml
