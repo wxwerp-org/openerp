@@ -57,7 +57,8 @@ test('Given 全新数据库尚未初始化 When 浏览器设置管理员密码 T
     expect(status.headers()['cache-control']).toContain('no-store')
     expect(await status.json()).toEqual({ initialized: false })
 
-    const blocked = await page.request.get('/api/ping')
+    // 服务连接页与 /api/ping 已删除，受保护端点探针改用订单接口。
+    const blocked = await page.request.get('/api/orders')
     expect(blocked.status()).toBe(409)
     expect((await blocked.json()).code).toBe('initialization_required')
     const preInitializationLogin = await signInWithApi(secondDevice.request)

@@ -1,7 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import BusinessConfigView from '../../src/views/BusinessConfigView.vue'
-import { createSettingsRouter } from './settingsRouter'
 
 const configPath = '/api/erp/config'
 
@@ -24,12 +23,9 @@ describe('系统设置中的 ERP 接入', () => {
   afterEach(() => wrapper?.unmount())
 
   async function openSettings() {
-    const router = createSettingsRouter()
-    wrapper = mount(BusinessConfigView, { global: { plugins: [router] } })
-    await router.isReady()
-    await wrapper.get('[data-settings-item="ERP 接入"]').trigger('click')
+    wrapper = mount(BusinessConfigView)
     await flushPromises()
-    return wrapper.get('#settingsContent')
+    return wrapper.get('#page-business')
   }
 
   it('Given 尚未配置 ERP Token When 填写并保存 Then 提交新值、显示已配置并清空密码字段', async () => {

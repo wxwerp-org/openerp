@@ -33,6 +33,9 @@
         <span class="text-18 font-semibold tracking-[0.3px] text-ink">Open ERP</span>
       </div>
       <div class="w-full rounded-6 border border-line bg-surface p-32 shadow-header"><slot /></div>
+      <div class="mt-20 flex items-center justify-center text-11/16 text-muted">
+        <slot name="footer" />
+      </div>
     </div>
   </main>
 </template>

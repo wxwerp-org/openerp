@@ -28,7 +28,7 @@ export function sessionRedirect(
     to.meta.administratorOnly &&
     account.value?.role !== 'Administrator'
   )
-    return { name: 'dashboard', replace: true }
+    return { name: 'dashboard', query: { denied: '1' }, replace: true }
 }
 
 export function returnDestination(router: Router, value: unknown): string {

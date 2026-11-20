@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import type { Account } from '../../account/session'
+import { useAboutInfo } from '../../account/aboutInfo'
 import AppIcon from '../../ui/AppIcon.vue'
 
 defineProps<{ account: Account }>()
 
+const { versionLabel, commitLabel } = useAboutInfo()
+const versionText = computed(() =>
+  commitLabel.value ? `${versionLabel.value} · ${commitLabel.value}` : versionLabel.value,
+)
+
 const emit = defineEmits<{
-  action: [action: 'profile' | 'password' | 'settings' | 'logout']
-  notice: []
+  action: [action: 'profile' | 'password' | 'settings' | 'logout' | 'about']
 }>()
 
 const accountButton = ref<HTMLButtonElement | null>(null)
@@ -20,7 +25,7 @@ const menuIconClass = 'size-14 text-menu-icon group-hover:text-primary'
 const dangerItemClass =
   'group flex h-34 w-full items-center gap-8 rounded-4 px-10 text-left text-12 text-danger hover:bg-danger-faint'
 
-function choose(action: 'profile' | 'password' | 'settings' | 'logout'): void {
+function choose(action: 'profile' | 'password' | 'settings' | 'logout' | 'about'): void {
   open.value = false
   emit('action', action)
 }
@@ -70,15 +75,6 @@ onUnmounted(() => document.removeEventListener('click', closeOnOutsideClick))
 
 <template>
   <div class="flex h-38 flex-none items-center pl-8 pr-20 text-nav-text">
-    <button
-      type="button"
-      class="mx-2 flex size-28 items-center justify-center rounded-4 text-tab hover:bg-hover-bg hover:text-primary"
-      title="通知"
-      aria-label="通知"
-      @click="emit('notice')"
-    >
-      <AppIcon name="i-bell" class="size-18 [stroke-width:1.5]" />
-    </button>
     <button
       ref="accountButton"
       type="button"
@@ -155,6 +151,18 @@ onUnmounted(() => document.removeEventListener('click', closeOnOutsideClick))
       <AppIcon name="i-settings" :class="menuIconClass" />系统设置
     </button>
     <hr class="mx-6 my-4 h-1 bg-line-soft" />
+    <button
+      type="button"
+      role="menuitem"
+      :class="menuItemClass"
+      data-account-action="about"
+      @click="choose('about')"
+    >
+      <AppIcon name="i-help" :class="menuIconClass" />关于
+      <span class="ml-auto text-11 text-muted" data-testid="account-version">
+        {{ versionText }}
+      </span>
+    </button>
     <button
       type="button"
       role="menuitem"

@@ -252,4 +252,14 @@ describe('ERP Hub 订单同步', () => {
     expect(hub.orderSyncTasks.value[42]).toEqual(nextTask)
     expect(onOrdersChanged).toHaveBeenCalledTimes(1)
   })
+
+  it('Given 订单任务原地更新 When 观察任务映射 Then 每次更新都产生新的对象引用', async () => {
+    const hub = useErpHub({ shopSync: false })
+    await hub.connect()
+    const before = hub.orderSyncTasks.value
+    hubMock.handlers.get('OrderSyncUpdated')?.(orderTask)
+    const after = hub.orderSyncTasks.value
+    expect(after).not.toBe(before)
+    expect(after[42]).toEqual(orderTask)
+  })
 })

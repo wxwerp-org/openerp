@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import AppButton from '../../ui/AppButton.vue'
-import AppCard from '../../ui/AppCard.vue'
-import AppIcon from '../../ui/AppIcon.vue'
+import AppButton from '../../../ui/AppButton.vue'
+import AppCard from '../../../ui/AppCard.vue'
+import AppIcon from '../../../ui/AppIcon.vue'
 </script>
 
 <template>

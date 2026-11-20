@@ -1,16 +1,20 @@
-import { mount } from '@vue/test-utils'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import BusinessConfigView from '../../src/views/BusinessConfigView.vue'
 import OrdersView from '../../src/views/OrdersView.vue'
-import ProductListView from '../../src/views/ProductListView.vue'
+import DashboardPrototypeView from '../../src/views/prototype/DashboardPrototypeView.vue'
+import ProductPrototypeView from '../../src/views/prototype/ProductPrototypeView.vue'
 import { installNativeDialogShim } from './installNativeDialogShim'
-import { createSettingsRouter } from './settingsRouter'
 
 beforeAll(installNativeDialogShim)
 
-describe('原型列表与配置组件', () => {
-  it('Given 产品列表 When 打开添加产品并空值保存 Then 全屏表单展示七分区且品名校验失败', async () => {
-    const wrapper = mount(ProductListView)
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('原型页面与收敛后的真实页面', () => {
+  it('Given 产品原型 When 打开添加产品并空值保存 Then 七分区表单与品名校验仍按冻结版本工作', async () => {
+    const wrapper = mount(ProductPrototypeView)
 
     expect(wrapper.find('[data-testid="product-empty"]').exists()).toBe(true)
     await wrapper.get('#openProductForm').trigger('click')
@@ -21,36 +25,51 @@ describe('原型列表与配置组件', () => {
     expect(wrapper.get('[data-invalid="true"]').text()).toContain('请输入产品名称')
   })
 
-  it('Given 订单列表 When 打开订单公告 Then 原型公告弹窗显示', async () => {
+  it('Given 原型工作台 When 渲染 Then 仍为冻结的假数据版本', () => {
+    const wrapper = mount(DashboardPrototypeView)
+
+    expect(wrapper.text()).toContain('初始化引导')
+    expect(wrapper.text()).toContain('11-12 15:47')
+  })
+
+  it('Given 订单列表 When 打开 Then 不再出现订单公告入口与弹窗', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 20,
+          options: { shops: [], platforms: [], statuses: [] },
+        }),
+      ),
+    )
     const wrapper = mount(OrdersView)
+    await flushPromises()
 
-    await wrapper.get('#openNotice').trigger('click')
-    expect(wrapper.get('#noticeLayer').attributes('open')).toBeDefined()
-    expect(wrapper.get('#noticeTitle').text()).toBe('【订单列表】优化公告')
+    expect(wrapper.find('#openNotice').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('订单公告')
+    expect(wrapper.find('#noticeLayer').exists()).toBe(false)
   })
 
-  it('Given 默认基础配置 When 渲染设置页 Then 关键配置与信息图标正确显示且无模板残留', () => {
-    const wrapper = mount(BusinessConfigView, { global: { plugins: [createSettingsRouter()] } })
+  it('Given 业务配置 When 打开 Then 只保留 ERP 接入配置', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input), 'http://localhost')
+        if (url.pathname === '/api/erp/config')
+          return Response.json({ configured: true, baseUrl: 'https://erp.example' })
+        return new Response(null, { status: 404 })
+      }),
+    )
+    const wrapper = mount(BusinessConfigView)
+    await flushPromises()
 
-    expect(wrapper.get('#settingsContent').text()).toContain('数据权限管理')
-    expect(wrapper.get('#settingsContent').text()).toContain('周起始日')
-    expect(wrapper.get('#settingsContent').text()).toContain('图片显示')
-    expect(wrapper.get('#settingsContent').text()).not.toContain('svgIcon')
-    expect(wrapper.findAll('[role="radiogroup"] svg').length).toBeGreaterThan(0)
-  })
-
-  it('Given 业务配置多平台分组 When 选择店铺设置 Then 三栏配置结构显示对应内容', async () => {
-    const wrapper = mount(BusinessConfigView, { global: { plugins: [createSettingsRouter()] } })
-
-    await wrapper.get('[data-settings-group="multiplatform"]').trigger('click')
-    const shopButton = wrapper
-      .findAll('[data-settings-item]')
-      .find((button) => button.text() === '店铺设置')
-    expect(shopButton).toBeDefined()
-    await shopButton!.trigger('click')
-
-    expect(wrapper.get('#settingsSecondTitle').text()).toBe('多平台')
-    expect(wrapper.get('#settingsContent').text()).toContain('店铺设置')
-    expect(wrapper.get('#settingsContent').text()).toContain('配置多平台模块下的店铺设置能力')
+    expect(wrapper.text()).toContain('ERP 接入')
+    expect(wrapper.text()).toContain('配置状态')
+    expect(wrapper.text()).toContain('已配置')
+    expect(wrapper.text()).not.toContain('数据权限管理')
+    expect(wrapper.text()).not.toContain('业务配置')
   })
 })

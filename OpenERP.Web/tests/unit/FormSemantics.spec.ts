@@ -3,8 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import PasswordDialog from '../../src/account/PasswordDialog.vue'
 import ProfileDialog from '../../src/account/ProfileDialog.vue'
-import ProductFormDialog from '../../src/forms/ProductFormDialog.vue'
-import BaseConfig from '../../src/settings/BaseConfig.vue'
+import ProductFormDialog from '../../src/views/prototype/ProductFormDialog.vue'
 import { installNativeDialogShim } from './installNativeDialogShim'
 import { adminAccount } from './adminAccount'
 
@@ -62,14 +61,5 @@ describe('表单与配置语义', () => {
     expect(input.attributes('aria-describedby')).toBe('productNameError')
     expect(wrapper.get('#productNameError').attributes('role')).toBe('alert')
     expect(document.activeElement?.id).toBe('productNameInput')
-  })
-
-  it('Given 基础配置 When 点击编辑 Then 与通用配置一样发出 edit 事件', async () => {
-    const wrapper = mount(BaseConfig)
-
-    await wrapper.get('[data-testid="config-row"] button').trigger('click')
-
-    expect(wrapper.emitted('edit')).toHaveLength(1)
-    expect(wrapper.find('input[name]').exists()).toBe(true)
   })
 })

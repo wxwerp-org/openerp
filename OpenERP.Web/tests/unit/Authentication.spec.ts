@@ -27,11 +27,27 @@ async function mountAt(path: string) {
 function mockInitializedFetch(
   fetch: (url: string, request?: RequestInit) => Promise<Response>,
 ): void {
-  vi.stubGlobal('fetch', (url: string, request?: RequestInit) =>
-    url === '/api/auth/status'
-      ? Promise.resolve(Response.json({ initialized: true }))
-      : fetch(url, request),
-  )
+  vi.stubGlobal('fetch', (url: string, request?: RequestInit) => {
+    if (url === '/api/auth/status') return Promise.resolve(Response.json({ initialized: true }))
+    if (
+      url.startsWith('/api/reports/order-snapshot') ||
+      url.startsWith('/api/erp/shops') ||
+      url.startsWith('/api/erp/config') ||
+      url.startsWith('/api/erp/order-sync-availability') ||
+      url.includes('/api/hubs/erp')
+    )
+      // 工作台进入时并行取数的辅助接口，会话用例不关心其内容。
+      return Promise.resolve(new Response(null, { status: 404 }))
+    if (url === '/api/about')
+      return Promise.resolve(
+        Response.json({
+          version: '1.0.0',
+          commit: 'ab981fa',
+          buildTime: '2026-11-20T00:00:00Z',
+        }),
+      )
+    return fetch(url, request)
+  })
 }
 
 function sessionResponse(value = admin, accessToken = 'unit-access'): Response {
@@ -160,7 +176,7 @@ describe('真实会话路由', () => {
     expect(app.find('[data-testid="sidebar"]').exists()).toBe(true)
 
     refreshStatus = 401
-    await router.push('/service-connection')
+    await router.push('/orders')
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/login')

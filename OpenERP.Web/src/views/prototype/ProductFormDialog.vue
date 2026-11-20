@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import AppDialog from '../ui/AppDialog.vue'
-import AppIcon from '../ui/AppIcon.vue'
+import AppDialog from '../../ui/AppDialog.vue'
+import AppIcon from '../../ui/AppIcon.vue'
 
 defineProps<{ open: boolean }>()
 

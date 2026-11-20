@@ -230,26 +230,78 @@ async function mockOrderSync(page: Page): Promise<void> {
   )
 }
 
+const emptyReport = {
+  ...reportSample,
+  summary: { orderCount: 0, itemQuantity: 0 },
+  groups: [],
+  orders: [],
+  page: 1,
+  pageCount: 1,
+}
+
+const prototypeBannerText = '视觉原型 · 全部为假数据 · 冻结于 2026-11-20 · 仅内部参考，请勿对外展示'
+
+function waitPrototype(page: Page) {
+  return page.getByText(prototypeBannerText).waitFor()
+}
+
+/** 真实工作台的数据态/空态截图所需接口（报表、目录、配置、可用性、版本）。 */
+async function mockWorkspaceDashboard(page: Page, empty = false): Promise<void> {
+  await mockReport(page, empty ? emptyReport : reportSample)
+  await mockShopsDirectory(page)
+  await page.route('**/api/erp/config', (route) =>
+    route.fulfill({
+      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: true },
+    }),
+  )
+  await mockSyncAvailability(page, { orderSyncEnabled: true })
+  await page.route('**/api/about', (route) =>
+    route.fulfill({
+      json: { version: '1.0.0', commit: '3abfbcc', buildTime: '2026-11-20T00:00:00Z' },
+    }),
+  )
+}
+
+function waitWorkspace(page: Page) {
+  return page
+    .locator('[data-testid="page-dashboard"] [data-testid="workspace-status-bar"]')
+    .waitFor()
+}
+
 const scenarios: Scenario[] = [
   {
     name: 'dashboard-1440',
     path: '/',
-    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
+    prepare: mockWorkspaceDashboard,
+    waitFor: waitWorkspace,
+  },
+  {
+    name: 'dashboard-empty-1440',
+    path: '/',
+    prepare: async (page) => mockWorkspaceDashboard(page, true),
+    waitFor: waitWorkspace,
   },
   {
     name: 'dashboard-1920',
     path: '/',
     ...wide,
-    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
+    prepare: mockWorkspaceDashboard,
+    waitFor: waitWorkspace,
   },
   {
     name: 'dashboard-sidebar-collapsed-1440',
     path: '/',
-    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
+    prepare: mockWorkspaceDashboard,
+    waitFor: waitWorkspace,
     afterGoto: async (page) => {
       await page.locator('[data-testid="collapse-nav"]').click()
       await page.locator('[data-testid="sidebar"][data-rail="true"]').waitFor()
     },
+  },
+  {
+    name: 'prototype-dashboard-1440',
+    path: '/visual-prototype',
+    waitFor: waitPrototype,
   },
   {
     name: 'users-1440',
@@ -262,23 +314,32 @@ const scenarios: Scenario[] = [
     waitFor: async (page) => page.getByRole('rowheader', { name: 'admin', exact: true }).waitFor(),
   },
   {
-    name: 'products-1440',
-    path: '/products',
-    waitFor: async (page) => page.getByRole('table', { name: '产品列表' }).waitFor(),
+    name: 'prototype-products-1440',
+    path: '/visual-prototype/products',
+    waitFor: async (page) => {
+      await waitPrototype(page)
+      await page.getByRole('table', { name: '产品列表' }).waitFor()
+    },
   },
   {
-    name: 'products-dialog-1440',
-    path: '/products',
-    waitFor: async (page) => page.getByRole('table', { name: '产品列表' }).waitFor(),
+    name: 'prototype-products-dialog-1440',
+    path: '/visual-prototype/products',
+    waitFor: async (page) => {
+      await waitPrototype(page)
+      await page.getByRole('table', { name: '产品列表' }).waitFor()
+    },
     afterGoto: async (page) => {
       await page.locator('#openProductForm').click()
       await page.locator('#productFormLayer[open]').waitFor()
     },
   },
   {
-    name: 'products-dialog-error-1440',
-    path: '/products',
-    waitFor: async (page) => page.getByRole('table', { name: '产品列表' }).waitFor(),
+    name: 'prototype-products-dialog-error-1440',
+    path: '/visual-prototype/products',
+    waitFor: async (page) => {
+      await waitPrototype(page)
+      await page.getByRole('table', { name: '产品列表' }).waitFor()
+    },
     afterGoto: async (page) => {
       await page.locator('#openProductForm').click()
       await page.locator('#productFormLayer[open]').waitFor()
@@ -313,20 +374,6 @@ const scenarios: Scenario[] = [
       await mockSyncAvailability(page)
     },
     waitFor: async (page) => page.getByText('无法加载订单，请稍后重试。').waitFor(),
-  },
-  {
-    name: 'orders-notice-1440',
-    path: '/orders',
-    prepare: async (page) => {
-      await mockOrders(page)
-      await mockSyncAvailability(page)
-    },
-    waitFor: async (page) =>
-      page.getByRole('region', { name: '订单列表' }).locator('tbody tr').first().waitFor(),
-    afterGoto: async (page) => {
-      await page.locator('#openNotice').click()
-      await page.locator('#noticeLayer[open]').waitFor()
-    },
   },
   {
     name: 'orders-sync-1440',
@@ -389,50 +436,18 @@ const scenarios: Scenario[] = [
     waitFor: async (page) => page.getByRole('alert').getByText('报表数据暂不可用').waitFor(),
   },
   {
-    name: 'settings-base-1440',
-    path: '/settings',
-    waitFor: async (page) => page.locator('[data-testid="config-row"]').first().waitFor(),
-  },
-  {
     name: 'settings-erp-1440',
     path: '/settings',
     prepare: async (page) => {
       await page.route('**/api/erp/config', (route) =>
-        route.fulfill({ json: { configured: true } }),
+        route.fulfill({
+          json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: true },
+        }),
       )
     },
-    waitFor: async (page) => page.locator('[data-testid="config-row"]').first().waitFor(),
-    afterGoto: async (page) => {
-      await page.locator('[data-settings-item="ERP 接入"]').click()
-      await page.locator('[data-testid="erp-config-status"] [role="status"]').waitFor()
-    },
-  },
-  {
-    name: 'service-loading-1440',
-    path: '/service-connection',
-    prepare: async (page) => {
-      await page.route('**/api/ping', async (route) => {
-        await new Promise((resolveDelay) => setTimeout(resolveDelay, 15_000))
-        await route.fulfill({ json: { message: 'pong' } }).catch(() => undefined)
-      })
-    },
-    waitFor: async (page) => page.locator('[data-testid="service-tag"]').first().waitFor(),
-  },
-  {
-    name: 'service-success-1440',
-    path: '/service-connection',
-    prepare: async (page) => {
-      await page.route('**/api/ping', (route) => route.fulfill({ json: { message: 'pong' } }))
-    },
-    waitFor: async (page) => page.getByText('后端响应：pong').waitFor(),
-  },
-  {
-    name: 'service-error-1440',
-    path: '/service-connection',
-    prepare: async (page) => {
-      await page.route('**/api/ping', (route) => route.fulfill({ status: 500, body: 'boom' }))
-    },
-    waitFor: async (page) => page.getByText('连接失败').waitFor(),
+    // /settings 由路由守卫补成 ?section=erp，只保留 ERP 接入单分区。
+    waitFor: async (page) =>
+      page.locator('[data-testid="erp-config-status"] [role="status"]').waitFor(),
   },
   {
     name: 'shops-default-1440',
@@ -541,14 +556,10 @@ const scenarios: Scenario[] = [
     waitFor: async (page) => page.getByText('页面不存在', { exact: true }).waitFor(),
   },
   {
-    name: 'newdev-1440',
-    path: '/newdev',
-    waitFor: async (page) => page.getByRole('heading', { name: '新品开发' }).waitFor(),
-  },
-  {
     name: 'account-menu-1440',
     path: '/',
-    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
+    prepare: mockWorkspaceDashboard,
+    waitFor: waitWorkspace,
     afterGoto: async (page) => {
       await page.locator('[data-testid="account-button"]').click()
       await page.locator('#accountMenu').waitFor({ state: 'visible' })
@@ -557,7 +568,8 @@ const scenarios: Scenario[] = [
   {
     name: 'profile-dialog-1440',
     path: '/',
-    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
+    prepare: mockWorkspaceDashboard,
+    waitFor: waitWorkspace,
     afterGoto: async (page) => {
       await page.locator('[data-testid="account-button"]').click()
       await page.locator('[data-account-action="profile"]').click()
@@ -567,7 +579,8 @@ const scenarios: Scenario[] = [
   {
     name: 'password-dialog-1440',
     path: '/',
-    waitFor: async (page) => page.locator('[data-testid="dashboard-card-init"]').waitFor(),
+    prepare: mockWorkspaceDashboard,
+    waitFor: waitWorkspace,
     afterGoto: async (page) => {
       await page.locator('[data-testid="account-button"]').click()
       await page.locator('[data-account-action="password"]').click()

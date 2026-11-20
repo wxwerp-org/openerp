@@ -57,9 +57,8 @@ function reportScroll(page: Page) {
 }
 
 async function openReport(page: Page): Promise<void> {
-  await page.goto('/')
-  await page.locator('[data-group="stats"] button[aria-expanded]').click()
-  await page.locator('[data-nav-page="order-report"]').click()
+  // 「订单管理」分组默认展开，直接点击商品量报表即可；不经过工作台避免其报表请求混入用例计数。
+  await page.goto('/reports/orders')
   await expect(page).toHaveURL(/\/reports\/orders$/)
   await expect(page.locator('#page-order-snapshot-report')).toBeVisible()
 }
@@ -74,7 +73,11 @@ test('Given 商品量报表有平台店铺和订单样本 When 从统计导航�
     await route.fulfill({ json: reportSample })
   })
 
-  await openReport(page)
+  await page.goto('/orders')
+  await expect(page.locator('#page-orders')).toBeVisible()
+  await page.locator('[data-testid="side-nav"] [data-nav-page="order-report"]').click()
+  await expect(page).toHaveURL(/\/reports\/orders$/)
+  await expect(page.locator('#page-order-snapshot-report')).toBeVisible()
   await expect(page.locator('[data-testid="page-tab"] [aria-current="page"]')).toHaveText(
     '商品量报表',
   )
@@ -426,9 +429,10 @@ test('Given 375px 下打开过报表 When 离开报表路由 Then 恢复桌面�
   await openReport(page)
   expect(await page.evaluate(() => getComputedStyle(document.body).minWidth)).toBe('0px')
 
-  // 单页应用内离开报表路由：回到工作台即恢复桌面最小宽度约束。
-  await page.locator('[data-testid="side-nav"] [data-nav-page="dashboard"]').click()
-  await expect(page).toHaveURL(/\/$/)
+  // 单页应用内离开报表路由：进入非流式页面（订单列表）即恢复桌面最小宽度约束。
+  await page.locator('[data-testid="tab-add"]').click()
+  await page.locator('#tabMenu').getByRole('link', { name: '订单列表' }).click()
+  await expect(page).toHaveURL(/\/orders$/)
   await expect(page.locator('#page-order-snapshot-report')).toHaveCount(0)
   const restored = await page.evaluate(() => ({
     bodyMinWidth: getComputedStyle(document.body).minWidth,
@@ -845,7 +849,7 @@ test('Given 细指针窄窗口 When 展示多页报表 Then 分页控件换行�
   await expect(ordersPager(page).locator('[aria-current="page"]')).toHaveText('1')
 })
 
-test('Given 667×375 矮屏 When 滚动导航至设置 Then 尾部入口可达且子菜单浮层不被裁切', async ({
+test('Given 667×375 矮屏 When 导航至设置 Then 尾部分组可达且子菜单浮层不被裁切', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 667, height: 375 })
@@ -855,19 +859,10 @@ test('Given 667×375 矮屏 When 滚动导航至设置 Then 尾部入口可达�
   await page.goto('/reports/orders')
   await expect(page.locator('#page-order-snapshot-report')).toBeVisible()
 
+  // 收敛后的导航条目变少，矮屏轨道下全部可见：尾部「即将上线」分组无需滚动即可达。
   const navigation = page.locator('[data-testid="side-nav"]')
-  const metrics = await navigation.evaluate((element) => {
-    element.scrollTop = element.scrollHeight
-    return {
-      overflowY: getComputedStyle(element).overflowY,
-      scrollTop: element.scrollTop,
-      scrollHeight: element.scrollHeight,
-      clientHeight: element.clientHeight,
-    }
-  })
-  expect(metrics.overflowY).toBe('auto')
-  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight)
-  expect(metrics.scrollTop).toBeGreaterThan(0)
+  expect(await navigation.evaluate((element) => getComputedStyle(element).overflowY)).toBe('auto')
+  await expect(page.locator('[data-group="upcoming"] button[aria-expanded]')).toBeInViewport()
 
   const settings = page.locator('[data-group="settings"] button[aria-expanded]')
   await settings.evaluate((element) => element.scrollIntoView({ block: 'center' }))
@@ -908,8 +903,8 @@ test('Given 窄屏悬停子菜单 When 指针从分组缓慢移入浮层 Then �
 
   await page.mouse.move(submenuBox!.x + 20, submenuBox!.y + 20, { steps: 16 })
   await expect(submenu).toBeVisible()
-  await submenu.getByRole('button', { name: '业务配置', exact: true }).click()
-  await expect(page).toHaveURL(/\/settings$/)
+  await submenu.getByRole('button', { name: 'ERP 接入', exact: true }).click()
+  await expect(page).toHaveURL(/\/settings\?section=erp$/)
 })
 
 test('Given 375px 报表轨道导航 When 点击分组 Then 浮层打开且 Escape 后可再次打开', async ({
@@ -932,6 +927,90 @@ test('Given 375px 报表轨道导航 When 点击分组 Then 浮层打开且 Esca
   await expect(flyout).toHaveCount(0)
   await settings.click()
   await expect(flyout).toBeVisible()
-  await flyout.getByRole('button', { name: '业务配置', exact: true }).click()
-  await expect(page).toHaveURL(/\/settings$/)
+  await flyout.getByRole('button', { name: 'ERP 接入', exact: true }).click()
+  await expect(page).toHaveURL(/\/settings\?section=erp$/)
+})
+
+test('Given 工作台下钻的 URL 参数 When 打开报表并清除筛选 Then 控件与请求反映参数且清除后清理 URL', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const requests: URL[] = []
+  await page.route('**/api/reports/order-snapshot?**', (route) => {
+    requests.push(new URL(route.request().url()))
+    return route.fulfill({ json: reportSample })
+  })
+
+  await page.goto('/reports/orders?platform=TemuPop&shops=wxw-erp%2FTemuPop%2F30')
+  await expect(page.locator('#page-order-snapshot-report')).toBeVisible()
+
+  // 下钻后筛选控件必须反映 URL 参数。
+  await expect(page.getByLabel('平台筛选')).toHaveValue('TemuPop')
+  await expect(page.getByLabel('店铺筛选')).toContainText('已选 1 家店铺')
+
+  // 两阶段：首请求只带 platform 用于取全量店铺选项；应用有效店铺键后再发带 shops 的请求。
+  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(2)
+  const initialRequest = requests[0]!
+  expect(initialRequest.searchParams.get('platform')).toBe('TemuPop')
+  expect(initialRequest.searchParams.getAll('shops')).toEqual([])
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.getAll('shops') ?? [])
+    .toEqual(['wxw-erp/TemuPop/30'])
+  expect(requests.at(-1)!.searchParams.get('platform')).toBe('TemuPop')
+
+  // 清除筛选是用户手动操作：只发一次请求并同步清理 URL。
+  const requestsBeforeClear = requests.length
+  await page.getByRole('button', { name: '清除筛选' }).click()
+  await expect(page).toHaveURL(/\/reports\/orders$/)
+  await expect(page.getByLabel('平台筛选')).toHaveValue('')
+  await expect(page.getByLabel('店铺筛选')).toContainText('全部店铺')
+  await expect.poll(() => requests.length).toBe(requestsBeforeClear + 1)
+  const clearedRequest = requests.at(-1)!
+  expect(clearedRequest.searchParams.get('platform')).toBeNull()
+  expect(clearedRequest.searchParams.getAll('shops')).toEqual([])
+})
+
+test('Given 非法与混合的 URL 筛选 When 打开报表 Then 丢弃非法值并保留可匹配项且不报错', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const requests: URL[] = []
+  await page.route('**/api/reports/order-snapshot?**', (route) => {
+    requests.push(new URL(route.request().url()))
+    return route.fulfill({ json: reportSample })
+  })
+
+  // 未知平台与未知店铺全部丢弃，按无筛选重新查询。
+  await page.goto('/reports/orders?platform=UnknownPlatform&shops=wxw-erp%2FTemuPop%2F999')
+  await expect(page.locator('#page-order-snapshot-report')).toBeVisible()
+  await expect(page).toHaveURL(/\/reports\/orders$/)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByLabel('平台筛选')).toHaveValue('')
+  await expect(page.getByLabel('店铺筛选')).toContainText('全部店铺')
+
+  // 首请求只带已知的 platform（不带 URL 里的 shops），选项返回后清掉未知平台与店铺重查。
+  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(2)
+  const invalidInitialRequest = requests[0]!
+  expect(invalidInitialRequest.searchParams.get('platform')).toBe('UnknownPlatform')
+  expect(invalidInitialRequest.searchParams.getAll('shops')).toEqual([])
+  await expect.poll(() => requests.at(-1)?.searchParams.get('platform') ?? null).toBeNull()
+  expect(requests.at(-1)!.searchParams.getAll('shops')).toEqual([])
+
+  // 有效平台 + 有效/无效店铺混合：首请求只带 platform，过滤未知店铺后仅带有效键重查。
+  const requestsBeforeMixed = requests.length
+  await page.goto(
+    '/reports/orders?platform=TemuPop&shops=wxw-erp%2FTemuPop%2F30&shops=wxw-erp%2FTemuPop%2F999',
+  )
+  await expect(page).toHaveURL(/platform=TemuPop&shops=wxw-erp\/TemuPop\/30$/)
+  await expect(page.getByLabel('平台筛选')).toHaveValue('TemuPop')
+  await expect(page.getByLabel('店铺筛选')).toContainText('已选 1 家店铺')
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect.poll(() => requests.length).toBeGreaterThanOrEqual(requestsBeforeMixed + 2)
+  const mixedInitialRequest = requests[requestsBeforeMixed]!
+  expect(mixedInitialRequest.searchParams.get('platform')).toBe('TemuPop')
+  expect(mixedInitialRequest.searchParams.getAll('shops')).toEqual([])
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.getAll('shops') ?? [])
+    .toEqual(['wxw-erp/TemuPop/30'])
+  expect(requests.at(-1)!.searchParams.get('platform')).toBe('TemuPop')
 })

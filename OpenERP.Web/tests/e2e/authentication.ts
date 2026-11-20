@@ -53,8 +53,13 @@ export async function expectSessionResponse(response: {
   return session
 }
 
+export type WorkspaceRole = 'Administrator' | 'User'
+
 // 前端 CI 不启动后端：用页面级 mock 会话让工作台用例照常渲染。
-export async function enterWorkspace(page: Page): Promise<void> {
+export async function enterWorkspace(
+  page: Page,
+  role: WorkspaceRole = 'Administrator',
+): Promise<void> {
   if (adminPassword) {
     await signInForWorkspace(page.request)
     return
@@ -63,16 +68,18 @@ export async function enterWorkspace(page: Page): Promise<void> {
   const now = Date.now()
   const account = {
     id: '019ab104-7d00-7000-8000-000000000001',
-    role: 'Administrator',
-    username: 'admin',
-    name: '验收管理员',
+    role,
+    username: role === 'Administrator' ? 'admin' : 'staff',
+    name: role === 'Administrator' ? '验收管理员' : '验收员工',
     phone: null,
     email: null,
     lastLoginAt: new Date(now).toISOString(),
     expiresAt: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
   }
   await page.route('**/api/users', (route) =>
-    route.fulfill({ json: [{ ...account, createdAt: null }] }),
+    role === 'Administrator'
+      ? route.fulfill({ json: [{ ...account, createdAt: null }] })
+      : route.fulfill({ status: 403, json: { title: 'Forbidden' } }),
   )
   await page.route('**/api/auth/status', (route) => route.fulfill({ json: { initialized: true } }))
   await page.route('**/api/auth/refresh', (route) =>

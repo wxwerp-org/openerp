@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import AppCard from '../../ui/AppCard.vue'
-import AppIcon from '../../ui/AppIcon.vue'
-import AppSegmented from '../../ui/AppSegmented.vue'
+import AppCard from '../../../ui/AppCard.vue'
+import AppIcon from '../../../ui/AppIcon.vue'
+import AppSegmented from '../../../ui/AppSegmented.vue'
 
 const period = ref('今日')
 const metrics = [

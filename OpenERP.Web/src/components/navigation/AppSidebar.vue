@@ -1,19 +1,22 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import AppIcon from '../../ui/AppIcon.vue'
-import { workspacePages } from '../../router/workspace'
+import {
+  isAdministratorOnlyPage,
+  navigationGroups,
+  type NavigationGroup,
+} from '../../router/workspace'
 
-type NavItem = { label: string; page?: string }
-type NavGroup = { id: string; label: string; icon: string; items: NavItem[] }
+type NavGroup = NavigationGroup
 
 const props = withDefaults(
   defineProps<{
     activePage: string
     collapsed: boolean
     administrator: boolean
-    /** 视口强制轨道（报表页窄屏）：布局按轨道呈现，但手动折叠状态保持不变。 */
+    /** 视口强制轨道（工作台/报表窄屏）：布局按轨道呈现，但手动折叠状态保持不变。 */
     rail?: boolean
-    /** 报表页窄屏 + 触屏时轨道目标放大到 44px（WCAG 2.5.5）。 */
+    /** 工作台/报表窄屏 + 触屏时轨道目标放大到 44px（WCAG 2.5.5）。 */
     touchRail?: boolean
   }>(),
   { rail: false, touchRail: false },
@@ -24,112 +27,23 @@ const isRail = computed(() => props.collapsed || props.rail)
 const emit = defineEmits<{
   'update:collapsed': [value: boolean]
   navigate: [page: string]
-  preview: [label: string]
 }>()
 
-const groups: NavGroup[] = [
-  {
-    id: 'product',
-    label: '产品',
-    icon: 'i-nav-product',
-    items: [
-      { label: '新品开发', page: 'newdev' },
-      { label: '产品管理', page: 'product' },
-      { label: '产品采集' },
-      { label: '产品资料' },
-    ],
-  },
-  {
-    id: 'sales',
-    label: '销售',
-    icon: 'i-nav-sales',
-    items: [
-      { label: '订单列表', page: 'orders' },
-      { label: '售后订单' },
-      { label: '评价管理' },
-      { label: '销量分析' },
-    ],
-  },
-  {
-    id: 'fba',
-    label: 'FBA',
-    icon: 'i-nav-fba',
-    items: [{ label: 'FBA发货' }, { label: 'FBA库存' }],
-  },
-  {
-    id: 'purchase',
-    label: '采购',
-    icon: 'i-nav-purchase',
-    items: [{ label: '采购单' }, { label: '供应商' }],
-  },
-  {
-    id: 'warehouse',
-    label: '仓库',
-    icon: 'i-nav-warehouse',
-    items: [{ label: '库存管理' }, { label: '出入库流水' }],
-  },
-  {
-    id: 'logistics',
-    label: '物流',
-    icon: 'i-nav-logistics',
-    items: [{ label: '物流跟踪' }, { label: '头程管理' }],
-  },
-  {
-    id: 'ad',
-    label: '广告',
-    icon: 'i-nav-ad',
-    items: [{ label: '广告活动' }, { label: '广告报表' }],
-  },
-  {
-    id: 'service',
-    label: '客服',
-    icon: 'i-nav-service',
-    items: [{ label: '客服邮件' }, { label: '售后工单' }],
-  },
-  {
-    id: 'finance',
-    label: '财务',
-    icon: 'i-nav-finance',
-    items: [{ label: '财务结算' }, { label: '利润报表' }],
-  },
-  {
-    id: 'stats',
-    label: '统计',
-    icon: 'i-nav-stats',
-    items: [
-      { label: '销量统计' },
-      { label: '产品表现' },
-      { label: '商品量报表', page: 'order-report' },
-    ],
-  },
-  { id: 'tools', label: '工具', icon: 'i-nav-tools', items: [{ label: '工具箱' }] },
-  {
-    id: 'settings',
-    label: '设置',
-    icon: 'i-nav-settings',
-    items: [
-      { label: '业务配置', page: 'business' },
-      { label: '用户管理', page: 'users' },
-      { label: '服务连接', page: 'service-connection' },
-      { label: '授权店铺', page: 'shops' },
-    ],
-  },
-]
+const groups = navigationGroups
 
 const visibleGroups = computed(() =>
-  props.administrator
-    ? groups
-    : groups.map((group) => ({
-        ...group,
-        items: group.items.filter(
-          (item) => !workspacePages.some((page) => page.id === item.page && page.administratorOnly),
-        ),
-      })),
+  groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => props.administrator || !isAdministratorOnlyPage(item.page),
+      ),
+    }))
+    .filter((group) => group.items.length > 0),
 )
 
-const collapsedGroups = ref(
-  new Set(groups.filter((group) => group.id !== 'product').map((group) => group.id)),
-)
+// 「即将上线」默认收起；其余分组默认展开。
+const collapsedGroups = ref(new Set(['upcoming']))
 const flyoutGroup = ref<string | null>(null)
 const flyoutTop = ref(8)
 const flyoutElement = ref<HTMLElement | null>(null)
@@ -237,10 +151,9 @@ function toggleGroup(group: NavGroup, event: MouseEvent): void {
   else collapsedGroups.value.add(group.id)
 }
 
-function navigate(page?: string, label?: string): void {
+function navigate(page?: string): void {
   closeFlyout()
   if (page) emit('navigate', page)
-  else if (label) emit('preview', label)
 }
 
 function openFlyoutOnFocus(group: NavGroup, event: FocusEvent): void {
@@ -290,7 +203,8 @@ function subItemLayout(inFlyout: boolean): string[] {
   return inFlyout ? ['w-full px-8'] : ['pl-34 pr-8']
 }
 
-function subItemState(active: boolean): string[] {
+function subItemState(active: boolean, disabled = false): string[] {
+  if (disabled) return ['cursor-default text-muted']
   return active
     ? ['bg-nav-active font-semibold text-primary']
     : ['text-body hover:bg-nav-hover hover:text-ink']
@@ -412,11 +326,16 @@ function subItemState(active: boolean): string[] {
             v-for="item in group.items"
             :key="item.label"
             class="flex h-32 items-center overflow-hidden text-ellipsis rounded-4 text-left text-13/[19.5px] whitespace-nowrap transition-[background,color] duration-150 [@media(max-height:760px)]:h-28"
-            :class="[...subItemLayout(false), ...subItemState(item.page === activePage)]"
+            :class="[
+              ...subItemLayout(false),
+              ...subItemState(item.page === activePage, !item.page),
+            ]"
             type="button"
             :data-nav-page="item.page ?? ''"
+            :disabled="!item.page"
+            :title="item.page ? undefined : '即将上线'"
             :aria-current="item.page === activePage ? 'page' : undefined"
-            @click="navigate(item.page, item.label)"
+            @click="navigate(item.page)"
           >
             {{ item.label }}
           </button>
@@ -435,9 +354,11 @@ function subItemState(active: boolean): string[] {
             v-for="item in group.items"
             :key="item.label"
             class="flex h-32 items-center overflow-hidden text-ellipsis rounded-4 text-left text-13/[19.5px] whitespace-nowrap transition-[background,color] duration-150 [@media(max-height:760px)]:h-28"
-            :class="[...subItemLayout(true), ...subItemState(item.page === activePage)]"
+            :class="[...subItemLayout(true), ...subItemState(item.page === activePage, !item.page)]"
             type="button"
-            @click="navigate(item.page, item.label)"
+            :disabled="!item.page"
+            :title="item.page ? undefined : '即将上线'"
+            @click="navigate(item.page)"
           >
             {{ item.label }}
           </button>

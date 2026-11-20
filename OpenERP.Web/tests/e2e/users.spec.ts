@@ -64,38 +64,37 @@ test('Given 管理员创建并改名的员工 When 同步历史订单和店铺 T
     await orders.keyboard.press('Escape')
     await expect(orders.getByRole('row').filter({ hasText: 'TM-BROWSER-SYNC-30' })).toBeVisible()
 
-    await test.step('Given 已登录的普通用户 When 从设置打开授权店铺与详情 Then 可读取状态且无授权入口', async () => {
-      await orders.locator('[data-group="settings"] button[aria-expanded]').click()
-      await orders.locator('[data-nav-page="shops"]').click()
-      await expect(orders).toHaveURL(/\/shops$/)
-      const table = orders.getByRole('table', { name: '授权店铺列表' })
-      const row = table.getByRole('row').filter({ hasText: '验收店铺' })
-      await expect(row.getByText('有效', { exact: true })).toBeVisible()
-      await expect(row.getByRole('cell', { name: '尚未检查' })).toBeVisible()
-      await expect(table.getByText('去 wxw 授权', { exact: true })).toHaveCount(0)
-      await expect(orders.getByRole('button', { name: '立即同步' })).toBeEnabled()
-      await orders.screenshot({ path: testInfo.outputPath('employee-shop-list.png') })
+    await test.step('Given 已登录的普通用户 When 查看导航并直达管理路由 Then 无入口且被拒绝', async () => {
+      await expect(orders.locator('[data-nav-page="shops"]')).toHaveCount(0)
+      await expect(orders.locator('[data-nav-page="users"]')).toHaveCount(0)
+      await expect(orders.locator('[data-nav-page="business"]')).toHaveCount(0)
+      await expect(orders.locator('[data-group="settings"]')).toHaveCount(0)
+      await expect(orders.locator('[data-group="shops"]')).toHaveCount(0)
 
-      await row.getByRole('button', { name: '详情' }).click()
-      const details = orders.getByRole('dialog', { name: '验收店铺' })
-      await expect(details.getByText('有效', { exact: true })).toBeVisible()
-      await expect(details.getByText('去 wxw 授权', { exact: true })).toHaveCount(0)
-      await orders.screenshot({ path: testInfo.outputPath('employee-shop-detail.png') })
-      await details.getByRole('button', { name: '关闭', exact: true }).last().click()
-      await expect(details).toBeHidden()
-    })
+      await orders.goto('/shops')
+      await expect(orders).toHaveURL(/\/(\?denied=1)?$/)
+      await expect(orders.getByTestId('toast')).toContainText('该页面仅管理员可访问')
+      await expect(orders.getByRole('table', { name: '授权店铺列表' })).toHaveCount(0)
+      await orders.screenshot({ path: testInfo.outputPath('employee-shop-denied.png') })
 
-    await test.step('When 点击立即同步 Then 授权状态和最后检查时间自动更新', async () => {
-      const sync = orders.getByRole('button', { name: '立即同步' })
-      await sync.click()
-      const row = orders
-        .getByRole('table', { name: '授权店铺列表' })
-        .getByRole('row')
-        .filter({ hasText: '验收店铺' })
-      await expect(row.getByText('无效', { exact: true })).toBeVisible()
-      await expect(row.getByRole('cell', { name: '尚未检查' })).toHaveCount(0)
-      await expect(orders.getByText('刚刚', { exact: true })).toBeVisible()
-      await expect(sync).toBeEnabled()
+      // 员工仍可用最小投影选店（订单同步弹窗已在上一步验证），但不能读取授权/同步状态。
+      const shops = await staff.request.get('/api/erp/shops?page=1&pageSize=20', { headers })
+      expect(shops.status()).toBe(200)
+      const shopBody = (await shops.json()) as {
+        items: Record<string, unknown>[]
+        summary?: unknown
+      }
+      expect(shopBody.summary).toBeUndefined()
+      expect(Object.keys(shopBody.items[0] ?? {}).sort()).toEqual([
+        'name',
+        'platform',
+        'region',
+        'sid',
+      ])
+      expect((await staff.request.get('/api/erp/shops?status=valid', { headers })).status()).toBe(
+        403,
+      )
+      expect((await staff.request.get('/api/erp/shop-sync', { headers })).status()).toBe(403)
     })
 
     expect(restrictedRequests).toEqual([])

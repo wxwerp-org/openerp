@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import AppCard from '../../ui/AppCard.vue'
-import AppIcon from '../../ui/AppIcon.vue'
-import AppTag from '../../ui/AppTag.vue'
+import AppCard from '../../../ui/AppCard.vue'
+import AppIcon from '../../../ui/AppIcon.vue'
+import AppTag from '../../../ui/AppTag.vue'
 </script>
 
 <template>

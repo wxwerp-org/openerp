@@ -14,10 +14,9 @@ async function mountShell(): Promise<VueWrapper> {
     history: createMemoryHistory(),
     routes: [
       { path: '/', component: Page, meta: { title: '首页' } },
-      { path: '/newdev', component: Page, meta: { title: '新品开发' } },
-      { path: '/products', component: Page, meta: { title: '产品管理' } },
       { path: '/orders', component: Page, meta: { title: '订单列表' } },
-      { path: '/settings', component: Page, meta: { title: '业务配置' } },
+      { path: '/reports/orders', component: Page, meta: { title: '商品量报表' } },
+      { path: '/settings', component: Page, meta: { title: 'ERP 接入' } },
       { path: '/users', component: Page, meta: { title: '用户管理' } },
     ],
   })

@@ -89,20 +89,20 @@ describe('短期访问令牌与持久刷新会话', () => {
     const fetch = vi.fn(async (url: string) => {
       if (url === '/api/auth/csrf') return Response.json({ requestToken: 'csrf-login' })
       if (url === '/api/auth/login') return Response.json(credentials('login-access'))
-      if (url === '/api/ping') return Response.json({ message: 'ok' })
+      if (url === '/api/orders') return Response.json({ message: 'ok' })
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
     const session = await import('../../src/account/session')
 
     await session.login('admin', ' secret ')
-    const response = await session.apiRequest('/api/ping')
+    const response = await session.apiRequest('/api/orders')
 
     expect(response.status).toBe(200)
     const requests = requestsFrom(fetch)
     const login = requests.find(({ url }) => url === '/api/auth/login')
     const csrf = requests.find(({ url }) => url === '/api/auth/csrf')
-    const business = requests.find(({ url }) => url === '/api/ping')
+    const business = requests.find(({ url }) => url === '/api/orders')
     expect(JSON.parse(String(login?.init?.body))).toEqual({
       username: 'admin',
       password: ' secret ',
@@ -445,7 +445,7 @@ describe('短期访问令牌与持久刷新会话', () => {
       if (url === '/api/auth/csrf') return Response.json({ requestToken: 'csrf-request' })
       if (url === '/api/auth/login') return Response.json(credentials('access-before-background'))
       if (url === '/api/auth/refresh') return Response.json(credentials('access-after-background'))
-      if (url === '/api/ping') {
+      if (url === '/api/orders') {
         return new Headers(init?.headers).get('Authorization') === 'Bearer access-after-background'
           ? Response.json({ message: 'ok' })
           : new Response(null, { status: 401 })
@@ -458,14 +458,14 @@ describe('短期访问令牌与持久刷新会话', () => {
     const refreshDeadline = performance.now() + 6 * 60 * 1000
     vi.spyOn(performance, 'now').mockReturnValue(refreshDeadline)
 
-    const response = await session.apiRequest('/api/ping')
+    const response = await session.apiRequest('/api/orders')
 
     expect(response.status).toBe(200)
     const requests = requestsFrom(fetch)
     expect(requests.filter(({ url }) => url === '/api/auth/refresh')).toHaveLength(1)
-    expect(requests.filter(({ url }) => url === '/api/ping')).toHaveLength(1)
+    expect(requests.filter(({ url }) => url === '/api/orders')).toHaveLength(1)
     expect(
-      new Headers(requests.find(({ url }) => url === '/api/ping')?.init?.headers).get(
+      new Headers(requests.find(({ url }) => url === '/api/orders')?.init?.headers).get(
         'Authorization',
       ),
     ).toBe('Bearer access-after-background')

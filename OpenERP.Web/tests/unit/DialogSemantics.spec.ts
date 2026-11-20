@@ -3,8 +3,7 @@ import { nextTick } from 'vue'
 import { beforeAll, describe, expect, it } from 'vitest'
 import PasswordDialog from '../../src/account/PasswordDialog.vue'
 import ProfileDialog from '../../src/account/ProfileDialog.vue'
-import OrderNoticeDialog from '../../src/forms/OrderNoticeDialog.vue'
-import ProductFormDialog from '../../src/forms/ProductFormDialog.vue'
+import ProductFormDialog from '../../src/views/prototype/ProductFormDialog.vue'
 import { installNativeDialogShim } from './installNativeDialogShim'
 import { adminAccount } from './adminAccount'
 
@@ -13,7 +12,6 @@ beforeAll(installNativeDialogShim)
 describe('原生弹窗语义', () => {
   it.each([
     ['添加产品', ProductFormDialog, 'productFormLayer'],
-    ['订单公告', OrderNoticeDialog, 'noticeLayer'],
     ['个人信息', ProfileDialog, 'profileLayer'],
     ['修改密码', PasswordDialog, 'passwordLayer'],
   ])(
