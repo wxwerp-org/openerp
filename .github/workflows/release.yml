@@ -45,6 +45,17 @@ jobs:
 
       - name: 构建 Release 镜像和 Compose
         run: |
+          # 版本信息随 API 构建注入：Release tag、完整 SHA 截取前 7 位与 UTC 构建时间。
+          commit="$(git rev-parse HEAD)"
+          export OPENERP_BUILD_VERSION="${ReleaseTag:?缺少 Release 标签}"
+          export OPENERP_BUILD_COMMIT="${commit:0:7}"
+          export OPENERP_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # 同一组构建值留给后续烟测逐字段核对，避免验收与构建使用不同来源。
+          {
+            printf 'OPENERP_BUILD_VERSION=%s\n' "$OPENERP_BUILD_VERSION"
+            printf 'OPENERP_BUILD_COMMIT=%s\n' "$OPENERP_BUILD_COMMIT"
+            printf 'OPENERP_BUILD_TIME=%s\n' "$OPENERP_BUILD_TIME"
+          } >> "$GITHUB_ENV"
           # Aspire 已安装到 PATH，单独还原 EF，避开冷缓存下多工具命令错配（dotnet/sdk#53783）。
           dotnet tool install --local dotnet-ef --version "$(jq -r '.tools["dotnet-ef"].version' .config/dotnet-tools.json)"
           dotnet restore OpenERP.slnx --locked-mode
@@ -71,7 +82,10 @@ jobs:
           test "$(docker image inspect openerp:local --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
           image_id="$(docker image inspect openerp:local --format '{{.Id}}')"
           docker tag "$image_id" "$release_image"
-          python3 deploy/tests/smoke.py --compose "$compose_file" --image "$release_image"
+          python3 deploy/tests/smoke.py --compose "$compose_file" --image "$release_image" \
+            --expected-version "$OPENERP_BUILD_VERSION" \
+            --expected-commit "$OPENERP_BUILD_COMMIT" \
+            --expected-build-time "$OPENERP_BUILD_TIME"
           echo "image=$(docker compose -f "$compose_file" config --images)" >> "$GITHUB_OUTPUT"
           sha256sum "$compose_file" | awk '{print "sha256=" $1}' >> "$GITHUB_OUTPUT"
           echo "RELEASE_IMAGE=$release_image" >> "$GITHUB_ENV"

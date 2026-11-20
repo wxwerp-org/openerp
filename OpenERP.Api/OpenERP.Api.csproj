@@ -7,6 +7,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- CI 在 API 构建步骤注入版本信息；默认 0.1.0-dev。SDK 仍会追加 +<sha>，由 /api/about 剥离。 -->
+  <PropertyGroup>
+    <InformationalVersion Condition="'$(OPENERP_BUILD_VERSION)' != ''">$(OPENERP_BUILD_VERSION)</InformationalVersion>
+    <InformationalVersion Condition="'$(OPENERP_BUILD_VERSION)' == ''">0.1.0-dev</InformationalVersion>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="OpenERP.Api.Tests" />
     <ProjectReference Include="../OpenERP.Core/OpenERP.Core.csproj" />
@@ -29,5 +35,17 @@
     <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.11.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="RokyZevon.OpResult" Version="0.3.0" />
+  </ItemGroup>
+
+  <!-- 提交与构建时间单独注入，避免依赖 SDK 自动追加的版本元数据。 -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>OpenERP.Commit</_Parameter1>
+      <_Parameter2>$(OPENERP_BUILD_COMMIT)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>OpenERP.BuildTime</_Parameter1>
+      <_Parameter2>$(OPENERP_BUILD_TIME)</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 </Project>

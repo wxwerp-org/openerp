@@ -409,7 +409,7 @@ internal sealed class ShopSyncJob(
     }
 }
 
-/// <summary>通过 SignalR 广播同步状态；推送失败只记录日志。</summary>
+/// <summary>通过 SignalR 广播同步状态；目录状态只发给管理员组，推送失败只记录日志。</summary>
 internal sealed class ShopSyncNotifier(
     IHubContext<ErpHub> hub,
     ILogger<ShopSyncNotifier> logger) : IShopSyncNotifier
@@ -418,7 +418,9 @@ internal sealed class ShopSyncNotifier(
     {
         try
         {
-            await hub.Clients.All.SendAsync(ErpHub.ShopSyncUpdated, status, cancellationToken);
+            // 管理员组由各实例的 Hub 维护；没有组员时广播为空操作。
+            await hub.Clients.Group(ErpHub.AdministratorGroup)
+                .SendAsync(ErpHub.ShopSyncUpdated, status, cancellationToken);
         }
         catch (Exception exception)
         {

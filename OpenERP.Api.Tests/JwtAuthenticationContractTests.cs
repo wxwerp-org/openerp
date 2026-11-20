@@ -41,19 +41,19 @@ public sealed class JwtAuthenticationContractTests(AspireIntegrationFixture fixt
         Assert.Equal(TimeSpan.FromMinutes(20), jwt.ValidTo - jwt.IssuedAt);
         Assert.Equal(jwt.ValidTo, tokens.GetProperty("accessTokenExpiresAt").GetDateTimeOffset().UtcDateTime);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", rawToken);
-        using var bearer = await client.GetAsync("/api/ping", ct);
+        using var bearer = await client.GetAsync("/api/orders", ct);
         Assert.Equal(HttpStatusCode.OK, bearer.StatusCode);
 
         segments[2] = (segments[2][0] == 'A' ? "B" : "A") + segments[2][1..];
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", string.Join('.', segments));
-        using var tampered = await client.GetAsync("/api/ping", ct);
+        using var tampered = await client.GetAsync("/api/orders", ct);
         Assert.Equal(HttpStatusCode.Unauthorized, tampered.StatusCode);
 
         client.DefaultRequestHeaders.Authorization = null;
         client.DefaultRequestHeaders.Remove("Cookie");
         var cookie = Assert.Single(login.Headers.GetValues("Set-Cookie"));
         client.DefaultRequestHeaders.Add("Cookie", cookie.Split(';')[0]);
-        using var cookieOnly = await client.GetAsync("/api/ping", ct);
+        using var cookieOnly = await client.GetAsync("/api/orders", ct);
         Assert.Equal(HttpStatusCode.Unauthorized, cookieOnly.StatusCode);
         Assert.Equal("Bearer", Assert.Single(cookieOnly.Headers.WwwAuthenticate).Scheme);
     }
@@ -65,12 +65,12 @@ public sealed class JwtAuthenticationContractTests(AspireIntegrationFixture fixt
         var ct = TestContext.Current.CancellationToken;
         using var client = fixture.CreateApiClient();
         var account = await AuthenticationIntegrationTests.LoginAsync(client, ct, fixture.AdminPassword);
-        using var beforeRestart = await client.GetAsync("/api/ping", ct);
+        using var beforeRestart = await client.GetAsync("/api/orders", ct);
         Assert.Equal(HttpStatusCode.OK, beforeRestart.StatusCode);
 
         // When 重启 API；Then 旧 JWT 被拒绝，原 Cookie 仍可刷新。
         await fixture.RestartApiAsync(ct);
-        using var rejected = await client.GetAsync("/api/ping", ct);
+        using var rejected = await client.GetAsync("/api/orders", ct);
         Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
         client.DefaultRequestHeaders.Authorization = null;
         using var refresh = await client.PostAsync("/api/auth/refresh", null, ct);
@@ -83,7 +83,7 @@ public sealed class JwtAuthenticationContractTests(AspireIntegrationFixture fixt
         Assert.Equal(account.GetProperty("lastLoginAt").GetDateTimeOffset(), refreshedAccount.GetProperty("lastLoginAt").GetDateTimeOffset());
         Assert.Equal(account.GetProperty("expiresAt").GetDateTimeOffset(), refreshedAccount.GetProperty("expiresAt").GetDateTimeOffset());
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokens.GetProperty("accessToken").GetString());
-        using var business = await client.GetAsync("/api/ping", ct);
+        using var business = await client.GetAsync("/api/orders", ct);
         Assert.Equal(HttpStatusCode.OK, business.StatusCode);
     }
 
@@ -98,7 +98,7 @@ public sealed class JwtAuthenticationContractTests(AspireIntegrationFixture fixt
         await AuthenticationIntegrationTests.LoginAsync(second, ct, fixture.AdminPassword);
         foreach (var device in new[] { first, second })
         {
-            using var working = await device.GetAsync("/api/ping", ct);
+            using var working = await device.GetAsync("/api/orders", ct);
             Assert.Equal(HttpStatusCode.OK, working.StatusCode);
         }
 
@@ -113,7 +113,7 @@ public sealed class JwtAuthenticationContractTests(AspireIntegrationFixture fixt
             // Then 两台设备的旧 JWT 均不能访问业务，也不能通过旧 refresh 恢复。
             foreach (var device in new[] { first, second })
             {
-                using var rejected = await device.GetAsync("/api/ping", ct);
+                using var rejected = await device.GetAsync("/api/orders", ct);
                 Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
                 device.DefaultRequestHeaders.Authorization = null;
                 using var refresh = await device.PostAsync("/api/auth/refresh", null, ct);

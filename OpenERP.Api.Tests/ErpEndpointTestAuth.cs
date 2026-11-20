@@ -13,7 +13,7 @@ namespace OpenERP.Api.Tests;
 internal static class ErpEndpointTestAuth
 {
     private const string Scheme = "Test";
-    private const string RoleHeader = "X-Test-Role";
+    internal const string RoleHeader = "X-Test-Role";
 
     public static void Configure(WebApplicationBuilder builder)
     {

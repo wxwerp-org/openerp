@@ -1,4 +1,5 @@
 using OpenERP.Api;
+using OpenERP.Api.About;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Deployment;
 using OpenERP.Api.Erp;
@@ -73,6 +74,7 @@ app.UseAccountAuthentication();
 app.MapDefaultEndpoints();
 app.MapAccounts();
 app.MapUserManagement();
+app.MapAbout();
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     await app.Services.GetRequiredService<FileStore>().EnsureBucketAsync(app.Lifetime.ApplicationStopping);
@@ -83,11 +85,6 @@ app.MapErp();
 app.MapHub<ErpHub>("/api/hubs/erp", options => options.CloseOnAuthenticationExpiration = true);
 app.MapOrderReports();
 app.MapOrderList();
-app.MapGet("/api/ping", (ILogger<Program> logger) =>
-{
-    logger.LogInformation("OpenERP connectivity check received");
-    return Results.Ok(new { message = "pong" });
-});
 
 await app.RunAsync();
 return 0;

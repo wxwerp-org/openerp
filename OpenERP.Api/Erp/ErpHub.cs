@@ -9,25 +9,41 @@ namespace OpenERP.Api.Erp;
 
 /// <summary>ERP 长时交互 Hub；承载店铺与订单同步。</summary>
 [Authorize]
-public sealed class ErpHub(IShopSyncJob job, IServiceScopeFactory scopeFactory, OrderSyncJobs? orders = null) : Hub
+public sealed class ErpHub(
+    IShopSyncJob job,
+    IServiceScopeFactory scopeFactory,
+    OrderSyncJobs? orders = null) : Hub
 {
     public const string ShopSyncUpdated = "ShopSyncUpdated";
     public const string OrderSyncUpdated = "OrderSyncUpdated";
     public const string OrderSyncSnapshot = "OrderSyncSnapshot";
 
+    /// <summary>管理员连接的分发组；组员由 SignalR 随连接建立和结束自动维护。</summary>
+    internal const string AdministratorGroup = "openerp.administrators";
+
     public override async Task OnConnectedAsync()
     {
-        ShopSyncStatus status;
-        try
+        // 鉴权通过后加入管理员组：多实例下由 backplane 分发，连接结束由 SignalR 自动移除，
+        // 不会因快照发送失败留下无人清理的连接 ID。
+        if (IsAdministrator())
         {
-            status = await ReadStatusAsync(Context.ConnectionAborted);
-        }
-        catch
-        {
-            status = job.Status;
+            await Groups.AddToGroupAsync(
+                Context.ConnectionId, AdministratorGroup, Context.ConnectionAborted);
+
+            ShopSyncStatus status;
+            try
+            {
+                status = await ReadStatusAsync(Context.ConnectionAborted);
+            }
+            catch
+            {
+                status = job.Status;
+            }
+
+            await Clients.Caller.SendAsync(ShopSyncUpdated, status, Context.ConnectionAborted);
         }
 
-        await Clients.Caller.SendAsync(ShopSyncUpdated, status, Context.ConnectionAborted);
+        // 订单快照对所有已登录连接可见。
         if (orders is not null)
             await Clients.Caller.SendAsync(OrderSyncSnapshot, orders.Snapshot(), Context.ConnectionAborted);
         await base.OnConnectedAsync();
@@ -36,6 +52,9 @@ public sealed class ErpHub(IShopSyncJob job, IServiceScopeFactory scopeFactory, 
     public async Task<ShopSyncStartResult> StartShopSync()
     {
         await EnsureActiveSessionAsync();
+        if (!IsAdministrator())
+            return new(false, null, "仅管理员可同步店铺目录。");
+
         var result = await job.TryStartAsync(Context.ConnectionAborted);
         if (result.IsErr)
             return new ShopSyncStartResult(false, await ReadStatusAsync(Context.ConnectionAborted), result.Error.Message);
@@ -100,6 +119,9 @@ public sealed class ErpHub(IShopSyncJob job, IServiceScopeFactory scopeFactory, 
 
         return new(true, started.Value.StartedCount, started.Value.BusyCount, null);
     }
+
+    private bool IsAdministrator() =>
+        Context.User?.IsInRole(UserAccount.AdministratorRole) == true;
 
     private async Task EnsureActiveSessionAsync()
     {

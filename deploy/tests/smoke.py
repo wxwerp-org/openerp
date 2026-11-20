@@ -28,6 +28,7 @@ EF_BUNDLE = "/app/efbundle"
 SPA_MARKER = b'<div id="app">'
 GIF = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
 SETTINGS = "/api/erp/order-sync-settings"
+BUILD_FIELDS = ("version", "commit", "buildTime")
 
 
 class SmokeError(RuntimeError):
@@ -305,6 +306,18 @@ class Client:
         check(self.json("GET", "/api/auth/me")["username"] == "admin", "登录后无法读取管理员身份")
 
 
+def verify_build_info(client, expected):
+    # Given 未初始化实例，When 未登录匿名读取构建信息，Then 与构建时注入的三个值逐字段一致。
+    check(not client.access_token and not client.cookie, "/api/about 必须在登录前匿名校验")
+    _, body, _ = client.request("GET", "/api/about", expected=200)
+    info = json.loads(body)
+    check(isinstance(info, dict), "/api/about 未返回 JSON 对象")
+    for field in BUILD_FIELDS:
+        check(field in info, f"/api/about 缺少字段 {field}")
+        check(info[field] == expected[field],
+              f"/api/about 的 {field} 预期 {expected[field]!r}，实际 {info[field]!r}")
+
+
 def verify_spa(client):
     # Given 已运行的发布容器，When 从外部直达页面、静态路径和未知 API，
     # Then 导航由 SPA 接管，静态资源和 API 的 404 保持独立。
@@ -336,9 +349,22 @@ def main():
     parser.add_argument("--compose", required=True, type=Path, help="发布附件解包得到的 Compose 文件")
     parser.add_argument("--image", help="覆盖附件镜像地址，适用于本地和 CI")
     parser.add_argument("--upgrade-image", help="选填，验证第二个镜像复用现有数据")
+    parser.add_argument("--expected-version", help="选填，构建时注入的 Release 标签；与后两项同时提供时校验 /api/about")
+    parser.add_argument("--expected-commit", help="选填，构建时注入的 7 位提交")
+    parser.add_argument("--expected-build-time", help="选填，构建时注入的 UTC 构建时间")
     args = parser.parse_args()
     compose_file = args.compose.resolve(strict=True)
     current_image = args.upgrade_image or args.image
+    expected_build = {
+        "version": args.expected_version,
+        "commit": args.expected_commit,
+        "buildTime": args.expected_build_time,
+    }
+    # 三条构建值全部提供才校验；未提供时保持原有烟测行为（如前端检查工作流）。
+    if any(value is not None for value in expected_build.values()) and not all(
+            value is not None for value in expected_build.values()):
+        parser.error("--expected-version、--expected-commit 与 --expected-build-time 必须同时提供")
+    verify_build = all(value is not None for value in expected_build.values())
 
     with isolated(compose_file) as primary:
         primary.configure(image=args.image)
@@ -350,6 +376,8 @@ def main():
         # Given 全新数据目录，When 初设、登录、上传和保存业务设置，
         # Then 对外可获取身份、下载相同内容并读回已保存选店。
         check(client.json("GET", "/api/auth/status")["initialized"] is False, "新实例已初始化")
+        if verify_build:
+            verify_build_info(client, expected_build)
         password = secrets.token_hex(8)
         client.csrf_request()
         client.request("POST", "/api/auth/initialize", expected=204, body={"newPassword": password})
