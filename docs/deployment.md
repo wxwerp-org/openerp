@@ -76,7 +76,7 @@ docker compose up -d
 
 部署先核对 Release 附件的 SHA-256。服务器核对现有实例、端口与挂载，拉取目标镜像并核对 GHCR 发布摘要。上述检查通过后，才安装同一份 `docker-compose.yaml` 并运行 `docker compose up -d`。新容器沿用原数据和凭据，按镜像入口执行迁移并启动服务。最后，工作流核对实际运行镜像，从 GitHub runner 通过公网 HTTPS 检查 `/api/auth/status`。
 
-连接或镜像拉取失败时，原实例继续运行。修正配置后，在该次运行选择 **Re-run failed jobs**，或执行 `gh run rerun <run-id> --failed`。已经部署的同一次运行重试时会再次核对实例；较早的运行不能覆盖已接管的新版本。[GitHub 重试说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)
+连接或镜像拉取失败时，原实例继续运行。如果 Compose 更新报错，且能确认原容器仍是项目唯一的容器、启动时间未变，并持续处于运行状态，脚本将部署文件还原为切换前的内容。排除故障后，可在该次运行选择 **Re-run failed jobs**，或执行 `gh run rerun <run-id> --failed`。重跑时再次核对实例。较早的运行不能覆盖已开始部署的新版本。[GitHub 重试说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)
 
 若切换后容器未能启动，或公网 HTTPS 检查超时，可在实例目录执行 `docker compose ps -a` 和 `docker compose logs --tail=100 openerp` 查看启动阶段。数据库迁移先于 API 和 Web 启动。公网验收要求接口返回 HTTP 200，且 `initialized` 为布尔值。
 

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -41,7 +42,8 @@ class UpdateTests(unittest.TestCase):
         self.state = base / "state.json"
         self.state.write_text(json.dumps({
             "image": OLD, "image_id": OLD_ID, "id": "old-container",
-            "status": "running", "file": str(self.old), "port": "18088", "actions": [],
+            "status": "running", "started_at": "2026-11-20T00:00:00Z",
+            "file": str(self.old), "port": "18088", "actions": [],
         }))
         bin_dir = base / "bin"
         bin_dir.mkdir()
@@ -172,6 +174,59 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(self.actual()["actions"], [])
         self.assert_old_instance()
 
+    def test_failure_before_switch_restores_compose_and_allows_retry(self):
+        # Given 原容器持续运行，Compose 已替换文件但将在切换容器前报错
+        original_compose = self.old.read_bytes()
+        self.old.chmod(0o600)
+        original_started = self.actual()["started_at"]
+        # When 更新失败并重跑同一个发布序号
+        failed = self.run_update(FAIL_BEFORE_SWITCH="unchanged")
+        self.assertEqual(failed.returncode, 17, failed.stderr)
+        failed_state = self.actual()
+        restored_compose = self.old.read_bytes()
+        restored_mode = self.old.stat().st_mode & 0o777
+        leftover_temporary = list(self.instance.glob(".houqin-update.*"))
+        retry = self.run_update()
+        # Then 错误仍被报告，原文件可支持正常重跑，失败时容器和数据未被更改
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(restored_compose, original_compose)
+        self.assertEqual(restored_mode, 0o600)
+        self.assertFalse(leftover_temporary)
+        self.assertEqual((failed_state["id"], failed_state["status"], failed_state["started_at"]),
+                         ("old-container", "running", original_started))
+        self.assertEqual(self.actual()["actions"], ["pull", "up", "pull", "up"])
+        self.assertEqual(self.db_file.read_text(), "已有数据")
+        self.assertEqual(self.old.read_bytes(), self.incoming.read_bytes())
+        self.assertFalse(list(self.instance.glob(".houqin-update.*")))
+
+    def test_failure_does_not_restore_compose_when_original_container_is_uncertain(self):
+        # Given 替换文件后更新返回失败，同时原容器连续运行的条件无法确认
+        for failure in ("restarted", "additional-container", "ps-error", "inspect-error"):
+            with self.subTest(failure=failure):
+                self.write_compose(self.old, OLD)
+                self.state.write_text(json.dumps(self.actual() | {
+                    "started_at": "2026-11-20T00:00:00Z", "actions": [],
+                }))
+                # When 失败后检查项目及容器状态
+                failed = self.run_update(FAIL_BEFORE_SWITCH=failure)
+                # Then 保留新版文件并退出，数据原样保留
+                self.assertEqual(failed.returncode, 17, failed.stderr)
+                self.assertEqual(self.old.read_bytes(), self.incoming.read_bytes())
+                self.assertEqual(self.actual()["actions"], ["pull", "up"])
+                self.assertEqual(self.db_file.read_text(), "已有数据")
+                self.assertFalse(list(self.instance.glob(".houqin-update.*")))
+
+    def test_hangup_before_switch_restores_compose_and_removes_temporary_files(self):
+        # Given 替换配置后原容器仍持续运行
+        original_compose = self.old.read_bytes()
+        # When 更新进程在切换容器前收到 SIGHUP
+        failed = self.run_update(FAIL_BEFORE_SWITCH="hangup")
+        # Then 还原本次替换的文件，并清理临时文件
+        self.assertEqual(self.old.read_bytes(), original_compose)
+        self.assertEqual(self.actual()["actions"], ["pull", "up"])
+        self.assertFalse(list(self.instance.glob(".houqin-update.*")))
+        self.assertEqual(failed.returncode, 128 + signal.SIGHUP, failed.stderr)
+
     def test_start_failure_keeps_post_migration_data(self):
         # Given 新容器能写数据但 Compose 在启动过程中报错
         # When 新版更新失败
@@ -201,6 +256,7 @@ def run_fake_command():
     state_path = Path(os.environ["TEST_STATE"])
     state = json.loads(state_path.read_text())
     instance = Path(os.environ["TEST_INSTANCE"])
+    failure = os.environ.get("FAIL_BEFORE_SWITCH")
 
     def record(action):
         state["actions"].append(action)
@@ -216,9 +272,21 @@ def run_fake_command():
         action = args[position]
         if action == "ps":
             print(state["id"])
+            if "up" in state["actions"] and failure == "additional-container":
+                print("replacement-container")
+            if "up" in state["actions"] and failure == "ps-error":
+                return 1
             return 0
         if action == "up":
             state["up_args"] = args[position + 1:]
+            if failure:
+                assert NEW in (instance / file).read_text()
+                if failure == "restarted":
+                    state["started_at"] = "2026-11-20T00:01:00Z"
+                record("up")
+                if failure == "hangup":
+                    os.kill(os.getppid(), signal.SIGHUP)
+                return 17
             if state["image_id"] == NEW_ID and "--force-recreate" not in args:
                 state["status"] = "running"
                 record("up")
@@ -249,9 +317,11 @@ def run_fake_command():
                 {"Source": str(instance / "data"), "Destination": "/var/lib/openerp", "Type": "bind", "RW": True},
                 {"Source": str(instance / "data/postgres"), "Destination": "/var/lib/postgresql", "Type": "bind", "RW": True},
             ],
-            "State": {"Status": state["status"]},
+            "State": {"Status": state["status"], "StartedAt": state["started_at"]},
             "Image": state["image_id"],
         }))
+        if "up" in state["actions"] and failure == "inspect-error":
+            return 1
         return 0
     if args[:2] == ["image", "inspect"]:
         digest = OLD_ID if os.environ.get("WRONG_DIGEST") else NEW_DIGEST
