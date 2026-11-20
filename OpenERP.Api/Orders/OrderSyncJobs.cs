@@ -14,38 +14,61 @@ public sealed record OrderSyncSnapshot(string Epoch, IReadOnlyList<OrderSyncStat
 
 public sealed record OrderSyncStartResult(bool Accepted, OrderSyncStatus? Status, string? Error);
 
-/// <summary>串行执行手动单店同步或定时多店批次；全局同时只运行一个工作项。</summary>
+/// <summary>并行执行不同店铺的同步，同一店铺只运行一个任务。</summary>
 public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<OrderSyncJobs> logger,
     IHubContext<ErpHub>? hub = null) : BackgroundService
 {
     private const string Conflict = "已有店铺正在同步，请稍后重试";
+    private const string Stopping = "应用正在停止，可在重启后手动重试。";
+    private const int MaxConcurrentShops = 4;
     private static readonly TimeSpan NotificationTimeout = TimeSpan.FromSeconds(2);
 
     private readonly object _gate = new();
     private readonly Dictionary<int, OrderSyncStatus> _latest = [];
-    private readonly Channel<SyncWorkItem> _queue = Channel.CreateBounded<SyncWorkItem>(1);
-    private readonly Channel<OrderSyncStatus> _notifications = Channel.CreateBounded<OrderSyncStatus>(1);
+    private readonly HashSet<int> _activeSids = [];
+    private readonly Channel<SyncWorkItem> _queue = Channel.CreateUnbounded<SyncWorkItem>();
+    private readonly Channel<SyncNotification> _notifications = Channel.CreateUnbounded<SyncNotification>(
+        new UnboundedChannelOptions { SingleReader = true });
+    private readonly HashSet<int> _pendingProgress = [];
+    private readonly SemaphoreSlim _saving = new(1, 1);
     private readonly string _epoch = Guid.NewGuid().ToString("N");
     private long _version;
-    private bool _active;
+    private int _scheduledRemaining;
+    private bool _stopping;
 
     public OpResult<OrderSyncStatus> Start(int sid)
     {
         lock (_gate)
+            return StartLocked(sid);
+    }
+
+    /// <summary>受理多个店铺的手动任务，返回受理和跳过的店铺数。</summary>
+    internal OpResult<(int StartedCount, int BusyCount)> StartAll(IReadOnlyList<int> sids)
+    {
+        lock (_gate)
         {
-            if (_active)
-                return OpResults.Err(Conflict);
+            if (_stopping)
+                return OpResults.Err(Stopping);
 
-            if (!_queue.Writer.TryWrite(new SyncWorkItem([sid], Scheduled: false)))
-                return OpResults.Err(Conflict);
+            var started = 0;
+            var busy = 0;
+            foreach (var sid in sids.Distinct())
+            {
+                if (_activeSids.Contains(sid))
+                {
+                    busy++;
+                    continue;
+                }
 
-            var job = SetLatestLocked(NewStatus(sid));
-            _active = true;
-            return job;
+                EnqueueLocked(sid, scheduled: false);
+                started++;
+            }
+
+            return (started, busy);
         }
     }
 
-    /// <summary>受理一轮定时批次；已有任务时返回冲突，空选店不占用全局槽。</summary>
+    /// <summary>并行受理本轮空闲店铺，同一时间只运行一轮定时批次。</summary>
     public OpResult<int> StartScheduledBatch(IReadOnlyList<int> sids)
     {
         var distinct = sids.Distinct().ToArray();
@@ -54,16 +77,39 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
 
         lock (_gate)
         {
-            if (_active)
-                return OpResults.Err(Conflict);
-            if (!_queue.Writer.TryWrite(new SyncWorkItem(distinct, Scheduled: true)))
+            if (_stopping)
+                return OpResults.Err(Stopping);
+            if (_scheduledRemaining > 0)
                 return OpResults.Err(Conflict);
 
-            foreach (var sid in distinct)
-                SetLatestLocked(NewStatus(sid));
-            _active = true;
-            return distinct.Length;
+            var available = distinct.Where(sid => !_activeSids.Contains(sid)).ToArray();
+            if (available.Length == 0)
+                return OpResults.Err(Conflict);
+
+            _scheduledRemaining = available.Length;
+            foreach (var sid in available)
+                EnqueueLocked(sid, scheduled: true);
+            return available.Length;
         }
+    }
+
+    private OpResult<OrderSyncStatus> StartLocked(int sid)
+    {
+        if (_stopping)
+            return OpResults.Err(Stopping);
+        if (_activeSids.Contains(sid))
+            return OpResults.Err(Conflict);
+
+        return EnqueueLocked(sid, scheduled: false);
+    }
+
+    private OrderSyncStatus EnqueueLocked(int sid, bool scheduled)
+    {
+        _activeSids.Add(sid);
+        var job = SetLatestLocked(NewStatus(sid));
+        // 写入和关闭都持有同一把锁，停止受理前队列始终可写。
+        _queue.Writer.TryWrite(new SyncWorkItem(job, scheduled));
+        return job;
     }
 
     public OrderSyncStatus? Latest(int sid)
@@ -80,25 +126,18 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        using var stopAccepting = stoppingToken.Register(() =>
+        {
+            lock (_gate)
+            {
+                _stopping = true;
+                _queue.Writer.TryComplete();
+            }
+        });
         var notifications = SendNotificationsAsync(stoppingToken);
         try
         {
-            await foreach (var work in _queue.Reader.ReadAllAsync(stoppingToken))
-            {
-                try
-                {
-                    await RunAsync(work, stoppingToken);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (Exception error)
-                {
-                    // 防御性兜底：消费循环不能因单个工作项的意外异常永久停止。
-                    logger.LogError("同步工作项异常结束 {ErrorType}", error.GetType().Name);
-                }
-            }
+            await Task.WhenAll(Enumerable.Range(0, MaxConcurrentShops).Select(_ => RunWorkerAsync(stoppingToken)));
         }
         finally
         {
@@ -107,45 +146,28 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
         }
     }
 
-    private async Task RunAsync(SyncWorkItem work, CancellationToken ct)
+    private async Task RunWorkerAsync(CancellationToken ct)
     {
-        try
+        // 关闭队列后仍取出已受理的工作，把尚未开始的任务标为失败。
+        await foreach (var work in _queue.Reader.ReadAllAsync())
         {
-            if (work.Scheduled)
-                logger.LogInformation("开始定时同步批次，共 {Count} 家店铺。", work.Sids.Count);
-
-            foreach (var sid in work.Sids)
-                if (Latest(sid) is { } start)
-                    await QueueNotificationAsync(start, ct);
-
-            for (var index = 0; index < work.Sids.Count; index++)
+            try
             {
-                if (ct.IsCancellationRequested)
-                {
-                    foreach (var pendingSid in work.Sids.Skip(index))
-                        if (Latest(pendingSid) is { } pending)
-                            await FailAsync(pending, "应用正在停止，可在重启后手动重试。", ct);
-                    break;
-                }
-
-                if (Latest(work.Sids[index]) is { } job)
-                    await SyncAsync(job, ct);
+                await SyncAsync(work.Job, ct);
             }
-
-            if (work.Scheduled)
-                logger.LogInformation("定时同步批次结束，共 {Count} 家店铺。", work.Sids.Count);
-        }
-        catch (Exception error)
-        {
-            logger.LogError("同步批次异常结束 {ErrorType}", error.GetType().Name);
-            foreach (var sid in work.Sids)
-                if (Latest(sid) is { Status: "running" } pending)
-                    await FailAsync(pending, "同步批次异常结束，请重试。", ct);
-        }
-        finally
-        {
-            lock (_gate)
-                _active = false;
+            catch (Exception error)
+            {
+                logger.LogError("同步工作项异常结束 {ErrorType}", error.GetType().Name);
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    _activeSids.Remove(work.Job.Sid);
+                    if (work.Scheduled)
+                        _scheduledRemaining--;
+                }
+            }
         }
     }
 
@@ -154,12 +176,15 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
         var current = job;
         try
         {
+            ct.ThrowIfCancellationRequested();
+            current = job with { Stage = "shop" };
+            SaveStatus(current);
             await using var scope = scopeFactory.CreateAsyncScope();
             var tokens = scope.ServiceProvider.GetRequiredService<IErpTokenStore>();
             var token = await tokens.GetAsync(ct);
             if (token.IsErr)
             {
-                await FailAsync(current, token.Error.Message, ct);
+                Fail(current, token.Error.Message);
                 return;
             }
 
@@ -171,88 +196,87 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
                     Stage = progress.Stage, Total = progress.Total,
                     Read = progress.Read, Processed = progress.Processed
                 };
-                var status = SaveStatus(current);
-                // 详情逐单报告；只保留有限待发送进度，快照始终更新至最新计数。
-                if (hub is not null)
-                    _notifications.Writer.TryWrite(status);
+                SaveStatus(current, progress: true);
             }, token.Value, ct);
 
             if (read.IsErr)
             {
-                await FailAsync(current, read.Error.Message, ct);
+                Fail(current, read.Error.Message);
                 return;
             }
 
             var batch = read.Value;
             var skipped = batch.SkipReasons.Values.Sum();
             current = current with { Stage = "saving", Skipped = skipped, SkipReasons = batch.SkipReasons };
-            await QueueNotificationAsync(SaveStatus(current), ct);
+            SaveStatus(current);
 
-            var save = await scope.ServiceProvider.GetRequiredService<OrderStore>().SaveAsync(batch.Orders, ct);
+            var save = await SaveOrdersAsync(scope.ServiceProvider.GetRequiredService<OrderStore>(), batch.Orders, ct);
             if (save.IsErr)
             {
-                await FailAsync(current, save.Error.Message, ct);
+                Fail(current, save.Error.Message);
                 return;
             }
 
             var counts = save.Value;
-            await QueueNotificationAsync(SaveStatus(current with
+            SaveStatus(current with
             {
                 Status = skipped == 0 ? "succeeded" : "partial",
                 Stage = "done",
                 Added = counts.Added,
                 Updated = counts.Updated,
                 Unchanged = counts.Unchanged
-            }), ct);
+            });
             logger.LogInformation("订单同步完成 {JobId} {Sid}，读取 {Read}，新增 {Added}，更新 {Updated}，未变 {Unchanged}，跳过 {Skipped}",
                 job.Id, job.Sid, current.Read, counts.Added, counts.Updated, counts.Unchanged, skipped);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            await FailAsync(current, "应用正在停止，可在重启后手动重试。", ct);
+            Fail(current, Stopping);
         }
         catch (Exception error)
         {
             logger.LogError("订单同步 {JobId} {Sid} 在 {Stage} 阶段发生异常 {ErrorType}",
                 job.Id, job.Sid, current.Stage, error.GetType().Name);
-            await FailAsync(current,
-                current.Stage == "saving" ? "保存订单失败，请检查数据库后重试。" : "读取订单失败，请重试。", ct);
+            Fail(current, current.Stage == "saving" ? "保存订单失败，请检查数据库后重试。" : "读取订单失败，请重试。");
         }
     }
 
-    private async Task FailAsync(OrderSyncStatus current, string message, CancellationToken ct)
+    private async Task<OpResult<OrderSaveCounts>> SaveOrdersAsync(
+        OrderStore store, IReadOnlyList<OrderSnapshot> orders, CancellationToken ct)
     {
-        var failed = SaveStatus(current with { Status = "failed", Error = message });
-        logger.LogWarning("订单同步失败 {JobId} {Sid} {Stage} {Reason}", current.Id, current.Sid, current.Stage, message);
-        await QueueNotificationAsync(failed, ct);
+        // ERP 主单 ID 是全局唯一键，将查询已有记录和写入作为一个互斥区段。
+        await _saving.WaitAsync(ct);
+        try
+        {
+            return await store.SaveAsync(orders, ct);
+        }
+        finally
+        {
+            _saving.Release();
+        }
     }
 
-    private OrderSyncStatus SaveStatus(OrderSyncStatus job)
+    private void Fail(OrderSyncStatus current, string message)
+    {
+        SaveStatus(current with { Status = "failed", Error = message });
+        logger.LogWarning("订单同步失败 {JobId} {Sid} {Stage} {Reason}", current.Id, current.Sid, current.Stage, message);
+    }
+
+    private void SaveStatus(OrderSyncStatus job, bool progress = false)
     {
         lock (_gate)
-            return SetLatestLocked(job);
+            SetLatestLocked(job, progress);
     }
 
-    private OrderSyncStatus SetLatestLocked(OrderSyncStatus job)
+    private OrderSyncStatus SetLatestLocked(OrderSyncStatus job, bool progress = false)
     {
         var versioned = job with { Version = ++_version };
         _latest[job.Sid] = versioned;
+        // 阶段和终态按版本发布。详情逐单更新快照，每店最多积压一条进度通知。
+        if (hub is not null && (!progress || _pendingProgress.Add(job.Sid)))
+            _notifications.Writer.TryWrite(new SyncNotification(versioned, progress));
+
         return versioned;
-    }
-
-    private async ValueTask QueueNotificationAsync(OrderSyncStatus status, CancellationToken ct)
-    {
-        if (hub is null)
-            return;
-
-        try
-        {
-            // 开始、保存和终态按顺序入队。慢连接的发送等待由发送循环限制。
-            await _notifications.Writer.WriteAsync(status, ct);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-        }
     }
 
     private async Task SendNotificationsAsync(CancellationToken ct)
@@ -260,8 +284,15 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
         if (hub is null)
             return;
 
-        await foreach (var status in _notifications.Reader.ReadAllAsync(ct))
+        await foreach (var notification in _notifications.Reader.ReadAllAsync())
         {
+            var status = notification.Status;
+            if (notification.Progress)
+            {
+                lock (_gate)
+                    _pendingProgress.Remove(status.Sid);
+            }
+
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(NotificationTimeout);
             try
@@ -276,7 +307,8 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
     }
 
     private OrderSyncStatus NewStatus(int sid) =>
-        new(Guid.NewGuid().ToString("N"), sid, "running", "shop", _epoch, 0, SkipReasons: new Dictionary<string, int>());
+        new(Guid.NewGuid().ToString("N"), sid, "running", "queued", _epoch, 0, SkipReasons: new Dictionary<string, int>());
 
-    private sealed record SyncWorkItem(IReadOnlyList<int> Sids, bool Scheduled);
+    private sealed record SyncWorkItem(OrderSyncStatus Job, bool Scheduled);
+    private readonly record struct SyncNotification(OrderSyncStatus Status, bool Progress);
 }

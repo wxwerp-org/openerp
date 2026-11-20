@@ -8,12 +8,39 @@ using Xunit.Sdk;
 
 namespace OpenERP.Api.Tests;
 
-public sealed class OrderReaderTests
+public sealed partial class OrderReaderTests
 {
     private const string FirstId = "000000000000000000000002";
     private const string SecondId = "000000000000000000000001";
     private static readonly ErpAccessToken Token = new("fake-token");
     private const string Count = """{"data_count":2,"page_count":1}""";
+
+    [Fact]
+    public async Task Reads501OrdersInTwoListPagesBeforeReadingDetails()
+    {
+        // Given 501 张主单，全部跨店，应在列表校验阶段跳过。
+        const string count = """{"data_count":501,"page_count":2}""";
+        var firstPage = Enumerable.Range(2, 500).Reverse().Select(id => Row(id.ToString("x24"), 9));
+        using var handler = new ErpHandler(
+            ("/open-api/shop/get_shops", Shops),
+            ("/open-api/order/get_list_page_count", count),
+            ("/open-api/order/get_list", "{\"orders\":[" + string.Join(',', firstPage) + "]}"),
+            ("/open-api/order/get_list", List(SecondId, 9)),
+            ("/open-api/order/get_list_page_count", count));
+        using var http = new HttpClient(handler);
+        var progress = new List<OrderReadProgress>();
+
+        // When 通过正常订单同步入口扫描全店。
+        var result = await new WxwErpClient(http).ReadOrdersAsync(
+            30, progress.Add, Token, TestContext.Current.CancellationToken);
+
+        // Then 两页读到 500、501 条，末尾计数校验后保留完整跳过统计。
+        if (result.IsErr)
+            throw new XunitException(result.Error.Message);
+        Assert.Equal([0, 500, 501], progress.Where(item => item.Stage == "pages").Select(item => item.Read));
+        Assert.Equal(501, result.Value.SkipReasons["平台子单不属于目标店铺"]);
+        handler.AssertCompleted();
+    }
 
     [Fact]
     public async Task ReadsOnlyVisibleShopAndPreservesDetailLinesAndRawTime()
@@ -24,11 +51,9 @@ public sealed class OrderReaderTests
             ("/open-api/shop/get_shops", TwoVisibleShopsSecondPage),
             ("/open-api/order/get_list_page_count", Count),
             ("/open-api/order/get_list", List(FirstId, 30, SecondId, 30)),
-            ("/open-api/order/get_list_page_count", Count),
-            ("/open-api/order_detail/get_base", Detail),
-            ("/open-api/order_detail/get_time", Times),
-            ("/open-api/order_detail/get_base", Detail),
-            ("/open-api/order_detail/get_time", Times));
+            ("/open-api/order/get_list_page_count", Count))
+            .ExpectOrder(FirstId, ("/open-api/order_detail/get_base", Detail), ("/open-api/order_detail/get_time", Times))
+            .ExpectOrder(SecondId, ("/open-api/order_detail/get_base", Detail), ("/open-api/order_detail/get_time", Times));
         using var http = new HttpClient(handler);
         var client = new WxwErpClient(http);
         var progress = new List<OrderReadProgress>();
@@ -167,12 +192,12 @@ public sealed class OrderReaderTests
             ("/open-api/shop/get_shops", Shops),
             ("/open-api/order/get_list_page_count", Count),
             ("/open-api/order/get_list", List(FirstId, 30, SecondId, 30)),
-            ("/open-api/order/get_list_page_count", Count),
-            ("/open-api/order_detail/get_base", Detail),
-            ("/open-api/order_detail/get_time", Times),
-            ("/open-api/order_detail/get_base", Detail),
-            ("/open-api/order_detail/get_time", TimeNotFound),
-            ("/open-api/order_detail/get_base", failedDetail));
+            ("/open-api/order/get_list_page_count", Count))
+            .ExpectOrder(FirstId, ("/open-api/order_detail/get_base", Detail), ("/open-api/order_detail/get_time", Times))
+            .ExpectOrder(SecondId,
+                ("/open-api/order_detail/get_base", Detail),
+                ("/open-api/order_detail/get_time", TimeNotFound),
+                ("/open-api/order_detail/get_base", failedDetail));
         using var http = new HttpClient(handler);
 
         // When 读取整店订单。
@@ -242,10 +267,10 @@ public sealed class OrderReaderTests
             ("/open-api/shop/get_shops", Shops),
             ("/open-api/order/get_list_page_count", Count),
             ("/open-api/order/get_list", List(FirstId, 30, SecondId, 30)),
-            ("/open-api/order/get_list_page_count", Count),
-            ("/open-api/order_detail/get_base", Detail),
-            ("/open-api/order_detail/get_time", Times),
-            ("/open-api/order_detail/get_base", """!{"success":false,"message":"AccessToken scope denied"}"""));
+            ("/open-api/order/get_list_page_count", Count))
+            .ExpectOrder(FirstId, ("/open-api/order_detail/get_base", Detail), ("/open-api/order_detail/get_time", Times))
+            .ExpectOrder(SecondId,
+                ("/open-api/order_detail/get_base", """!{"success":false,"message":"AccessToken scope denied"}"""));
         using var http = new HttpClient(handler);
 
         // When 读取整店订单。
@@ -299,9 +324,9 @@ public sealed class OrderReaderTests
             ("/open-api/shop/get_shops", Shops),
             ("/open-api/order/get_list_page_count", Count),
             ("/open-api/order/get_list", ListWithCreatedTime(FirstId, SecondId)),
-            ("/open-api/order/get_list_page_count", Count),
-            ("/open-api/order_detail/get_base", Detail),
-            ("/open-api/order_detail/get_base", invalidDetail));
+            ("/open-api/order/get_list_page_count", Count))
+            .ExpectOrder(FirstId, ("/open-api/order_detail/get_base", Detail))
+            .ExpectOrder(SecondId, ("/open-api/order_detail/get_base", invalidDetail));
         using var http = new HttpClient(handler);
 
         // When 读取整店订单。
@@ -434,17 +459,24 @@ public sealed class OrderReaderTests
 
     private sealed class ErpHandler(params (string Path, string Data)[] responses) : HttpMessageHandler
     {
+        private readonly Dictionary<string, Queue<(string Path, string Data)>> _orderResponses = [];
         private int _next;
+
+        public ErpHandler ExpectOrder(string id, params (string Path, string Data)[] details)
+        {
+            _orderResponses.Add(id, new(details));
+            return this;
+        }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
-            Assert.True(_next < responses.Length, $"出现额外请求 {request.RequestUri?.AbsolutePath}");
-            var (path, data) = responses[_next++];
-            Assert.Equal(path, request.RequestUri?.AbsolutePath);
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal("fake-token", Assert.Single(request.Headers.GetValues("AccessToken")));
             using var json = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
             var body = json.RootElement;
+            var requestedPath = request.RequestUri!.AbsolutePath;
+            var (path, data) = NextResponse(requestedPath, body);
+            Assert.Equal(path, requestedPath);
             if (path == "/open-api/shop/get_shops")
                 Assert.Equal("TemuPop", body.GetProperty("platform").GetString());
             if (path.StartsWith("/open-api/order/", StringComparison.Ordinal))
@@ -470,6 +502,27 @@ public sealed class OrderReaderTests
             };
         }
 
-        public void AssertCompleted() => Assert.Equal(responses.Length, _next);
+        private (string Path, string Data) NextResponse(string path, JsonElement body)
+        {
+            if (_orderResponses.Count > 0 && path.StartsWith("/open-api/order_detail/", StringComparison.Ordinal))
+            {
+                var id = body.GetProperty("id").GetString()!;
+                Assert.True(_orderResponses.TryGetValue(id, out var details), $"出现额外订单 {id} 的详情请求");
+                lock (details)
+                {
+                    Assert.True(details.TryDequeue(out var response), $"出现额外详情请求 {path}，订单 {id}");
+                    return response;
+                }
+            }
+
+            Assert.True(_next < responses.Length, $"出现额外请求 {path}");
+            return responses[_next++];
+        }
+
+        public void AssertCompleted()
+        {
+            Assert.Equal(responses.Length, _next);
+            Assert.All(_orderResponses.Values, details => Assert.Empty(details));
+        }
     }
 }

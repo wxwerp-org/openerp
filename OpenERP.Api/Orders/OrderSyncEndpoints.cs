@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
@@ -47,19 +49,26 @@ public static class OrderSyncEndpoints
         }).WithSummary("保存定时同步的启用状态与店铺选择，并立即通知调度器");
 
         settingsEndpoints.MapGet("/shops", async Task<Results<Ok<OrderSyncShopSelection>, ProblemHttpResult>>
-            (IErpClient erp, IErpTokenStore tokens, CancellationToken cancellationToken) =>
+            ([FromServices] AppDbContext db, IErpTokenStore tokens, CancellationToken cancellationToken) =>
         {
             var token = await tokens.GetAsync(cancellationToken);
             if (token.IsErr)
                 return TypedResults.Problem(statusCode: 503, title: token.Error.Message);
 
-            var shops = await erp.GetAllShopsAsync("TemuPop", token.Value, cancellationToken);
-            if (shops.IsErr)
-                return TypedResults.Problem(statusCode: 502, title: "获取店铺失败", detail: shops.Error.Message);
-
-            return TypedResults.Ok(new OrderSyncShopSelection(
-                shops.Value.Select(shop => new OrderSyncShopOption(shop.Sid, shop.Name)).ToArray()));
-        }).WithSummary("列出 Token 可见的全部店铺供定时同步选店，不查询授权状态");
+            try
+            {
+                var shops = await db.Shops
+                    .Where(shop => shop.Platform == "TemuPop")
+                    .OrderBy(shop => shop.Name).ThenBy(shop => shop.Sid)
+                    .Select(shop => new OrderSyncShopOption(shop.Sid.ToString(), shop.Name))
+                    .ToArrayAsync(cancellationToken);
+                return TypedResults.Ok(new OrderSyncShopSelection(shops));
+            }
+            catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+            {
+                return TypedResults.Problem(statusCode: 503, title: "本地店铺数据暂时不可用。");
+            }
+        }).WithSummary("从本地目录读取全部 TemuPop 店铺供定时同步选店");
     }
 
     private static OrderSyncSettingsResponse ToResponse(OrderSyncSettingsSnapshot settings, OrderSyncSchedulerOptions options) =>

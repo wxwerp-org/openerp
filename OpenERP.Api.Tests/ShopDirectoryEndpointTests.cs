@@ -10,6 +10,7 @@ using Npgsql;
 using OpResult;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
+using OpenERP.Api.Orders;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -255,6 +256,41 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         Assert.Empty(platforms.GetProperty("items").EnumerateArray());
     }
 
+    [Fact]
+    public async Task Offline_order_schedule_uses_persisted_shops_and_saves_selection()
+    {
+        // Given wxw 已离线一天，应用重新启动，数据库保留上次同步的多平台店铺。
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(DateTimeOffset.UtcNow.AddDays(-1), ct);
+        var upstreamCalls = 0;
+        var offline = new TestErpClient
+        {
+            GetAllShops = (_, _, _) =>
+            {
+                Interlocked.Increment(ref upstreamCalls);
+                return Task.FromResult<OpResult<IReadOnlyList<ErpShop>>>(OpResults.Err("wxw 离线"));
+            }
+        };
+        await using var app = await StartAppAsync(ct, erp: offline, role: UserAccount.AdministratorRole);
+
+        // When 打开定时选店，Then 返回本地全部 TemuPop 店铺，包括授权状态未知的店。
+        const string settings = "/api/erp/order-sync-settings";
+        using var response = await app.Http.GetAsync($"{settings}/shops", ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var selection = await response.Content.ReadFromJsonAsync<OrderSyncShopSelection>(ct);
+        Assert.NotNull(selection);
+        Assert.Equal([new("42", "Alpha 店"), new("9", "Gamma 店")], selection.Items);
+
+        // When 选店并启用，Then 下次读取保留已保存的设置。
+        using var saved = await app.Http.PutAsJsonAsync(settings, new { enabled = true, shopSids = new[] { 9 } }, ct);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        var loaded = await app.Http.GetFromJsonAsync<OrderSyncSettingsResponse>(settings, ct);
+        Assert.NotNull(loaded);
+        Assert.True(loaded.Enabled);
+        Assert.Equal([9], loaded.ShopSids);
+        Assert.Equal(0, upstreamCalls);
+    }
+
     private async Task MigrateAsync(CancellationToken cancellationToken)
     {
         await using var db = CreateDbContext();
@@ -304,20 +340,24 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
 
     private async Task<TestApp> StartAppAsync(
-        CancellationToken cancellationToken, IShopSyncJob? job = null)
+        CancellationToken cancellationToken, IShopSyncJob? job = null, IErpClient? erp = null,
+        string role = UserAccount.UserRole)
     {
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Staging" });
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
-        builder.Services.AddSingleton<IErpClient>(new TestErpClient());
+        builder.Services.AddSingleton<IErpClient>(erp ?? new TestErpClient());
         builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
         builder.Services.AddSingleton(job ?? new FakeShopSyncJob());
+        builder.Services.AddScoped<IOrderSyncSettingsStore, OrderSyncSettingsStore>();
+        builder.Services.AddSingleton<OrderSyncJobs>();
+        builder.Services.AddSingleton<OrderSyncScheduler>();
         ErpEndpointTestAuth.Configure(builder);
         var app = builder.Build();
         app.MapErp();
         await app.StartAsync(cancellationToken);
-        var http = ErpEndpointTestAuth.CreateClient(app, UserAccount.UserRole);
+        var http = ErpEndpointTestAuth.CreateClient(app, role);
         return new TestApp(app, http);
     }
 

@@ -13,6 +13,7 @@ const hub = vi.hoisted(() => ({
   connect: vi.fn(),
   disconnect: vi.fn(),
   startOrderSync: vi.fn(),
+  startAllOrderSync: vi.fn(),
 }))
 const state = ref<ErpHubState>('connected')
 const orderSyncTasks = ref<Record<number, OrderSyncTask>>({})
@@ -127,6 +128,14 @@ function ordersPage(number?: string, page = 1) {
   })
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
 async function openPanel(wrapper: VueWrapper): Promise<void> {
   await wrapper.get('[data-testid="orders-toolbar"] [aria-haspopup="dialog"]').trigger('click')
   await flushPromises()
@@ -153,7 +162,7 @@ describe('订单列表同步面板', () => {
     vi.unstubAllGlobals()
   })
 
-  it('Given 普通用户有手动同步能力 When 从订单页同步店铺 Then 可发起并看到结果且不读系统设置', async () => {
+  it('Given 普通用户有手动同步能力 When 打开同步面板 Then 可单店或全部同步且不读系统设置', async () => {
     const fetch = configureFetch()
     installNativeDialogShim()
     await login('employee', 'password')
@@ -165,6 +174,10 @@ describe('订单列表同步面板', () => {
       })
       wrapper = mount(OrdersView)
       await openPanel(wrapper)
+      const batchButton = wrapper
+        .findAll<HTMLButtonElement>('dialog button')
+        .find((button) => button.text() === '全部同步')
+      expect(batchButton?.element.disabled).toBe(false)
       await syncButton(wrapper).trigger('click')
       await flushPromises()
 
@@ -200,35 +213,81 @@ describe('订单列表同步面板', () => {
     }
   })
 
-  it('Given 店铺授权无效和未知 When 手动同步 Then 两店均可发起且同步期间禁止重复和跨店提交', async () => {
+  it('Given 两店授权无效或未知 When 分别同步 Then 允许跨店并行且同店提交和运行期间均不可重复启动', async () => {
     configureFetch()
     installNativeDialogShim()
-    let finish!: () => void
-    hub.startOrderSync.mockImplementation(
-      (sid: number) =>
-        new Promise((resolve) => {
-          finish = () => {
-            orderSyncTasks.value[sid] = task({ sid })
-            resolve({ accepted: true, status: orderSyncTasks.value[sid], error: null })
-          }
-        }),
-    )
+    const pending = deferred<void>()
+    hub.startOrderSync.mockImplementation(async (sid: number) => {
+      if (sid === 42) await pending.promise
+      orderSyncTasks.value[sid] = task({ sid })
+      return { accepted: true, status: orderSyncTasks.value[sid], error: null }
+    })
     wrapper = mount(OrdersView)
     await openPanel(wrapper)
 
-    expect(syncButton(wrapper).element.disabled).toBe(false)
-    expect(syncButton(wrapper, '另一店铺').element.disabled).toBe(false)
     await syncButton(wrapper).trigger('click')
     expect(syncButton(wrapper).element.disabled).toBe(true)
-    expect(syncButton(wrapper, '另一店铺').element.disabled).toBe(true)
+    expect(syncButton(wrapper, '另一店铺').element.disabled).toBe(false)
     await syncButton(wrapper).trigger('click')
     await syncButton(wrapper, '另一店铺').trigger('click')
-    expect(hub.startOrderSync.mock.calls).toEqual([[42]])
-
-    finish()
+    pending.resolve()
     await flushPromises()
-    expect(wrapper.text()).toContain('正在同步')
+
+    expect(hub.startOrderSync.mock.calls).toEqual([[42], [43]])
+    expect(wrapper.findAll('[role="progressbar"]')).toHaveLength(2)
+    expect(syncButton(wrapper).element.disabled).toBe(true)
     expect(syncButton(wrapper, '另一店铺').element.disabled).toBe(true)
+  })
+
+  it('Given 已有店铺在同步 When 点击全部同步 Then 单次提交整个目录并提示启动和跳过的店数', async () => {
+    configureFetch()
+    installNativeDialogShim()
+    orderSyncTasks.value[42] = task()
+    const pending = deferred<unknown>()
+    hub.startAllOrderSync.mockReturnValue(pending.promise)
+    wrapper = mount(OrdersView)
+    await openPanel(wrapper)
+
+    const button = wrapper.findAll('dialog button').find((item) => item.text() === '全部同步')
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+    expect(button!.attributes('disabled')).toBeDefined()
+    await button!.trigger('click')
+    pending.resolve({ accepted: true, startedCount: 22, busyCount: 1, error: null })
+    await flushPromises()
+
+    expect(hub.startAllOrderSync).toHaveBeenCalledExactlyOnceWith()
+    expect(wrapper.text()).toContain('已启动 22 家店铺同步，1 家正在同步的店铺已跳过。')
+    expect(button!.attributes('disabled')).toBeUndefined()
+  })
+
+  it('Given 批量命令被拒绝 When 点击全部同步 Then 显示服务端原因并保留重试入口', async () => {
+    configureFetch()
+    installNativeDialogShim()
+    hub.startAllOrderSync.mockResolvedValue({ accepted: false, error: '本地店铺目录暂时不可用。' })
+    wrapper = mount(OrdersView)
+    await openPanel(wrapper)
+    const button = wrapper.findAll('dialog button').find((item) => item.text() === '全部同步')
+    expect(button).toBeDefined()
+
+    await button!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('dialog [role="alert"]').text()).toBe('本地店铺目录暂时不可用。')
+    expect(button!.attributes('disabled')).toBeUndefined()
+  })
+
+  it('Given 该店的任务仍在排队 When 查看店铺 Then 显示等待同步并禁止重复提交', async () => {
+    configureFetch()
+    installNativeDialogShim()
+    orderSyncTasks.value[42] = task({ stage: 'queued' })
+    wrapper = mount(OrdersView)
+    await openPanel(wrapper)
+
+    expect(wrapper.get('dialog').text()).toContain('等待同步')
+    expect(orderSyncProgress(wrapper)).toBe(0)
+    expect(syncButton(wrapper).element.disabled).toBe(true)
+    expect(syncButton(wrapper, '另一店铺').element.disabled).toBe(false)
   })
 
   it('Given 其他客户端已抢占任务 When 服务端拒绝启动并刷新店铺 Then 保留原因和重试入口', async () => {
@@ -277,6 +336,12 @@ describe('订单列表同步面板', () => {
     wrapper = mount(OrdersView, { global: { plugins: [router] } })
     await openPanel(wrapper)
 
+    expect(
+      wrapper
+        .findAll('dialog button')
+        .find((item) => item.text() === '全部同步')
+        ?.attributes('disabled'),
+    ).toBeDefined()
     const link = wrapper.get('dialog a[href="/shops"]')
     expect(link.text()).toBe('前往授权店铺')
     await link.trigger('click')

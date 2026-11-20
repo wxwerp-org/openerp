@@ -9,7 +9,7 @@ namespace OpenERP.Api.Tests;
 public sealed class OrderSyncSchedulerTests
 {
     [Fact]
-    public async Task Enabled_cycle_queues_all_selected_shops_and_blocks_manual_sync()
+    public async Task Enabled_cycle_queues_all_selected_shops_and_blocks_duplicate_manual_sync()
     {
         // Given 定时同步已启用并选中两家店。
         var (scheduler, jobs, store, provider) = CreateScheduler();
@@ -18,11 +18,12 @@ public sealed class OrderSyncSchedulerTests
         // When 调度器执行一轮。
         var outcome = await scheduler.RunCycleAsync(TestContext.Current.CancellationToken);
 
-        // Then 两家店都进入运行状态，手动同步因全局互斥被拒绝。
+        // Then 两家店都进入运行状态，只拒绝同店手动同步。
         Assert.Equal(OrderSyncCycleOutcome.Started, outcome);
         Assert.Equal("running", jobs.Latest(30)?.Status);
         Assert.Equal("running", jobs.Latest(644928)?.Status);
-        Assert.True(jobs.Start(31).IsErr);
+        Assert.True(jobs.Start(30).IsErr);
+        Assert.False(jobs.Start(31).IsErr);
         await DisposeAsync(provider, scheduler);
     }
 
@@ -53,7 +54,7 @@ public sealed class OrderSyncSchedulerTests
         // When 调度器执行一轮。
         var outcome = await scheduler.RunCycleAsync(TestContext.Current.CancellationToken);
 
-        // Then 明确跳过且不占用全局槽。
+        // Then 明确跳过且不占用店铺。
         Assert.Equal(OrderSyncCycleOutcome.NoShops, outcome);
         Assert.Null(jobs.Latest(30));
         Assert.False(jobs.Start(30).IsErr);
@@ -61,7 +62,7 @@ public sealed class OrderSyncSchedulerTests
     }
 
     [Fact]
-    public async Task Manual_sync_in_progress_makes_the_cycle_skip_until_the_next_period()
+    public async Task Scheduled_cycle_skips_an_active_manual_shop_and_runs_the_other_shop()
     {
         // Given 手动同步正在进行。
         var (scheduler, jobs, store, provider) = CreateScheduler();
@@ -73,9 +74,30 @@ public sealed class OrderSyncSchedulerTests
         // When 定时周期到来。
         var outcome = await scheduler.RunCycleAsync(TestContext.Current.CancellationToken);
 
-        // Then 本轮直接跳过，不改变正在运行的手动任务。
-        Assert.Equal(OrderSyncCycleOutcome.Busy, outcome);
+        // Then 本轮受理另一家店，正在运行的手动任务保持原样。
+        Assert.Equal(OrderSyncCycleOutcome.Started, outcome);
         Assert.Equal(manual.Value.Id, jobs.Latest(30)?.Id);
+        Assert.Equal("running", jobs.Latest(644928)?.Status);
+        Assert.True(jobs.StartScheduledBatch([31]).IsErr);
+        Assert.Null(jobs.Latest(31));
+        await DisposeAsync(provider, scheduler);
+    }
+
+    [Fact]
+    public async Task Scheduled_cycle_is_busy_when_all_selected_shops_are_running_manually()
+    {
+        // Given 定时选中的唯一店铺已经提交了手动同步。
+        var (scheduler, jobs, store, provider) = CreateScheduler();
+        Assert.False(jobs.Start(30).IsErr);
+        var manual = jobs.Latest(30);
+        store.Settings = new(true, [30]);
+
+        // When 定时周期到来。
+        var outcome = await scheduler.RunCycleAsync(TestContext.Current.CancellationToken);
+
+        // Then 本轮跳过，正在运行的手动任务保持原样。
+        Assert.Equal(OrderSyncCycleOutcome.Busy, outcome);
+        Assert.Equal(manual, jobs.Latest(30));
         await DisposeAsync(provider, scheduler);
     }
 

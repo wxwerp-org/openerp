@@ -417,6 +417,30 @@
           "System.IO.Hashing": "10.0.14"
         }
       },
+      "Aspire.StackExchange.Redis.DistributedCaching": {
+        "type": "Transitive",
+        "resolved": "13.6.5",
+        "contentHash": "xuvkcRzn4fJbQ6mkDWGpS2T34kqpDqVFZQGbkdPQUFjlyG0b0kgzTuOe/cjYn13GEdUb5xsFET7QYZbcGCu8EA==",
+        "dependencies": {
+          "AspNetCore.HealthChecks.Redis": "9.0.0",
+          "Aspire.StackExchange.Redis": "13.6.5",
+          "Microsoft.Extensions.Caching.StackExchangeRedis": "10.0.14",
+          "Microsoft.Extensions.Configuration.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Configuration.Binder": "10.0.14",
+          "Microsoft.Extensions.Configuration.EnvironmentVariables": "10.0.14",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.14",
+          "Microsoft.Extensions.DependencyInjection.AutoActivation": "10.10.0",
+          "Microsoft.Extensions.Diagnostics.HealthChecks": "10.0.14",
+          "Microsoft.Extensions.Hosting.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Logging": "10.0.14",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Options": "10.0.14",
+          "Microsoft.Extensions.Primitives": "10.0.14",
+          "OpenTelemetry.Extensions.Hosting": "1.17.0",
+          "StackExchange.Redis": "2.13.17",
+          "System.IO.Hashing": "10.0.14"
+        }
+      },
       "AspNetCore.HealthChecks.NpgSql": {
         "type": "Transitive",
         "resolved": "9.0.0",
@@ -748,6 +772,17 @@
           "Microsoft.Extensions.Primitives": "10.0.15"
         }
       },
+      "Microsoft.Extensions.Caching.Hybrid": {
+        "type": "Transitive",
+        "resolved": "10.11.0",
+        "contentHash": "F4P+uZgDFnKfmHm0ReWJNSVXAlZmknQgkkrmEDtAdxWvVPCSZL7UPAY7Ewf8zs5qwPCGaYopZiRiPg2YGCfuhA==",
+        "dependencies": {
+          "Microsoft.Extensions.Caching.Abstractions": "10.0.13",
+          "Microsoft.Extensions.Caching.Memory": "10.0.13",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.13",
+          "Microsoft.Extensions.Options": "10.0.13"
+        }
+      },
       "Microsoft.Extensions.Caching.Memory": {
         "type": "Transitive",
         "resolved": "10.0.15",
@@ -758,6 +793,17 @@
           "Microsoft.Extensions.Logging.Abstractions": "10.0.15",
           "Microsoft.Extensions.Options": "10.0.15",
           "Microsoft.Extensions.Primitives": "10.0.15"
+        }
+      },
+      "Microsoft.Extensions.Caching.StackExchangeRedis": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "pd+40ZOZQ63O01wkPFLx2ODVILiPQ0AoQCz0YbQrH7y88z3ahaT1Vq3oOKnLrH7VeIYgH/C+X1R4MPkU3kpckQ==",
+        "dependencies": {
+          "Microsoft.Extensions.Caching.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.14",
+          "Microsoft.Extensions.Options": "10.0.14",
+          "StackExchange.Redis": "2.7.27"
         }
       },
       "Microsoft.Extensions.Compliance.Abstractions": {
@@ -1640,12 +1686,13 @@
         "dependencies": {
           "AWSSDK.S3": "[4.0.103.4, )",
           "Aspire.Npgsql.EntityFrameworkCore.PostgreSQL": "[13.6.5, )",
-          "Aspire.StackExchange.Redis": "[13.6.5, )",
+          "Aspire.StackExchange.Redis.DistributedCaching": "[13.6.5, )",
           "Mapster": "[10.0.14, )",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "[10.0.15, )",
           "Microsoft.AspNetCore.DataProtection.EntityFrameworkCore": "[10.0.15, )",
           "Microsoft.EntityFrameworkCore": "[10.0.15, )",
           "Microsoft.EntityFrameworkCore.Relational": "[10.0.15, )",
+          "Microsoft.Extensions.Caching.Hybrid": "[10.11.0, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "OpenERP.Core": "[1.0.0, )",
           "OpenERP.ServiceDefaults": "[1.0.0, )",

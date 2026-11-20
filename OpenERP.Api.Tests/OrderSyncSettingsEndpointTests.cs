@@ -1,11 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using OpResult;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
@@ -92,30 +93,6 @@ public sealed class OrderSyncSettingsEndpointTests
     }
 
     [Fact]
-    public async Task Shop_selection_returns_every_visible_shop_without_status_queries()
-    {
-        // Given 当前 Token 可见两家店。
-        var erp = new TestErpClient
-        {
-            GetAllShops = (_, _, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
-                new("30", "店铺三十", "TemuPop", "US"),
-                new("644928", "店铺六四四九二八", "TemuPop")
-            ]))
-        };
-        await using var app = await StartAppAsync(erp);
-
-        // When 店铺页读取选店列表。
-        using var response = await app.Http.GetAsync("/api/erp/order-sync-settings/shops", TestContext.Current.CancellationToken);
-
-        // Then 返回全部店铺的基础信息，不依赖授权状态查询。
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
-        var items = body.GetProperty("items").EnumerateArray().ToArray();
-        Assert.Equal(["30", "644928"], items.Select(item => item.GetProperty("sid").GetString()));
-        Assert.Equal(["店铺三十", "店铺六四四九二八"], items.Select(item => item.GetProperty("name").GetString()));
-    }
-
-    [Fact]
     public async Task Shop_selection_returns_503_without_an_erp_token()
     {
         // Given 私有 ERP Token 未配置。
@@ -129,20 +106,20 @@ public sealed class OrderSyncSettingsEndpointTests
     }
 
     [Fact]
-    public async Task Shop_selection_maps_erp_failures_to_bad_gateway()
+    public async Task Shop_selection_reports_an_unavailable_local_directory()
     {
-        // Given 上游店铺列表读取失败。
-        var erp = new TestErpClient
-        {
-            GetAllShops = (_, _, _) => Task.FromResult<OpResult<IReadOnlyList<ErpShop>>>(OpResults.Err("ERP 请求超时，请重试。"))
-        };
-        await using var app = await StartAppAsync(erp);
+        // Given Token 已配置，本地数据库不可连接。
+        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        var port = ((IPEndPoint)socket.LocalEndPoint!).Port;
+        await using var app = await StartAppAsync(connectionString: $"Host=127.0.0.1;Port={port};Database=test;Username=test;Timeout=1");
 
-        // When 读取选店列表。
-        using var response = await app.Http.GetAsync("/api/erp/order-sync-settings/shops", TestContext.Current.CancellationToken);
-
-        // Then 返回可读的上游失败，而不是 500。
-        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        // When 读取选店目录，Then 返回可重试的本地依赖错误。
+        var ct = TestContext.Current.CancellationToken;
+        using var response = await app.Http.GetAsync("/api/erp/order-sync-settings/shops", ct);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal("本地店铺数据暂时不可用。", problem.GetProperty("title").GetString());
     }
 
     [Fact]
@@ -195,13 +172,13 @@ public sealed class OrderSyncSettingsEndpointTests
         Assert.Contains("保存定时同步设置失败", body.GetProperty("title").GetString());
     }
 
-    private static async Task<TestApp> StartAppAsync(TestErpClient? erp = null, string token = "test-token")
+    private static async Task<TestApp> StartAppAsync(string token = "test-token", string? connectionString = null)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
-        builder.Services.AddSingleton<IErpClient>(erp ?? new TestErpClient());
+        builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
         builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore(token));
         ErpEndpointTestAuth.Configure(builder);
         builder.Services.AddSingleton<IOrderSyncSettingsStore>(new TestSettingsStore());

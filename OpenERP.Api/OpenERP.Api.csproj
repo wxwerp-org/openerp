@@ -16,7 +16,7 @@
     <PackageReference Include="AWSSDK.S3" Version="4.0.103.4" />
     <ProjectReference Include="../OpenERP.ServiceDefaults/OpenERP.ServiceDefaults.csproj" />
     <PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" Version="13.6.5" />
-    <PackageReference Include="Aspire.StackExchange.Redis" Version="13.6.5" />
+    <PackageReference Include="Aspire.StackExchange.Redis.DistributedCaching" Version="13.6.5" />
     <PackageReference Include="Mapster" Version="10.0.14" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.15" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.15" />
@@ -26,6 +26,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.11.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="RokyZevon.OpResult" Version="0.3.0" />
   </ItemGroup>

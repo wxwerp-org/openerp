@@ -33,6 +33,13 @@ type OrderSyncStartResult = {
   error: string | null
 }
 
+type OrderSyncBatchStartResult = {
+  accepted: boolean
+  startedCount: number
+  busyCount: number
+  error: string | null
+}
+
 type ErpHubOptions = {
   shopSync?: boolean
   onOrdersChanged?: () => void
@@ -246,6 +253,20 @@ export function useErpHub({ shopSync = true, onOrdersChanged }: ErpHubOptions = 
     }
   }
 
+  async function startAllOrderSync(): Promise<OrderSyncBatchStartResult> {
+    const hub = connection
+    const rejected = { accepted: false, startedCount: 0, busyCount: 0 }
+    if (!hub || hub.state !== HubConnectionState.Connected) {
+      return { ...rejected, error: '实时连接已断开，请重新连接后重试。' }
+    }
+
+    try {
+      return await hub.invoke<OrderSyncBatchStartResult>('StartAllOrderSync')
+    } catch {
+      return { ...rejected, error: '未收到全部同步的启动结果，请查看各店状态后重试。' }
+    }
+  }
+
   return {
     state,
     status,
@@ -255,5 +276,6 @@ export function useErpHub({ shopSync = true, onOrdersChanged }: ErpHubOptions = 
     refreshStatus,
     startShopSync,
     startOrderSync,
+    startAllOrderSync,
   }
 }

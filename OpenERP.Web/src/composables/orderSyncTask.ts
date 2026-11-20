@@ -1,5 +1,5 @@
 export type OrderSyncStatus = 'running' | 'succeeded' | 'partial' | 'failed'
-export type OrderSyncStage = 'shop' | 'pages' | 'details' | 'saving' | 'done'
+export type OrderSyncStage = 'queued' | 'shop' | 'pages' | 'details' | 'saving' | 'done'
 export type OrderSyncTask = {
   epoch: string
   version: number
@@ -37,7 +37,7 @@ export function isOrderSyncTask(value: unknown): value is OrderSyncTask {
     'skipped',
   ] as const
   const statuses: OrderSyncStatus[] = ['running', 'succeeded', 'partial', 'failed']
-  const stages: OrderSyncStage[] = ['shop', 'pages', 'details', 'saving', 'done']
+  const stages: OrderSyncStage[] = ['queued', 'shop', 'pages', 'details', 'saving', 'done']
 
   if (
     !isRecord(value) ||

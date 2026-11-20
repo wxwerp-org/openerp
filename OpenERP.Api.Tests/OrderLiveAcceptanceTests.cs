@@ -23,10 +23,10 @@ public sealed class OrderLiveAcceptanceTests(ITestOutputHelper output)
         var ct = TestContext.Current.CancellationToken;
 
         // When 使用同一订单读取器按两种每页数量扫完整列表。
-        var small = await erp.ReadOrderIndexAsync(644928, 20, null, token, ct);
+        var small = await erp.ReadOrderIndexAsync(644928, 100, null, token, ct);
         if (small.IsErr)
             throw new XunitException(small.Error.Message);
-        var large = await erp.ReadOrderIndexAsync(644928, 100, null, token, ct);
+        var large = await erp.ReadOrderIndexAsync(644928, 500, null, token, ct);
         if (large.IsErr)
             throw new XunitException(large.Error.Message);
 

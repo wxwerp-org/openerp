@@ -156,6 +156,24 @@ describe('ERP Hub 订单同步', () => {
     error: null,
   }
 
+  it('Given 一键同步 When 连接已建立 Then 通过无分页参数的 Hub 命令返回受理数量', async () => {
+    const hub = useErpHub({ shopSync: false })
+    await hub.connect()
+    const result = { accepted: true, startedCount: 22, busyCount: 1, error: null }
+    hubMock.connection.invoke.mockResolvedValue(result)
+    expect(hub).toHaveProperty('startAllOrderSync')
+    expect(await hub.startAllOrderSync()).toEqual(result)
+    expect(hubMock.connection.invoke).toHaveBeenCalledExactlyOnceWith('StartAllOrderSync')
+  })
+
+  it('Given 店铺等待并发空位 When 收到排队广播 Then 无需重连即可读取该店状态', async () => {
+    const hub = useErpHub({ shopSync: false })
+    await hub.connect()
+    const queued = { ...orderTask, stage: 'queued' }
+    hubMock.handlers.get('OrderSyncUpdated')?.(queued)
+    expect(hub.orderSyncTasks.value[queued.sid]).toEqual(queued)
+  })
+
   it('Given 完成事件快于启动响应 When 旧响应与重复广播到达 Then 保留最新进度并仅通知一次持久化', async () => {
     const onOrdersChanged = vi.fn()
     const hub = useErpHub({ shopSync: false, onOrdersChanged })
