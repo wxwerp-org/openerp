@@ -228,11 +228,23 @@ test('Given 平台与关键词筛选 When 查询 Then 结果与清除筛选可�
   await expect(shopRows(page)).toContainText('测试店铺 42')
 })
 
-test('Given 点击详情 When 打开 Then 展示字段并可跳转 wxw 授权', async ({ page, context }) => {
+test('Given 管理员 When 查看店铺列表和详情 Then 两处均可打开 wxw 授权', async ({
+  page,
+  context,
+}) => {
   await mockDirectory(page)
+  const authorizationUrl = 'https://v3.wxwerp.com/system/authorize'
+  await context.route('https://v3.wxwerp.com/**', (route) => route.fulfill({ body: 'wxw' }))
   await page.goto('/shops')
 
-  await shopRows(page).nth(0).getByRole('button', { name: '详情' }).click()
+  const row = shopRows(page).nth(0)
+  const rowPopupPromise = page.waitForEvent('popup')
+  await row.getByRole('button', { name: '去 wxw 授权' }).click()
+  const rowPopup = await rowPopupPromise
+  await expect(rowPopup).toHaveURL(authorizationUrl)
+  await rowPopup.close()
+
+  await row.getByRole('button', { name: '详情' }).click()
   await expect(page.locator('#shopDetailLayer')).toBeVisible()
   // 旧弹窗打开后聚焦「去 wxw 授权」；迁移保留该初始焦点。
   await expect(page.locator('#shopAuthorize')).toBeFocused()
@@ -243,11 +255,10 @@ test('Given 点击详情 When 打开 Then 展示字段并可跳转 wxw 授权', 
   )
   await expect(page.locator('#shopDetailLayer')).not.toContainText('授权历史记录')
 
-  await page.route('https://v3.wxwerp.com/**', (route) => route.fulfill({ status: 204, body: '' }))
-  const popupPromise = context.waitForEvent('page')
+  const popupPromise = page.waitForEvent('popup')
   await page.locator('#shopAuthorize').click()
   const popup = await popupPromise
-  await expect.poll(() => popup.url()).toContain('v3.wxwerp.com/system/authorize')
+  await expect(popup).toHaveURL(authorizationUrl)
   await popup.close()
 
   await page.keyboard.press('Escape')

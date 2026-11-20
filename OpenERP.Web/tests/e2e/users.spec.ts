@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { expect, test } from '@playwright/test'
 import { authenticatedHeaders, enterWorkspace } from './authentication'
 
-test('Given 管理员创建并改名的员工 When 从订单页发起同步 Then 看到保存结果且无权管理用户或系统配置', async ({
+test('Given 管理员创建并改名的员工 When 同步历史订单和店铺 Then 看到更新且没有管理或授权入口', async ({
   page,
   browser,
   baseURL,
@@ -63,6 +63,41 @@ test('Given 管理员创建并改名的员工 When 从订单页发起同步 Then
     await orders.screenshot({ path: testInfo.outputPath('employee-order-sync.png') })
     await orders.keyboard.press('Escape')
     await expect(orders.getByRole('row').filter({ hasText: 'TM-BROWSER-SYNC-30' })).toBeVisible()
+
+    await test.step('Given 已登录的普通用户 When 从设置打开授权店铺与详情 Then 可读取状态且无授权入口', async () => {
+      await orders.locator('[data-group="settings"] button[aria-expanded]').click()
+      await orders.locator('[data-nav-page="shops"]').click()
+      await expect(orders).toHaveURL(/\/shops$/)
+      const table = orders.getByRole('table', { name: '授权店铺列表' })
+      const row = table.getByRole('row').filter({ hasText: '验收店铺' })
+      await expect(row.getByText('有效', { exact: true })).toBeVisible()
+      await expect(row.getByRole('cell', { name: '尚未检查' })).toBeVisible()
+      await expect(table.getByText('去 wxw 授权', { exact: true })).toHaveCount(0)
+      await expect(orders.getByRole('button', { name: '立即同步' })).toBeEnabled()
+      await orders.screenshot({ path: testInfo.outputPath('employee-shop-list.png') })
+
+      await row.getByRole('button', { name: '详情' }).click()
+      const details = orders.getByRole('dialog', { name: '验收店铺' })
+      await expect(details.getByText('有效', { exact: true })).toBeVisible()
+      await expect(details.getByText('去 wxw 授权', { exact: true })).toHaveCount(0)
+      await orders.screenshot({ path: testInfo.outputPath('employee-shop-detail.png') })
+      await details.getByRole('button', { name: '关闭', exact: true }).last().click()
+      await expect(details).toBeHidden()
+    })
+
+    await test.step('When 点击立即同步 Then 授权状态和最后检查时间自动更新', async () => {
+      const sync = orders.getByRole('button', { name: '立即同步' })
+      await sync.click()
+      const row = orders
+        .getByRole('table', { name: '授权店铺列表' })
+        .getByRole('row')
+        .filter({ hasText: '验收店铺' })
+      await expect(row.getByText('无效', { exact: true })).toBeVisible()
+      await expect(row.getByRole('cell', { name: '尚未检查' })).toHaveCount(0)
+      await expect(orders.getByText('刚刚', { exact: true })).toBeVisible()
+      await expect(sync).toBeEnabled()
+    })
+
     expect(restrictedRequests).toEqual([])
     for (const path of restricted) {
       expect((await staff.request.get(path, { headers })).status(), path).toBe(403)

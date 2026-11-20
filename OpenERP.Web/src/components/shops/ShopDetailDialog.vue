@@ -8,6 +8,7 @@ import type { Shop } from './types'
 
 const props = defineProps<{
   open: boolean
+  canAuthorize: boolean
   shop: Shop | null
   platformName: string
 }>()
@@ -15,15 +16,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   closed: []
-  authorize: [shop: Shop]
+  authorize: []
 }>()
 
 function close(): void {
   if (props.open) emit('close')
-}
-
-function authorize(): void {
-  if (props.shop) emit('authorize', props.shop)
 }
 
 function shopTitle(): string {
@@ -138,7 +135,11 @@ function formatDateTime(value: string | null): string {
         <div class="min-w-0">
           <p class="font-semibold text-notice-amber-text [overflow-wrap:anywhere]">平台授权失效</p>
           <p class="mt-2 text-notice-amber-text [overflow-wrap:anywhere]">
-            新数据可能停止，历史数据仍可读。请去 wxw ERP 重新授权，完成后回到本页点击「立即同步」。
+            新数据可能停止，历史数据仍可读。{{
+              canAuthorize
+                ? '请去 wxw ERP 重新授权，完成后回到本页点击「立即同步」。'
+                : '请联系管理员重新授权，完成后可点击「立即同步」刷新状态。'
+            }}
           </p>
         </div>
       </div>
@@ -148,7 +149,13 @@ function formatDateTime(value: string | null): string {
       </p>
 
       <footer class="mt-20 flex justify-end gap-8">
-        <AppButton id="shopAuthorize" variant="primary" autofocus @click="authorize">
+        <AppButton
+          v-if="canAuthorize"
+          id="shopAuthorize"
+          variant="primary"
+          autofocus
+          @click="emit('authorize')"
+        >
           去 wxw 授权
         </AppButton>
         <AppButton @click="close">关闭</AppButton>

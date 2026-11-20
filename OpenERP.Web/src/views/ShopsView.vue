@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import ErpAccessNotice from '../components/ErpAccessNotice.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { apiRequest } from '../account/session'
+import { account, apiRequest } from '../account/session'
 import AppButton from '../ui/AppButton.vue'
 import AppEmptyState from '../ui/AppEmptyState.vue'
 import AppIcon from '../ui/AppIcon.vue'
@@ -35,6 +35,7 @@ type ShopsResponse = {
 }
 
 const authorizationUrl = 'https://v3.wxwerp.com/system/authorize'
+const isAdministrator = computed(() => account.value?.role === 'Administrator')
 const pageSizeOptions = [20, 50, 100]
 
 /** 旧样式里的控件几何按实测值显式书写，避免组合类互相覆盖。 */
@@ -329,8 +330,7 @@ function closeDetail(): void {
   detailOpen.value = false
 }
 
-function openAuthorization(shop?: Shop): void {
-  void shop
+function openAuthorization(): void {
   window.open(authorizationUrl, '_blank', 'noopener,noreferrer')
 }
 
@@ -691,7 +691,12 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
             <AppTd>{{ formatDateTime(shop.syncedAt) }}</AppTd>
             <AppTd sticky="right">
               <div class="flex flex-wrap gap-4">
-                <button :class="rowActionClass" type="button" @click="openAuthorization(shop)">
+                <button
+                  v-if="isAdministrator"
+                  :class="rowActionClass"
+                  type="button"
+                  @click="openAuthorization"
+                >
                   去 wxw 授权
                 </button>
                 <button :class="rowActionClass" type="button" @click="showDetail(shop)">
@@ -756,6 +761,7 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
 
     <ShopDetailDialog
       :open="detailOpen"
+      :can-authorize="isAdministrator"
       :shop="detailShop"
       :platform-name="detailPlatformName"
       @close="closeDetail"
