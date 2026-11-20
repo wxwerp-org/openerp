@@ -6,17 +6,17 @@ description: >-
   Aspire CLI, AKS workload diagnostics, and deployed Azure resource health.
   USE FOR: aspire logs, aspire otel logs, aspire otel traces, aspire otel spans, aspire
   describe, aspire ps, aspire export, aspire dashboard run, describe --include-hidden,
-  browser logs in dashboard, terminal view, DevTunnel URLs, WithBrowserLogs, App Insights
+  browser logs in dashboard, DevTunnel URLs, WithBrowserLogs, App Insights
   query, AKS pod logs, container app logs.
   DO NOT USE FOR: start/stop/wait (use aspire-orchestration), deploy/publish/destroy (use
   aspire-deployment), AppHost code edits like WithBrowserLogs() (use aspireify), Azure
-  provisioning (use azure-prepare).
+  provisioning (use azure-prepare), terminal authoring/input/tapes (use aspire-terminals).
   INVOKES: aspire CLI, azure-diagnostics (deployed Azure), kubectl + Container Insights.
   FOR SINGLE OPERATIONS: Run the aspire CLI command directly for quick log or describe lookups.
 license: MIT
 metadata:
   author: Microsoft
-  version: "0.0.3"
+  version: "0.0.6"
 ---
 
 # Aspire Monitoring
@@ -97,8 +97,10 @@ aspire describe --format Json
 # ✅ When a resource you expect is missing, retry with --include-hidden
 aspire describe --include-hidden --format Json
 
-# ✅ Get endpoints from describe, not guessing ports
-ENDPOINT=$(aspire describe apiservice --format Json | jq -r '.endpoints[0].url')
+# ✅ Get endpoints from describe, not guessing ports. Wait first; jq -e fails when
+#    there is no external URL. JSON keeps AppHost order, not the https-first table order.
+aspire wait apiservice
+ENDPOINT=$(aspire describe apiservice --format Json | jq -er '[.resources[0].urls[]? | select(.isInternal | not) | .url][0] // empty')
 
 # ✅ Use --apphost <path> when multiple AppHosts exist
 aspire describe --apphost ./src/MyApp.AppHost/
@@ -194,7 +196,8 @@ Agents inspecting a running dashboard should know:
 - **13.5 filtering** — filter telemetry by timestamp, use `==` / `!=` for exact numeric
   values, and search console-log text while streams continue updating.
 - **Terminal view** — resources configured with experimental `WithTerminal()` open as
-  interactive sessions in the dashboard.
+  interactive sessions in the dashboard. Invoke `aspire-terminals` for terminal
+  authoring, input, dock/dialog lifetimes and tapes; logs/traces remain here.
 - **No dashboard AI Assistant** — it was removed in 13.5. Use `aspire agent init` and the
   AppHost/CLI agent integration instead.
 - **VS Code launch is opt-in** — the Aspire extension no longer opens the dashboard
@@ -222,8 +225,13 @@ The Aspire CLI talks to a *running AppHost* through a local backchannel socket a
 
 ## Project-Local Skill Routing
 
-If `.agents/skills/aspire/SKILL.md` exists (from `aspire agent init`), see its
-`references/monitoring.md` for deeper telemetry workflow guidance.
+If `.agents/skills/aspire/SKILL.md` exists, check `aspire --version`.
+
+- **Aspire 13.6 and earlier:** `aspire agent init` installed it. See its
+  `references/monitoring.md` for deeper telemetry workflow guidance.
+- **Aspire 17.0 and later:** Aspire registers this plugin instead, so treat the copy as
+  stale unless the user says they maintain it. Use this skill, tell the user the copy is
+  stale, and suggest `aspire doctor`, which lists each copy and explains how to remove it.
 
 ## References
 
