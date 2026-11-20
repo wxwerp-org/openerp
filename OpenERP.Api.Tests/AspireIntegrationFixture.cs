@@ -259,6 +259,13 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
         await _app!.GetConnectionStringAsync("openerp", cancellationToken)
             ?? throw new InvalidOperationException("Aspire 未提供订单测试的数据库连接。");
 
+    internal async Task<string> GetRedisConnectionStringAsync(CancellationToken cancellationToken)
+    {
+        await EnsureRedisStartedAsync(cancellationToken);
+        return await _app!.GetConnectionStringAsync("redis", cancellationToken)
+            ?? throw new InvalidOperationException("Aspire 未提供 Redis 连接。");
+    }
+
     internal async Task<string> GetStorageConnectionStringAsync(CancellationToken cancellationToken)
     {
         await EnsureStorageStartedAsync(cancellationToken);

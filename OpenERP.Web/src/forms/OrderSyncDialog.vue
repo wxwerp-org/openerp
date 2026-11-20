@@ -23,13 +23,11 @@ const props = defineProps<{
   hub: ReturnType<typeof useErpHub>
 }>()
 const emit = defineEmits<{ close: [] }>()
-const { state: hubState, orderSyncTasks, startOrderSync, connect } = props.hub
-const submittingSid = ref<number | null>(null)
-const orderSyncBusy = computed(
-  () =>
-    submittingSid.value !== null ||
-    Object.values(orderSyncTasks.value).some((task) => task.status === 'running'),
-)
+const { state: hubState, orderSyncTasks, startOrderSync, startAllOrderSync, connect } = props.hub
+const submittingSids = ref(new Set<number>())
+const submittingAll = ref(false)
+const batchMessage = ref('')
+const batchError = ref('')
 
 type Shop = {
   sid: string
@@ -451,11 +449,17 @@ function setOrderSyncEnabled(enabled: boolean): void {
   if (!enabled) orderSyncErrors.value = {}
 }
 
-async function syncShop(shop: Shop): Promise<void> {
-  if (orderSyncButtonDisabled.value) return
+function shopSyncDisabled(sid: number): boolean {
+  return (
+    !canStartOrderSync.value ||
+    submittingSids.value.has(sid) ||
+    orderSyncTasks.value[sid]?.status === 'running'
+  )
+}
 
-  const sid = Number(shop.sid)
-  submittingSid.value = sid
+async function syncShop(sid: number): Promise<void> {
+  if (shopSyncDisabled(sid)) return
+  submittingSids.value.add(sid)
   delete orderSyncErrors.value[sid]
 
   try {
@@ -464,14 +468,14 @@ async function syncShop(shop: Shop): Promise<void> {
       orderSyncErrors.value[sid] = result.error ?? '无法启动订单同步，请稍后重试。'
     }
   } finally {
-    submittingSid.value = null
+    submittingSids.value.delete(sid)
   }
 }
 
-function orderSyncStatusLabel(status: OrderSyncStatus): string {
-  switch (status) {
+function orderSyncStatusLabel(task: OrderSyncTask): string {
+  switch (task.status) {
     case 'running':
-      return '正在同步'
+      return task.stage === 'queued' ? '等待同步' : '正在同步'
     case 'succeeded':
       return '同步完成'
     case 'partial':
@@ -490,6 +494,8 @@ function orderSyncStatusClass(status: OrderSyncStatus): TagClass {
 
 function orderSyncStageLabel(stage: OrderSyncStage): string {
   switch (stage) {
+    case 'queued':
+      return ''
     case 'shop':
       return '店铺信息'
     case 'pages':
@@ -525,9 +531,37 @@ function orderSyncProgressTone(task: OrderSyncTask): 'primary' | 'success' | 'wa
   return 'primary'
 }
 
-const orderSyncButtonDisabled = computed(
-  () => !orderSyncEnabled.value || hubState.value !== 'connected' || orderSyncBusy.value,
+const canStartOrderSync = computed(
+  () =>
+    orderSyncEnabled.value && configStatus.value === 'configured' && hubState.value === 'connected',
 )
+const canSyncAll = computed(
+  () =>
+    canStartOrderSync.value &&
+    shopsStatus.value === 'success' &&
+    totalCount.value > 0 &&
+    !submittingAll.value,
+)
+
+async function syncAll(): Promise<void> {
+  if (!canSyncAll.value) return
+  submittingAll.value = true
+  batchMessage.value = ''
+  batchError.value = ''
+  try {
+    const result = await startAllOrderSync()
+    if (!result.accepted) {
+      batchError.value = result.error ?? '无法启动全部同步，请稍后重试。'
+      return
+    }
+    orderSyncErrors.value = {}
+    batchMessage.value = result.busyCount
+      ? `已启动 ${result.startedCount} 家店铺同步，${result.busyCount} 家正在同步的店铺已跳过。`
+      : `已启动 ${result.startedCount} 家店铺同步。`
+  } finally {
+    submittingAll.value = false
+  }
+}
 
 async function loadPage(
   page: number,
@@ -668,7 +702,7 @@ function handleClosed(): void {
 const focusRing =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
 const dialogClass =
-  'm-auto w-[min(960px,calc(100%_-_24px))] max-h-[calc(100%_-_24px)] overflow-y-auto rounded-8 border border-line bg-page p-12 text-ink [&:modal]:overscroll-contain'
+  'm-auto w-[min(1040px,calc(100%_-_24px))] max-h-[calc(100%_-_24px)] overflow-y-auto rounded-8 border border-line bg-page p-12 text-ink [&:modal]:overscroll-contain'
 const toolbarClass =
   'flex h-46 shrink-0 items-center gap-6 overflow-hidden rounded-t-6 bg-surface px-16'
 const toolbarSummaryClass =
@@ -682,7 +716,7 @@ const rowClass =
   'grid grid-cols-[240px_minmax(0,1fr)] items-start justify-start gap-24 border-b border-b-line-soft py-16'
 const hintClass = 'py-6 text-12/18 text-muted'
 const metaText = 'text-12/18 text-body [overflow-wrap:anywhere]'
-const countText = 'm-0 text-12 leading-[1.45] text-body [overflow-wrap:anywhere]'
+const countText = 'm-0 text-12 leading-[1.45] text-pretty text-body [overflow-wrap:anywhere]'
 const shopOptionClass =
   'flex cursor-pointer items-center gap-6 px-2 py-3 text-12/18 text-body hover:bg-primary-faint has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-primary'
 const pageSizeClass =
@@ -751,14 +785,6 @@ onUnmounted(() => {
           </template>
         </AppNotice>
       </div>
-      <p
-        v-if="orderSyncEnabled && orderSyncBusy"
-        class="m-0 mb-12 text-12/18 text-muted"
-        role="status"
-      >
-        有店铺正在同步，完成后可发起新的同步。
-      </p>
-
       <div v-if="configStatus === 'configured' && !orderSyncEnabled" class="shrink-0 pb-12">
         <AppNotice
           tone="amber"
@@ -930,6 +956,10 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <p v-if="batchError" role="alert" class="m-0 mb-6 text-12/18 text-danger">{{ batchError }}</p>
+      <p v-else-if="batchMessage" role="status" class="m-0 mb-6 text-12/18 text-body">
+        {{ batchMessage }}
+      </p>
       <div :class="toolbarClass">
         <div class="flex min-w-0 flex-1 items-center gap-6 overflow-hidden">
           <span :class="toolbarSummaryClass" aria-live="polite">
@@ -948,6 +978,16 @@ onUnmounted(() => {
           </span>
         </div>
         <div class="ml-auto flex shrink-0 items-center gap-6">
+          <AppButton
+            v-if="orderSyncEnabled"
+            variant="primary"
+            type="button"
+            :disabled="!canSyncAll"
+            :aria-busy="submittingAll || undefined"
+            :class="focusRing"
+            @click="syncAll"
+            >全部同步</AppButton
+          >
           <AppIconButton
             :label="retryLabel"
             tone="toolbar"
@@ -971,11 +1011,11 @@ onUnmounted(() => {
           label="订单同步店铺表格"
         >
           <colgroup>
-            <col style="width: 12%" />
-            <col style="width: 30%" />
-            <col style="width: 16%" />
-            <col style="width: 12%" />
-            <col v-if="orderSyncEnabled" style="width: 30%" />
+            <col :class="orderSyncEnabled ? 'w-1/10' : 'w-[12%]'" />
+            <col :class="orderSyncEnabled ? 'w-[24%]' : 'w-3/10'" />
+            <col :class="orderSyncEnabled ? 'w-1/10' : 'w-[16%]'" />
+            <col :class="orderSyncEnabled ? 'w-1/10' : 'w-[12%]'" />
+            <col v-if="orderSyncEnabled" class="w-[46%]" />
           </colgroup>
           <thead>
             <tr>
@@ -997,20 +1037,20 @@ onUnmounted(() => {
                   <AppButton
                     type="button"
                     :aria-label="`同步历史订单：${shopName(shop)}`"
-                    :aria-busy="submittingSid === Number(shop.sid) ? 'true' : undefined"
-                    :disabled="orderSyncButtonDisabled"
+                    :aria-busy="submittingSids.has(Number(shop.sid)) ? 'true' : undefined"
+                    :disabled="shopSyncDisabled(Number(shop.sid))"
                     :class="focusRing"
-                    @click="syncShop(shop)"
+                    @click="syncShop(Number(shop.sid))"
                   >
                     同步历史订单
                   </AppButton>
                   <div
                     v-if="orderSyncTasks[Number(shop.sid)]"
-                    class="flex w-full min-w-0 flex-col gap-5 text-12 text-body"
+                    class="@container flex w-full min-w-0 flex-col gap-5 text-12 text-body"
                   >
-                    <div class="flex items-center gap-8 text-body">
+                    <div class="flex flex-wrap items-center gap-x-8 gap-y-4 text-body">
                       <AppTag :tone="orderSyncStatusClass(orderSyncTasks[Number(shop.sid)].status)">
-                        {{ orderSyncStatusLabel(orderSyncTasks[Number(shop.sid)].status) }}
+                        {{ orderSyncStatusLabel(orderSyncTasks[Number(shop.sid)]) }}
                       </AppTag>
                       <span>{{ orderSyncStageLabel(orderSyncTasks[Number(shop.sid)].stage) }}</span>
                     </div>
@@ -1019,14 +1059,20 @@ onUnmounted(() => {
                       label="历史订单同步进度"
                       :tone="orderSyncProgressTone(orderSyncTasks[Number(shop.sid)])"
                     />
-                    <p :class="countText">
-                      读取 {{ orderSyncTasks[Number(shop.sid)].read }} /
-                      {{ orderSyncTasks[Number(shop.sid)].total }} · 已处理
-                      {{ orderSyncTasks[Number(shop.sid)].processed }} · 新增
-                      {{ orderSyncTasks[Number(shop.sid)].added }} · 更新
-                      {{ orderSyncTasks[Number(shop.sid)].updated }} · 未变
-                      {{ orderSyncTasks[Number(shop.sid)].unchanged }} · 跳过
-                      {{ orderSyncTasks[Number(shop.sid)].skipped }}
+                    <p class="m-0 grid gap-x-8 text-12/18 tabular-nums @min-[32em]:grid-cols-2">
+                      <span>
+                        读取 {{ orderSyncTasks[Number(shop.sid)].read }} /
+                        {{ orderSyncTasks[Number(shop.sid)].total }}
+                      </span>
+                      <span>已处理 {{ orderSyncTasks[Number(shop.sid)].processed }}</span>
+                    </p>
+                    <p
+                      class="m-0 grid gap-x-8 text-12/18 tabular-nums @min-[17em]:grid-cols-2 @min-[34em]:grid-cols-4"
+                    >
+                      <span>新增 {{ orderSyncTasks[Number(shop.sid)].added }}</span>
+                      <span>更新 {{ orderSyncTasks[Number(shop.sid)].updated }}</span>
+                      <span>未变 {{ orderSyncTasks[Number(shop.sid)].unchanged }}</span>
+                      <span>跳过 {{ orderSyncTasks[Number(shop.sid)].skipped }}</span>
                     </p>
                     <p
                       v-for="[reason, count] in Object.entries(

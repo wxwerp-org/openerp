@@ -53,51 +53,82 @@ public sealed class OrderSyncBatchTests
         }
     }
 
-    [Fact]
-    public async Task Schedule_continues_after_a_shop_fails_and_releases_the_global_slot()
+    [Theory]
+    [InlineData("manual")]
+    [InlineData("scheduled")]
+    [InlineData("mixed")]
+    public async Task Different_shops_can_read_at_the_same_time_and_finish_independently(string source)
     {
-        // Given 定时批次包含两家店，第一家读取时更换 Token，随后因店铺不可见失败。
+        // Given 两店读取各自停在可控等待点，第二家会先因店铺不可见失败。
         var cancellationToken = TestContext.Current.CancellationToken;
-        var tokens = new TestErpTokenStore("first-token");
-        var suppliedTokens = new List<string>();
+        var firstShopStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondShopStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstShop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecondShop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tokens = new TestErpTokenStore("test-token");
         var erp = new TestErpClient
         {
             ReadOrders = async (sid, token, ct) =>
             {
-                suppliedTokens.Add(token.Value);
+                if (token.Value != "test-token")
+                    return OpResults.Err("凭据不正确。");
+
                 if (sid == 30)
                 {
-                    var saved = await tokens.SaveAsync("second-token", ct);
-                    if (saved.IsErr)
-                        return saved.Error;
-                    return OpResults.Err("当前 ERP AccessToken 无法访问该 TemuPop 店铺。");
+                    firstShopStarted.TrySetResult();
+                    await releaseFirstShop.Task.WaitAsync(ct);
+                    return new OrderImportBatch(0, [], new Dictionary<string, int>());
                 }
 
-                return new OrderImportBatch(0, [], new Dictionary<string, int>());
+                secondShopStarted.TrySetResult();
+                await releaseSecondShop.Task.WaitAsync(ct);
+                return OpResults.Err("当前 ERP AccessToken 无法访问该 TemuPop 店铺。");
             }
         };
         using var provider = BuildProvider(erp, tokens);
         using var jobs = CreateJobs(provider);
-        var started = jobs.StartScheduledBatch([30, 31]);
-        if (started.IsErr)
-            throw new XunitException(started.Error.Message);
-        Assert.Equal(2, started.Value);
 
         try
         {
-            // When 运行批次并等待两家店都结束。
-            await jobs.StartAsync(cancellationToken);
-            await TestWait.UntilAsync(
-                () => AtTerminal(jobs, 30) && AtTerminal(jobs, 31),
-                "定时批次没有在超时内结束。", cancellationToken);
+            // When 由手动、定时或混合来源分别发起两家店的任务。
+            if (source == "scheduled")
+                Assert.False(jobs.StartScheduledBatch([30, 31]).IsErr);
+            else
+            {
+                Assert.False(jobs.Start(30).IsErr);
+                if (source == "mixed")
+                    Assert.False(jobs.StartScheduledBatch([30, 31]).IsErr);
+                else
+                    Assert.False(jobs.Start(31).IsErr);
+            }
 
-            // Then 每家店读取一次，第二家用新 Token 完成，批次结束后可再次手动同步。
-            Assert.Equal("failed", jobs.Latest(30)?.Status);
-            Assert.Contains("无法访问", jobs.Latest(30)?.Error ?? "");
-            Assert.Equal("succeeded", jobs.Latest(31)?.Status);
+            await jobs.StartAsync(cancellationToken);
+            await Task.WhenAll(firstShopStarted.Task, secondShopStarted.Task)
+                .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+
+            // Then 第一家仍在读取时，第二家已进入读取。每店单独取凭据，且拒绝同店重复启动。
+            var first = Assert.IsType<OrderSyncStatus>(jobs.Latest(30));
+            var second = Assert.IsType<OrderSyncStatus>(jobs.Latest(31));
+            Assert.Equal("running", first.Status);
+            Assert.Equal("running", second.Status);
             Assert.Equal(2, tokens.Reads);
-            Assert.Equal(["first-token", "second-token"], suppliedTokens);
-            await TestWait.EventuallyAsync(() => jobs.Start(99), "批次结束后仍无法手动同步。", cancellationToken);
+            Assert.True(jobs.Start(30).IsErr);
+            Assert.True(jobs.Start(31).IsErr);
+
+            releaseSecondShop.SetResult();
+            await TestWait.UntilAsync(() => AtTerminal(jobs, 31), "第二家店未独立结束。", cancellationToken);
+            Assert.Equal(first, jobs.Latest(30));
+            Assert.Equal(second.Id, jobs.Latest(31)?.Id);
+            Assert.Equal("failed", jobs.Latest(31)?.Status);
+            Assert.Contains("无法访问", jobs.Latest(31)?.Error ?? "");
+
+            // 第二家店结束即可补跑，第一家店随后独立完成。
+            var retried = await TestWait.EventuallyAsync(
+                () => jobs.Start(31), "第二家店结束后仍无法补跑。", cancellationToken);
+            Assert.NotEqual(second.Id, retried.Id);
+            releaseFirstShop.SetResult();
+            await TestWait.UntilAsync(() => AtTerminal(jobs, 30), "第一家店未完成。", cancellationToken);
+            Assert.Equal("succeeded", jobs.Latest(30)?.Status);
         }
         finally
         {
@@ -106,47 +137,57 @@ public sealed class OrderSyncBatchTests
     }
 
     [Fact]
-    public async Task Schedule_keeps_manual_starts_conflicted_until_all_shops_finish()
+    public async Task Manual_and_scheduled_work_share_four_read_slots()
     {
-        // Given 定时批次的第一家店已失败，第二家店仍在读取。
+        // Given 手动和定时共受理五家店，每家进入读取后保持阻塞。
         var cancellationToken = TestContext.Current.CancellationToken;
-        var secondShopStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseSecondShop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fourShopsStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fifthShopStarted = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseShops = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var count = 0;
+        var tokens = new TestErpTokenStore("test-token");
         var erp = new TestErpClient
         {
-            ReadOrders = async (sid, _, ct) =>
+            ReadOrders = async (_, token, ct) =>
             {
-                if (sid == 30)
-                    return OpResults.Err("店铺 30 读取失败。");
+                switch (Interlocked.Increment(ref count))
+                {
+                    case 4:
+                        fourShopsStarted.SetResult();
+                        break;
+                    case 5:
+                        fifthShopStarted.SetResult(token.Value);
+                        break;
+                }
 
-                secondShopStarted.TrySetResult();
-                await releaseSecondShop.Task.WaitAsync(ct);
-                return OpResults.Ok(new OrderImportBatch(0, [], new Dictionary<string, int>()));
+                await releaseShops.Task.WaitAsync(ct);
+                return new OrderImportBatch(0, [], new Dictionary<string, int>());
             }
         };
-        using var provider = BuildProvider(erp);
+        using var provider = BuildProvider(erp, tokens);
         using var jobs = CreateJobs(provider);
+        Assert.False(jobs.Start(30).IsErr);
+        Assert.False(jobs.StartScheduledBatch([31, 32, 33, 34]).IsErr);
+
         try
         {
-            var started = jobs.StartScheduledBatch([30, 31]);
-            if (started.IsErr)
-                throw new XunitException(started.Error.Message);
+            // When 开始处理任务，前四家进入读取。
             await jobs.StartAsync(cancellationToken);
-            await secondShopStarted.Task.WaitAsync(cancellationToken);
-            await TestWait.UntilAsync(
-                () => jobs.Latest(30)?.Status == "failed",
-                "第一家店没有在超时内失败。", cancellationToken);
+            await fourShopsStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
 
-            // When 第一家店已经失败、第二家店仍在运行时手动提交另一家店。
-            var manual = jobs.Start(99);
+            // Then 第五家已受理，但须等空出位置才读取凭据并访问 ERP。
+            await Assert.ThrowsAsync<TimeoutException>(() =>
+                fifthShopStarted.Task.WaitAsync(TimeSpan.FromMilliseconds(200), cancellationToken));
+            Assert.Equal(4, tokens.Reads);
+            Assert.Equal("queued", jobs.Latest(34)?.Stage);
 
-            // Then 全局单任务互斥保持到整个批次结束。
-            Assert.True(manual.IsErr, "定时批次结束前必须拒绝手动同步。");
-            releaseSecondShop.SetResult();
-            await TestWait.UntilAsync(
-                () => AtTerminal(jobs, 31),
-                "定时批次没有在超时内结束。", cancellationToken);
-            await TestWait.EventuallyAsync(() => jobs.Start(99), "批次结束后仍无法手动同步。", cancellationToken);
+            // 等待期间凭据轮换，下一家店应在实际开始时读取新值。
+            var saved = await tokens.SaveAsync("replacement-token", cancellationToken);
+            Assert.False(saved.IsErr);
+            releaseShops.SetResult();
+            Assert.Equal("replacement-token",
+                await fifthShopStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken));
+            Assert.Equal(5, tokens.Reads);
         }
         finally
         {
@@ -165,7 +206,7 @@ public sealed class OrderSyncBatchTests
         var empty = jobs.StartScheduledBatch([]);
         var duplicated = jobs.StartScheduledBatch([30, 30]);
 
-        // Then 空批次不占用全局槽，重复店铺只入队一次。
+        // Then 空批次不占用店铺，重复店铺只入队一次。
         if (empty.IsErr)
             throw new XunitException(empty.Error.Message);
         Assert.Equal(0, empty.Value);

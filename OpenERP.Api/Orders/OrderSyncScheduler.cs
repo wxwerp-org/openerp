@@ -85,8 +85,8 @@ public sealed class OrderSyncScheduler : BackgroundService
             return OrderSyncCycleOutcome.Busy;
         }
 
-        _logger.LogInformation("定时同步已受理 {Count} 家店铺：{ShopSids}。",
-            started.Value, string.Join(",", settings.ShopSids));
+        _logger.LogInformation("定时同步在选中的 {Selected} 家店铺中受理 {Count} 家。",
+            settings.ShopSids.Count, started.Value);
         return OrderSyncCycleOutcome.Started;
     }
 

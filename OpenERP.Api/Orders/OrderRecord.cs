@@ -7,6 +7,7 @@ internal sealed class OrderRecord : Entity
     public int Sid { get; set; }
     public required string Platform { get; set; }
     public required string Status { get; set; }
+    public Guid SyncRevision { get; set; }
     public string? CreatedRaw { get; set; }
     public string? CreatedSource { get; set; }
     public string? PaidRaw { get; set; }

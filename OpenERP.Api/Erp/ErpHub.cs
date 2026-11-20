@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Orders;
 
@@ -64,6 +65,42 @@ public sealed class ErpHub(IShopSyncJob job, IServiceScopeFactory scopeFactory, 
             : new(true, started.Value, null);
     }
 
+    public async Task<AllOrderSyncStartResult> StartAllOrderSync()
+    {
+        await EnsureActiveSessionAsync();
+        if (orders is null)
+            return new(false, 0, 0, "当前环境未启用订单同步。");
+
+        var ct = Context.ConnectionAborted;
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var tokens = scope.ServiceProvider.GetRequiredService<IErpTokenStore>();
+        var configuration = await tokens.GetConfigurationAsync(ct);
+        if (configuration.IsErr)
+            return new(false, 0, 0, configuration.Error.Message);
+        if (!configuration.Value.Configured)
+            return new(false, 0, 0, "尚未配置私有 ERP AccessToken");
+
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        int[] sids;
+        try
+        {
+            sids = await db.Shops
+                .Where(shop => shop.Platform == "TemuPop")
+                .Select(shop => shop.Sid)
+                .ToArrayAsync(ct);
+        }
+        catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+        {
+            return new(false, 0, 0, "本地店铺数据暂时不可用。");
+        }
+
+        var started = orders.StartAll(sids);
+        if (started.IsErr)
+            return new(false, 0, 0, started.Error.Message);
+
+        return new(true, started.Value.StartedCount, started.Value.BusyCount, null);
+    }
+
     private async Task EnsureActiveSessionAsync()
     {
         // 连接建立后，命令执行前仍须按当前数据校验会话。
@@ -99,3 +136,5 @@ public sealed class ErpHub(IShopSyncJob job, IServiceScopeFactory scopeFactory, 
         }
     }
 }
+
+public sealed record AllOrderSyncStartResult(bool Accepted, int StartedCount, int BusyCount, string? Error);

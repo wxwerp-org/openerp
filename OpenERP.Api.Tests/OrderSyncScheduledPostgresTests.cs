@@ -108,7 +108,7 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
     }
 
     [Fact]
-    public async Task Failed_shop_is_retried_by_the_next_batch_and_recovers()
+    public async Task Next_batch_reads_shops_concurrently_and_recovers_the_failed_shop()
     {
         // Given 一家店首轮读取失败，另一家店成功；次轮两家都成功。
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -119,17 +119,30 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
             await db.Database.MigrateAsync(cancellationToken);
 
         var shop30Attempts = 0;
+        var shop31Attempts = 0;
+        var secondRoundReads = 0;
+        var bothShopsReading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var order30 = CreateOrder("erp-30", "order-30", 30);
         var order31 = CreateOrder("erp-31", "order-31", 31);
         var erp = new TestErpClient
         {
-            ReadOrders = (sid, _, _) =>
+            ReadOrders = async (sid, _, ct) =>
             {
-                if (sid == 30 && Interlocked.Increment(ref shop30Attempts) == 1)
-                    return Task.FromResult<OpResult<OrderImportBatch>>(OpResults.Err("店铺 30 首次读取失败。"));
+                var attempts = sid == 30
+                    ? Interlocked.Increment(ref shop30Attempts)
+                    : Interlocked.Increment(ref shop31Attempts);
+                if (sid == 30 && attempts == 1)
+                    return OpResults.Err("店铺 30 首次读取失败。");
 
-                return Task.FromResult(OpResults.Ok(new OrderImportBatch(
-                    1, [sid == 30 ? order30 : order31], new Dictionary<string, int>())));
+                if (attempts == 2)
+                {
+                    if (Interlocked.Increment(ref secondRoundReads) == 2)
+                        bothShopsReading.SetResult();
+
+                    await bothShopsReading.Task.WaitAsync(ct);
+                }
+
+                return new OrderImportBatch(1, [sid == 30 ? order30 : order31], new Dictionary<string, int>());
             }
         };
 
@@ -156,7 +169,7 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
             Assert.Equal("succeeded", jobs.Latest(31)?.Status);
             Assert.Equal(1L, await CountAsync("Orders", cancellationToken));
 
-            // When 下一周期重新扫描全部选中店铺。
+            // When 下一周期重新扫描全部选中店铺，两家都进入读取后才允许落库。
             await TestWait.EventuallyAsync(
                 () => jobs.StartScheduledBatch([30, 31]), "次轮定时批次未能受理。", cancellationToken);
             await TestWait.UntilAsync(

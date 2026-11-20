@@ -1,12 +1,13 @@
 using Mapster;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using OpResult;
 
 namespace OpenERP.Api.Orders;
 
 public sealed record OrderSaveCounts(int Added, int Updated, int Unchanged);
 
-public sealed class OrderStore(AppDbContext db)
+public sealed class OrderStore(AppDbContext db, HybridCache? cache = null, ILogger<OrderStore>? logger = null)
 {
     private static readonly TypeAdapterConfig SnapshotMapping = CreateSnapshotMapping();
 
@@ -15,10 +16,26 @@ public sealed class OrderStore(AppDbContext db)
         if (orders.Count == 0)
             return new OrderSaveCounts(0, 0, 0);
 
-        var erpIds = orders.Select(order => order.ErpId).ToArray();
-        var existingOrders = await db.Orders
+        var ids = orders.Select(order => order.ErpId).ToArray();
+        Dictionary<string, Guid> revisions = [];
+        IReadOnlyList<OrderSnapshot> candidates = orders;
+        List<OrderFingerprintCache.Page> pages = [];
+        if (cache is not null)
+        {
+            var storedOrders = await db.Orders.IgnoreQueryFilters()
+                .Where(order => ids.Contains(order.ErpId))
+                .Select(order => new { order.ErpId, order.SyncRevision, IsDeleted = order.DeletedAt != null })
+                .ToDictionaryAsync(order => order.ErpId, cancellationToken);
+            revisions = storedOrders.Values.Where(order => !order.IsDeleted)
+                .ToDictionary(order => order.ErpId, order => order.SyncRevision);
+            (candidates, pages) = await OrderFingerprintCache.FindChangesAsync(
+                cache, orders, revisions, logger, cancellationToken);
+            ids = candidates.Select(order => order.ErpId).Where(storedOrders.ContainsKey).ToArray();
+        }
+
+        var existingOrders = ids.Length == 0 ? [] : await db.Orders
             .IgnoreQueryFilters()
-            .Where(order => erpIds.Contains(order.ErpId))
+            .Where(order => ids.Contains(order.ErpId))
             .Include(order => order.PlatformOrders)
             .Include(order => order.Lines)
             .AsSplitQuery()
@@ -27,16 +44,19 @@ public sealed class OrderStore(AppDbContext db)
         var added = 0;
         var updated = 0;
         var deletedAt = DateTimeOffset.UtcNow;
-        foreach (var order in orders)
+        foreach (var order in candidates)
         {
             var desired = CreateRecord(order);
             if (!existingOrders.TryGetValue(order.ErpId, out var existing))
             {
+                desired.SyncRevision = Guid.NewGuid();
                 db.Orders.Add(desired);
+                revisions[order.ErpId] = desired.SyncRevision;
                 added++;
                 continue;
             }
 
+            desired.SyncRevision = existing.SyncRevision;
             var orderChanged = ApplyValues(existing, desired);
             var platformOrdersChanged = ApplyChildren(
                 existing.PlatformOrders, desired.PlatformOrders, child => child.PoNumber, deletedAt);
@@ -45,7 +65,12 @@ public sealed class OrderStore(AppDbContext db)
                 && ApplyChildren(existing.Lines, desired.Lines, child => child.Ordinal, deletedAt);
 
             if (orderChanged || platformOrdersChanged || linesChanged)
+            {
+                existing.SyncRevision = Guid.NewGuid();
                 updated++;
+            }
+
+            revisions[order.ErpId] = existing.SyncRevision;
         }
 
         if (added + updated > 0)
@@ -59,6 +84,9 @@ public sealed class OrderStore(AppDbContext db)
                 return OpResults.Err("保存订单失败，请检查数据库后重试。");
             }
         }
+
+        if (cache is not null)
+            await OrderFingerprintCache.PublishAsync(cache, pages, revisions, logger, cancellationToken);
 
         return new OrderSaveCounts(added, updated, orders.Count - added - updated);
     }

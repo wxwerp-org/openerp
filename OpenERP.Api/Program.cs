@@ -15,7 +15,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddNpgsqlDbContext<AppDbContext>("openerp");
-builder.AddRedisClient("redis");
+builder.AddRedisDistributedCache("redis");
+builder.Services.AddHybridCache();
 builder.AddFileStorage();
 builder.Services.AddSingleton<FileStore>();
 builder.AddAccountAuthentication();

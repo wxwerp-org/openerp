@@ -9,6 +9,9 @@ public sealed partial class WxwErpClient
 {
     private const string OrderTimePath = "/open-api/order_detail/get_time";
     private const string TemuPop = "TemuPop";
+    private const int MaxOrderPageSize = 500;
+    private const int MaxConcurrentOrderDetails = 8;
+    private static readonly SemaphoreSlim OrderDetailSlots = new(MaxConcurrentOrderDetails, MaxConcurrentOrderDetails);
 
     public async Task<OpResult<OrderImportBatch>> ReadOrdersAsync(
         int sid, Action<OrderReadProgress>? report, ErpAccessToken accessToken, CancellationToken ct)
@@ -30,7 +33,7 @@ public sealed partial class WxwErpClient
         if (!found)
             return OpResults.Err("当前 ERP AccessToken 无法访问该 TemuPop 店铺。");
 
-        var scan = await ReadOrderIndexAsync(sid, 20, report, accessToken, ct);
+        var scan = await ReadOrderIndexAsync(sid, MaxOrderPageSize, report, accessToken, ct);
         if (scan.IsErr)
             return scan.Error;
 
@@ -39,19 +42,42 @@ public sealed partial class WxwErpClient
         var skips = new Dictionary<string, int>(index.SkipReasons);
         var processed = index.Total - index.Orders.Count;
         report?.Invoke(new("details", index.Total, index.Total, processed));
-        foreach (var header in index.Orders)
+        using var detailCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var pending = new Queue<Task<OpResult<OrderReadItem>>>(MaxConcurrentOrderDetails);
+        var next = 0;
+        try
         {
-            var detail = await ReadOrderAsync(accessToken, sid, header, ct);
-            if (detail.IsErr)
-                return detail.Error;
+            for (var current = 0; current < index.Orders.Count; current++)
+            {
+                // 读取可以重叠，按列表顺序合并结果并报告进度。
+                while (pending.Count < MaxConcurrentOrderDetails && next < index.Orders.Count)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    pending.Enqueue(ReadOrderWithPermitAsync(accessToken, sid, index.Orders[next++], detailCancellation.Token));
+                }
 
-            var result = detail.Value;
-            if (result.Order is { } order)
-                orders.Add(order);
-            else if (result.SkipReason is { } reason)
-                CountSkip(skips, reason);
+                var detail = await pending.Dequeue();
+                if (detail.IsErr)
+                    return detail.Error;
 
-            report?.Invoke(new("details", index.Total, index.Total, ++processed));
+                var result = detail.Value;
+                if (result.Order is { } order)
+                    orders.Add(order);
+                else if (result.SkipReason is { } reason)
+                    CountSkip(skips, reason);
+
+                report?.Invoke(new("details", index.Total, index.Total, ++processed));
+            }
+        }
+        finally
+        {
+            if (pending.Count > 0)
+            {
+                await detailCancellation.CancelAsync();
+                // 等待已经发起的读取退出，保留最先处理到的失败。
+                Task remaining = Task.WhenAll(pending);
+                await remaining.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
         }
 
         return new OrderImportBatch(index.Total, orders, skips);
@@ -60,7 +86,7 @@ public sealed partial class WxwErpClient
     public async Task<OpResult<OrderIndex>> ReadOrderIndexAsync(
         int sid, int pageSize, Action<OrderReadProgress>? report, ErpAccessToken accessToken, CancellationToken ct)
     {
-        if (sid <= 0 || pageSize is < 1 or > 500)
+        if (sid <= 0 || pageSize is < 1 or > MaxOrderPageSize)
             return OpResults.Err("店铺或分页参数无效。");
 
         var filters = new
@@ -131,6 +157,20 @@ public sealed partial class WxwErpClient
             return OpResults.Err("ERP 订单分页统计发生变化，请重试同步。");
 
         return new OrderIndex(total, ids, orders, skips);
+    }
+
+    private async Task<OpResult<OrderReadItem>> ReadOrderWithPermitAsync(
+        ErpAccessToken accessToken, int sid, ErpOrderHeader header, CancellationToken ct)
+    {
+        await OrderDetailSlots.WaitAsync(ct);
+        try
+        {
+            return await ReadOrderAsync(accessToken, sid, header, ct);
+        }
+        finally
+        {
+            OrderDetailSlots.Release();
+        }
     }
 
     private async Task<OpResult<OrderReadItem>> ReadOrderAsync(
