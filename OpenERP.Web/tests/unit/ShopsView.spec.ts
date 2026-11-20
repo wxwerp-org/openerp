@@ -161,7 +161,32 @@ describe('授权店铺页', () => {
     expect(wrapper.findAll('tbody tr')).toHaveLength(45)
   })
 
-  it('Given 点击详情 When 打开弹窗 Then 展示可用字段且深链在新标签打开', async () => {
+  it('Given 普通用户 When 查看授权失效的店铺及详情 Then 两处均无授权入口并提示联系管理员', async () => {
+    vi.spyOn(session, 'account', 'get').mockReturnValue(
+      ref({ ...adminAccount, role: 'User', username: 'employee' }),
+    )
+    installFetch(
+      defaultHandler([shop({ isTokenOk: false })], {
+        valid: 0,
+        invalid: 1,
+        unknown: 0,
+        lastSyncedAt: null,
+      }),
+    )
+    wrapper = await mountView()
+    const row = wrapper.get('tbody tr')
+    expect(row.text()).toContain('无效')
+    expect.soft(row.text()).not.toContain('去 wxw 授权')
+
+    await firstButton(wrapper, '详情').trigger('click')
+    const dialog = wrapper.get('#shopDetailLayer')
+    expect(dialog.text()).toContain('平台授权失效')
+    expect.soft(dialog.text()).not.toContain('去 wxw 授权')
+    expect(dialog.text()).toContain('联系管理员')
+  })
+
+  it('Given 管理员 When 打开详情 Then 展示可用字段且深链在新标签打开', async () => {
+    vi.spyOn(session, 'account', 'get').mockReturnValue(ref(adminAccount))
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     installFetch(
       defaultHandler([shop({ memberId: 'member-42', syncedAt: new Date().toISOString() })], {

@@ -56,7 +56,11 @@ public sealed class BrowserErpStartup : IHostingStartup
             {
                 "/open-api/shop/get_shops" => """
                     {"success":true,"data_count":1,"page_count":1,
-                     "data":{"items":[{"sid":"30","name":"验收店铺","platform":"TemuPop"}]}}
+                     "data":{"items":[{"sid":"30","name":"验收店铺","platform":"TemuPop","memberid":"browser-member-30"}]},
+                     "platforms":[{"platform":"TemuPop","text":"Temu半托管","count":1}]}
+                    """,
+                "/open-api/shop/get_status" => """
+                    {"success":true,"data":{"isTokenOk":false,"region":"US"}}
                     """,
                 "/open-api/order/get_list_page_count" => """
                     {"success":true,"data":{"data_count":1,"page_count":1}}
