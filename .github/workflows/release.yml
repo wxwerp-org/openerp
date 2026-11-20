@@ -12,6 +12,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      compose-image: ${{ steps.verify.outputs.image }}
+      compose-sha256: ${{ steps.verify.outputs.sha256 }}
+      registry-digest: ${{ steps.push.outputs.digest }}
     env:
       ReleaseTag: ${{ github.event.release.tag_name }}
       Parameters__registry_endpoint: ghcr.io
@@ -47,6 +51,7 @@ jobs:
           aspire publish --non-interactive -o "$RUNNER_TEMP/aspire-output"
 
       - name: 验证 Release 附件和本次构建的镜像
+        id: verify
         run: |
           source_file="$RUNNER_TEMP/aspire-output/docker-compose.yaml"
           compose_file="$RUNNER_TEMP/docker-compose.yaml"
@@ -66,12 +71,89 @@ jobs:
           image_id="$(docker image inspect openerp:local --format '{{.Id}}')"
           docker tag "$image_id" "$release_image"
           python3 deploy/tests/smoke.py --compose "$compose_file" --image "$release_image"
+          echo "image=$(docker compose -f "$compose_file" config --images)" >> "$GITHUB_OUTPUT"
+          sha256sum "$compose_file" | awk '{print "sha256=" $1}' >> "$GITHUB_OUTPUT"
           echo "RELEASE_IMAGE=$release_image" >> "$GITHUB_ENV"
 
       - name: 推送已验收的单个镜像
-        run: docker push "$RELEASE_IMAGE"
+        id: push
+        shell: bash
+        run: |
+          docker push "$RELEASE_IMAGE" | tee "$RUNNER_TEMP/push.log"
+          # Docker 在推送完成时输出 "<tag>: digest: sha256:... size: ..."。
+          awk -v tag="$ReleaseTag:" '$1 == tag && $2 == "digest:" {print "digest=" $3}' \
+            "$RUNNER_TEMP/push.log" >> "$GITHUB_OUTPUT"
 
       - name: 上传同一 Release 的部署附件
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload --repo "$GITHUB_REPOSITORY" -- "$ReleaseTag" "$RUNNER_TEMP/docker-compose.yaml"
+
+  houqin:
+    name: 部署 houqin staging
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy-houqin
+      queue: max
+    steps:
+      - name: 检出本次 Release 的部署脚本
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: 下载本次 Release 的部署附件
+        id: download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          COMPOSE_SHA256: ${{ needs.publish.outputs.compose-sha256 }}
+        run: |
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern docker-compose.yaml --dir "$RUNNER_TEMP" -- "$RELEASE_TAG"
+          cd "$RUNNER_TEMP"
+          printf '%s  docker-compose.yaml\n' "$COMPOSE_SHA256" | sha256sum -c -
+
+      - name: 通过 SSH 更新现有实例
+        id: deploy
+        shell: bash
+        env:
+          EXPECTED_IMAGE: ${{ needs.publish.outputs.compose-image }}
+          EXPECTED_DIGEST: ${{ needs.publish.outputs.registry-digest }}
+          HOUQIN_SSH_USER: ${{ vars.HOUQIN_SSH_USER }}
+          HOUQIN_SSH_PORT: ${{ vars.HOUQIN_SSH_PORT || '22' }}
+          HOUQIN_KNOWN_HOSTS: ${{ vars.HOUQIN_KNOWN_HOSTS }}
+          HOUQIN_SSH_PRIVATE_KEY: ${{ secrets.HOUQIN_SSH_PRIVATE_KEY }}
+        run: |
+          set -u
+          umask 077
+          ssh_dir=$(mktemp -d)
+          trap 'rm -rf -- "$ssh_dir"' EXIT
+          printf '%s\n' "${HOUQIN_SSH_PRIVATE_KEY:?请配置部署密钥}" > "$ssh_dir/id"
+          printf '%s\n' "${HOUQIN_KNOWN_HOSTS:?请配置经过核实的 SSH 主机公钥}" > "$ssh_dir/known_hosts"
+          printf '%s\n' "${EXPECTED_IMAGE:?缺少已验收的镜像引用}" > "$RUNNER_TEMP/image"
+          printf '%s\n' "${EXPECTED_DIGEST:?缺少 GHCR 发布摘要}" > "$RUNNER_TEMP/digest"
+          printf '%s\n' "$GITHUB_RUN_NUMBER" > "$RUNNER_TEMP/run-number"
+          tar -cf - -C deploy/houqin update.sh -C "$RUNNER_TEMP" docker-compose.yaml image digest run-number |
+            ssh -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o GlobalKnownHostsFile=/dev/null -o "UserKnownHostsFile=$ssh_dir/known_hosts" -o ConnectTimeout=15 \
+              -i "$ssh_dir/id" -p "$HOUQIN_SSH_PORT" -l "${HOUQIN_SSH_USER:?请配置部署账号}" -- openerp.wxwerp.com '
+                set -eu
+                umask 077
+                work=$(mktemp -d)
+                trap '\''rm -rf -- "$work"'\'' EXIT
+                tar -xf - -C "$work" update.sh docker-compose.yaml image digest run-number
+                bash "$work/update.sh" /opt/openerp "$work/docker-compose.yaml" "$(cat "$work/image")" "$(cat "$work/run-number")" "$(cat "$work/digest")"'
+
+      - name: 验证 staging 的 HTTPS 入口与数据库状态
+        id: health
+        run: |
+          status=$(curl --silent --show-error --fail --connect-timeout 5 --max-time 10 \
+            --retry 60 --retry-delay 5 --retry-max-time 300 --retry-all-errors \
+            --output "$RUNNER_TEMP/status.json" --write-out '%{http_code}' \
+            https://openerp.wxwerp.com/api/auth/status)
+          test "$status" = 200
+          jq -e 'type == "object" and (.initialized | type == "boolean")' "$RUNNER_TEMP/status.json"

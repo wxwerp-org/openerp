@@ -4,7 +4,7 @@ OpenERP 以一个镜像、一个容器运行在 Linux amd64 服务器上。服�
 
 ## 首次安装
 
-等 [GitHub Release](https://github.com/wxwerp-org/openerp/releases) 的发布工作流成功后，从同一 Release 下载 **`docker-compose.yaml`**，放入该实例的长期目录，例如 `/opt/openerp/`。在该目录执行：
+等 [GitHub Release](https://github.com/wxwerp-org/openerp/releases) 的 `publish` job 上传部署附件后，从同一 Release 下载 **`docker-compose.yaml`**，放入该实例的长期目录，例如 `/opt/openerp/`。在该目录执行：
 
 ```bash
 docker compose up -d
@@ -54,6 +54,31 @@ docker compose up -d
 新容器复用原数据和凭据，执行待应用的 EF 迁移。登录原账号，确认业务记录和已有附件均可读取。若迁移失败，Web 不会开放，使用 `docker compose logs openerp` 查看失败阶段。数据库结构已经改变且旧版不兼容时，停机后从升级前的备份成套恢复。
 
 运行中任一常驻进程意外退出会触发整套容器重启，期间 ERP 短暂不可用。手动执行 `docker compose stop` 后保持停止。本部署方式从空目录开始，面向此后单容器版本之间的升级。
+
+## houqin staging 自动部署
+
+每次发布 GitHub Release（含预发布），发布工作流成功推送镜像并上传 `docker-compose.yaml` 后，会通过 SSH 更新 `openerp.wxwerp.com` 的 `/opt/openerp/`。其他实例仍可从同一 Release 下载附件，按上文手动部署。houqin 的部署结果可在该 Release 对应的 Actions 运行中查看，job 名为「部署 houqin staging」。
+
+### 一次性配置
+
+1. 准备已在 `/opt/openerp/` 运行的单容器实例，保留该目录的 `.env`、`data/` 和现用 Compose 文件。沿用已有 HTTPS 反代。部署账号需要能在实例目录写入文件、操作 Docker 并完成实例备份。服务器需要 Bash、Docker Compose、`jq`、`flock` 和 GNU tar，且应为完整数据备份留足磁盘空间。
+2. 为 houqin 准备一对专用 SSH 密钥，将公钥加入部署账号的 `authorized_keys`。通过服务器控制台或已验证的运维通道取得 SSH 主机公钥。
+3. 在 GitHub 仓库 **Settings → Secrets and variables → Actions** 中配置下表。私钥使用完整 OpenSSH 私钥文本，部署时由临时 runner 读取。[GitHub Actions secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets) · [GitHub Actions variables](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-variables)
+
+| 名称 | GitHub 存储位置 | 值 |
+| --- | --- | --- |
+| `HOUQIN_SSH_PRIVATE_KEY` | Secrets | 与部署账号公钥匹配、可供非交互使用的专用私钥 |
+| `HOUQIN_SSH_USER` | Variables | SSH 部署账号 |
+| `HOUQIN_KNOWN_HOSTS` | Variables | 已核验的主机公钥行，例如 `openerp.wxwerp.com ssh-ed25519 <主机公钥>` |
+| `HOUQIN_SSH_PORT` | Variables，可选 | 默认 `22`。自定义端口时，公钥行的主机部分写作 `[openerp.wxwerp.com]:端口` |
+
+### 升级和故障处理
+
+部署先比对发布时记录的附件 SHA-256，再检查当前实例。服务器拉取镜像并核对 GHCR 发布摘要后才停机。已有的 `compose.yaml` 会随原数据备份，切换完成后 `docker compose` 自动选用新版 `docker-compose.yaml`。每次升级都将成套备份留在 `/opt/openerp/.houqin-backups/`，归档路径会写入部署日志。升级结束时核对实际运行镜像，并从 runner 通过公网 HTTPS 检查 `/api/auth/status`。
+
+连接或镜像拉取失败时，原实例继续运行。修正配置后，在该次运行选择 **Re-run failed jobs**，或执行 `gh run rerun <run-id> --failed`。已经部署的同一次运行重试时会再次核对实例；较早的运行不能覆盖已接管的新版本。[GitHub 重试说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)
+
+若切换后容器未能启动或 HTTPS 检查失败，先在实例目录用 `docker compose ps -a` 和 `docker compose logs --tail=100 openerp` 核对启动和迁移阶段。需要回退时，停机并将当前数据、`.env` 和 Compose 文件移到独立目录保留现场，再按[备份与恢复](#停机备份与恢复)把日志中那份 `pre-update.tar` 的数据和配置一起还原，保留原文件属主和权限，最后执行 `docker compose up -d`。备份含实例凭据，归档应按密钥保管。
 
 ## 重置管理员密码
 
