@@ -16,12 +16,8 @@ public interface IErpTokenStore
     Task<OpResult.OpResult> SaveAsync(string accessToken, CancellationToken cancellationToken);
 }
 
-internal sealed class ErpSettings
+internal sealed class ErpSettings : Entity
 {
-    internal const int SingletonId = 1;
-
-    public int Id { get; set; }
-
     public required string ProtectedAccessToken { get; set; }
 }
 
@@ -33,8 +29,7 @@ internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider pro
     {
         try
         {
-            var configured = await db.ErpSettings.AnyAsync(
-                settings => settings.Id == ErpSettings.SingletonId, cancellationToken);
+            var configured = await db.ErpSettings.AnyAsync(cancellationToken);
             return new ErpConfiguration(configured, ErpConfiguration.UpstreamBaseUrl);
         }
         catch (Exception exception) when (IsDatabaseReadFailure(exception))
@@ -47,7 +42,7 @@ internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider pro
     {
         try
         {
-            var value = await db.ErpSettings.Where(settings => settings.Id == ErpSettings.SingletonId)
+            var value = await db.ErpSettings
                 .Select(settings => settings.ProtectedAccessToken)
                 .SingleOrDefaultAsync(cancellationToken);
             return value is null
@@ -72,9 +67,9 @@ internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider pro
             var protectedToken = _protector.Protect(accessToken);
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO "ErpSettings" ("Id", "ProtectedAccessToken")
-                VALUES ({ErpSettings.SingletonId}, {protectedToken})
-                ON CONFLICT ("Id") DO UPDATE
-                SET "ProtectedAccessToken" = EXCLUDED."ProtectedAccessToken"
+                VALUES ({Guid.CreateVersion7()}, {protectedToken})
+                ON CONFLICT ("Singleton") DO UPDATE
+                SET "ProtectedAccessToken" = EXCLUDED."ProtectedAccessToken", "DeletedAt" = NULL
                 """, cancellationToken);
         }
         catch (Exception exception) when (exception is DbException or CryptographicException)

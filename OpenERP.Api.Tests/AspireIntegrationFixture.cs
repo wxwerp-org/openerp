@@ -21,9 +21,14 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
     {
     }
 
-    internal AspireIntegrationFixture(bool initializeAdmin) => _initializeAdmin = initializeAdmin;
+    internal AspireIntegrationFixture(bool initializeAdmin, bool useBrowserErpStub = false)
+    {
+        _initializeAdmin = initializeAdmin;
+        _useBrowserErpStub = useBrowserErpStub;
+    }
 
     private readonly bool _initializeAdmin;
+    private readonly bool _useBrowserErpStub;
     private const string StorageName = "seaweedfs";
     private readonly string _volumeName = $"openerp-test-seaweedfs-{Guid.NewGuid():N}";
     private readonly object _startupLock = new();
@@ -57,6 +62,10 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
         _appHost?.Resources.OfType<JavaScriptInstallerResource>().Select(resource => resource.Name).ToArray() ?? [];
 
     internal string? TestSecretsDirectoryPath => _testSecretsDirectory?.FullName;
+
+    internal static IReadOnlyList<string> ApiLaunchArguments { get; } =
+        ["exec", "--depsfile", Path.ChangeExtension(typeof(AspireIntegrationFixture).Assembly.Location, "deps.json"),
+            typeof(OpenERP.Api.FileStore).Assembly.Location];
 
     public async ValueTask InitializeAsync()
     {
@@ -105,11 +114,19 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
             appHost.CreateResourceBuilder(resource).WithExplicitStart();
         }
 
-        // 测试已构建 API，由 Aspire 直接启动 DLL，避免 dotnet run 父进程在 Linux 停止超时。
+        // 在测试输出目录直接执行 API，使用与该目录实际复制的程序集相匹配的依赖清单。
+        var api = appHost.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "api");
 #pragma warning disable ASPIREPROJECTS001 // 仍由 Aspire 管理端点、重启与清理。
-        appHost.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "api")
-            .Annotations.Add(new ProjectLaunchArgsOverrideAnnotation([typeof(OpenERP.Api.FileStore).Assembly.Location]));
+        api.Annotations.Add(new ProjectLaunchArgsOverrideAnnotation(ApiLaunchArguments));
 #pragma warning restore ASPIREPROJECTS001
+
+        if (_useBrowserErpStub)
+        {
+            appHost.CreateResourceBuilder(api)
+                .WithEnvironment("ASPNETCORE_HOSTINGSTARTUPASSEMBLIES", typeof(BrowserErpStartup).Assembly.GetName().Name)
+                // 等待测试的手动操作，避免凭证保存与店铺定时刷新互相影响。
+                .WithEnvironment("ShopSync__InitialDelaySeconds", "86400");
+        }
 
         _app = await appHost.BuildAsync(timeout.Token);
 #pragma warning disable ASPIRECONTAINERRUNTIME001 // 使用 Aspire 的运行时选择规则定位测试卷。

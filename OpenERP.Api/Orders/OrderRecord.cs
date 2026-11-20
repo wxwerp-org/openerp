@@ -1,6 +1,6 @@
 namespace OpenERP.Api.Orders;
 
-internal sealed class OrderRecord
+internal sealed class OrderRecord : Entity
 {
     public required string ErpId { get; init; }
     public required string OrderNumber { get; set; }
@@ -19,7 +19,7 @@ internal sealed class OrderRecord
     public List<OrderLineRecord> Lines { get; } = [];
 }
 
-internal sealed class PlatformOrderRecord
+internal sealed class PlatformOrderRecord : Entity
 {
     public required string ErpId { get; init; }
     public required string PoNumber { get; init; }
@@ -28,7 +28,7 @@ internal sealed class PlatformOrderRecord
     public string? StatusText { get; set; }
 }
 
-internal sealed class OrderLineRecord
+internal sealed class OrderLineRecord : Entity
 {
     public required string ErpId { get; init; }
     public int Ordinal { get; init; }

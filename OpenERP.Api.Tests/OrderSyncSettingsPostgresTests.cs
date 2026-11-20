@@ -152,21 +152,22 @@ public sealed class OrderSyncSettingsPostgresTests(AspireIntegrationFixture fixt
     [Fact]
     public async Task Rejects_a_second_settings_row()
     {
-        // Given 已执行迁移的数据库。
+        // Given 已保存一份设置的数据库。
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var db = CreateContext();
         await db.Database.MigrateAsync(cancellationToken);
+        Assert.False((await new OrderSyncSettingsStore(db).SaveAsync(true, [30], cancellationToken)).IsErr);
 
-        // When 直接插入第二行设置。
+        // When 使用另一 UUID 直接插入第二行设置。
         await using var connection = new NpgsqlConnection(_testConnectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-            INSERT INTO "OrderSyncSettings" ("Id", "Enabled", "ShopSids") VALUES (2, false, '{}')
+            INSERT INTO "OrderSyncSettings" ("Id", "Enabled", "ShopSids") VALUES (uuidv7(), false, '{}')
             """, connection);
 
         // Then 单行约束拒绝写入。
         var error = await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync(cancellationToken));
-        Assert.Equal(PostgresErrorCodes.CheckViolation, error.SqlState);
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, error.SqlState);
     }
 
     private AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>()

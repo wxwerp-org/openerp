@@ -1,10 +1,11 @@
+using Mapster;
 using Microsoft.EntityFrameworkCore;
 using OpResult;
 
 namespace OpenERP.Api.Erp;
 
 /// <summary>本地店铺目录中的一家店铺；同步时由上游全量数据替换。</summary>
-internal sealed class Shop
+internal sealed class Shop : Entity
 {
     public int Sid { get; set; }
 
@@ -24,7 +25,7 @@ internal sealed class Shop
 }
 
 /// <summary>上游平台目录的本地副本，只保存展示元数据。</summary>
-internal sealed class ShopPlatform
+internal sealed class ShopPlatform : Entity
 {
     public string Name { get; set; } = "";
 
@@ -36,10 +37,8 @@ internal sealed class ShopPlatform
 }
 
 /// <summary>店铺同步单行状态；只记录最近一次同步元数据，不保存授权历史。</summary>
-internal sealed class ShopSyncState
+internal sealed class ShopSyncState : Entity
 {
-    public int Id { get; set; } = 1;
-
     /// <summary>状态修订号；同步开始、完成或失败时递增，客户端据此丢弃旧快照。</summary>
     public long Version { get; set; }
 
@@ -103,6 +102,8 @@ public sealed class ShopSyncOptions
 /// <summary>读取同步状态：运行中取内存进度，空闲时取数据库最近一次结果。</summary>
 internal static class ShopSyncStatusQueries
 {
+    private static readonly TypeAdapterConfig StatusMapping = CreateStatusMapping();
+
     public static async Task<ShopSyncStatus> ReadAsync(
         IShopSyncJob job, AppDbContext db, CancellationToken cancellationToken)
     {
@@ -112,20 +113,22 @@ internal static class ShopSyncStatusQueries
 
         var row = await db.ShopSyncStates
             .AsNoTracking()
-            .SingleOrDefaultAsync(state => state.Id == 1, cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
         if (row is null)
             return new ShopSyncStatus(false, null, null, 0, 0, 0, 0, 0, null, 0);
 
-        return new ShopSyncStatus(
-            false,
-            row.LastStartedAt,
-            row.LastCompletedAt,
-            row.Total,
-            row.Total,
-            row.Valid,
-            row.Invalid,
-            row.Unknown,
-            row.LastError,
-            row.Version);
+        return row.Adapt<ShopSyncStatus>(StatusMapping);
+    }
+
+    private static TypeAdapterConfig CreateStatusMapping()
+    {
+        var config = new TypeAdapterConfig();
+        config.NewConfig<ShopSyncState, ShopSyncStatus>()
+            .MapToConstructor(true)
+            .Map(destination => destination.StartedAt, row => row.LastStartedAt)
+            .Map(destination => destination.CompletedAt, row => row.LastCompletedAt)
+            .Map(destination => destination.Checked, row => row.Total)
+            .Map(destination => destination.Error, row => row.LastError);
+        return config;
     }
 }

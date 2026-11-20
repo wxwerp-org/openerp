@@ -74,10 +74,9 @@ function configureFetch(options: FetchOptions = {}) {
     if (url === '/api/auth/csrf') {
       return jsonResponse({ requestToken: 'schedule-token' })
     }
-    if (url === '/api/erp/config') {
+    if (url === '/api/erp/order-sync-availability') {
       return jsonResponse({
         configured: options.configured ?? true,
-        baseUrl: 'https://erp.test',
         orderSyncEnabled: options.orderSyncEnabled ?? true,
       })
     }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Mapster;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,8 @@ namespace OpenERP.Api.Erp;
 /// <summary>授权店铺页的本地读取接口；不访问上游，wxw 离线时仍可用。</summary>
 public static class ShopDirectoryEndpoints
 {
+    private static readonly TypeAdapterConfig DirectoryMappings = CreateDirectoryMappings();
+
     public static void MapShopDirectory(this WebApplication app)
     {
         app.MapGet("/api/erp/shops", GetShopsAsync)
@@ -60,7 +63,7 @@ public static class ShopDirectoryEndpoints
             // 客户端会因 status.Version 更大而再次刷新，不会把旧数据标成最新。
             var state = await db.ShopSyncStates
                 .AsNoTracking()
-                .SingleOrDefaultAsync(syncState => syncState.Id == 1, cancellationToken);
+                .SingleOrDefaultAsync(cancellationToken);
 
             IQueryable<Shop> query = db.Shops.AsNoTracking();
             if (normalizedPlatform is not null)
@@ -101,15 +104,7 @@ public static class ShopDirectoryEndpoints
                 .Take(currentPageSize)
                 .ToArrayAsync(cancellationToken);
 
-            var items = rows.Select(shop => new ShopDirectoryItem(
-                shop.Sid.ToString(CultureInfo.InvariantCulture),
-                shop.Name,
-                shop.Platform,
-                shop.Region,
-                shop.MemberId,
-                shop.IsTokenOk,
-                shop.TokenError,
-                shop.SyncedAt)).ToArray();
+            var items = rows.Adapt<ShopDirectoryItem[]>(DirectoryMappings);
 
             var summary = new ShopDirectorySummary(valid, invalid, unknown, state?.LastCompletedAt, state?.Version ?? 0);
             return TypedResults.Ok(new ShopDirectoryPage(
@@ -137,8 +132,7 @@ public static class ShopDirectoryEndpoints
 
             var items = counts
                 .Select(item => catalog.TryGetValue(item.Name, out var platform)
-                    ? new ErpPlatform(
-                        item.Name, platform.DisplayName, platform.Icon, platform.IsProduction, item.Count)
+                    ? platform.Adapt<ErpPlatform>(DirectoryMappings) with { ShopCount = item.Count }
                     : new ErpPlatform(item.Name, item.Name, null, true, item.Count))
                 .OrderByDescending(platform => platform.ShopCount)
                 .ThenBy(platform => platform.Name, StringComparer.Ordinal)
@@ -169,6 +163,16 @@ public static class ShopDirectoryEndpoints
 
     private static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static TypeAdapterConfig CreateDirectoryMappings()
+    {
+        var config = new TypeAdapterConfig();
+        config.NewConfig<Shop, ShopDirectoryItem>()
+            .MapToConstructor(true)
+            .Map(destination => destination.Sid, shop => shop.Sid.ToString(CultureInfo.InvariantCulture));
+        config.NewConfig<ShopPlatform, ErpPlatform>().MapToConstructor(true);
+        return config;
+    }
 
     private static string EscapeLike(string value) =>
         value.Replace("\\", "\\\\", StringComparison.Ordinal)

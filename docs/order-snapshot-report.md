@@ -22,7 +22,7 @@
 
 ## 查询接口
 
-`GET /api/reports/order-snapshot` 沿用管理员登录认证，并返回 `Cache-Control: no-store`。
+`GET /api/reports/order-snapshot` 要求用户登录，并返回 `Cache-Control: no-store`。
 
 | 参数 | 含义 |
 | --- | --- |

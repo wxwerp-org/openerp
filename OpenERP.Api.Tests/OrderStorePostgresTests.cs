@@ -96,7 +96,7 @@ public sealed class OrderStorePostgresTests(AspireIntegrationFixture fixture) : 
             SELECT count(*) AS "Value" FROM "Orders" WHERE "ErpId" = 'erp-2' AND "Status" = 'pending'
             """, cancellationToken));
         Assert.Equal(2L, await CountAsync(db, """
-            SELECT count(*) AS "Value" FROM "PlatformOrders" WHERE "ErpId" = 'erp-1'
+            SELECT count(*) AS "Value" FROM "PlatformOrders" WHERE "ErpId" = 'erp-1' AND "DeletedAt" IS NULL
             """, cancellationToken));
         Assert.Equal(2L, await CountAsync(db, """
             SELECT count(*) AS "Value" FROM "PlatformOrders" WHERE "ErpId" = 'erp-1' AND "Sid" = 30
@@ -134,6 +134,52 @@ public sealed class OrderStorePostgresTests(AspireIntegrationFixture fixture) : 
         Assert.Equal(new OrderSaveCounts(0, 0, 1), await SaveAsync([order], cancellationToken));
         Assert.Equal(new OrderSaveCounts(0, 0, 1), await SaveAsync([reordered], cancellationToken));
         Assert.Equal(versionsBefore, await ReadRowVersionsAsync(cancellationToken));
+    }
+
+    [Fact]
+    public async Task Updating_an_order_preserves_its_uuid_and_restores_missing_children_by_business_key()
+    {
+        // Given 上游订单及其子单和明细已经同步。
+        var ct = TestContext.Current.CancellationToken;
+        await MigrateAsync(ct);
+        var original = CreateOrder("erp-1");
+        Assert.Equal(new OrderSaveCounts(1, 0, 0), await SaveAsync([original], ct));
+        var ids = await ReadOrderIdsAsync(ct);
+        Assert.Equal(5, ids.Length);
+        Assert.All(ids, id => Assert.Equal(7, id.Version));
+
+        // When 上游暂不返回其中一条子单和明细。
+        var reduced = original with { Status = "dispatched", PlatformOrders = [original.PlatformOrders[0]], Lines = [original.Lines[0]] };
+        Assert.Equal(new OrderSaveCounts(0, 1, 0), await SaveAsync([reduced], ct));
+
+        // Then 这些行保留原 UUID，并从默认查询排除。
+        await using var db = CreateContext();
+        var active = await db.Orders.AsNoTracking().Include(order => order.PlatformOrders).Include(order => order.Lines)
+            .AsSplitQuery().SingleAsync(ct);
+        Assert.Equal("dispatched", active.Status);
+        Assert.Single(active.PlatformOrders);
+        Assert.Single(active.Lines);
+        Assert.Equal(ids, await ReadOrderIdsAsync(ct));
+
+        // When 上游再次返回这些业务键。Then 原行恢复，并且 UUID 不变。
+        Assert.Equal(new OrderSaveCounts(0, 1, 0), await SaveAsync([original], ct));
+        var restored = await db.Orders.AsNoTracking().Include(order => order.PlatformOrders).Include(order => order.Lines)
+            .AsSplitQuery().SingleAsync(ct);
+        Assert.Equal(2, restored.PlatformOrders.Count);
+        Assert.Equal(2, restored.Lines.Count);
+        Assert.Equal(ids, await ReadOrderIdsAsync(ct));
+    }
+
+    private async Task<Guid[]> ReadOrderIdsAsync(CancellationToken cancellationToken)
+    {
+        await using var db = CreateContext();
+        return await db.Database.SqlQueryRaw<Guid>("""
+            SELECT "Id" AS "Value" FROM "Orders"
+            UNION ALL
+            SELECT "Id" AS "Value" FROM "PlatformOrders"
+            UNION ALL
+            SELECT "Id" AS "Value" FROM "OrderLines"
+            """).OrderBy(id => id).ToArrayAsync(cancellationToken);
     }
 
     [Fact]

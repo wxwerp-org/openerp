@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import AppIcon from '../../ui/AppIcon.vue'
+import { workspacePages } from '../../router/workspace'
 
 type NavItem = { label: string; page?: string }
 type NavGroup = { id: string; label: string; icon: string; items: NavItem[] }
@@ -9,6 +10,7 @@ const props = withDefaults(
   defineProps<{
     activePage: string
     collapsed: boolean
+    administrator: boolean
     /** 视口强制轨道（报表页窄屏）：布局按轨道呈现，但手动折叠状态保持不变。 */
     rail?: boolean
     /** 报表页窄屏 + 触屏时轨道目标放大到 44px（WCAG 2.5.5）。 */
@@ -114,6 +116,17 @@ const groups: NavGroup[] = [
   },
 ]
 
+const visibleGroups = computed(() =>
+  props.administrator
+    ? groups
+    : groups.map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (item) => !workspacePages.some((page) => page.id === item.page && page.administratorOnly),
+        ),
+      })),
+)
+
 const collapsedGroups = ref(
   new Set(groups.filter((group) => group.id !== 'product').map((group) => group.id)),
 )
@@ -158,7 +171,7 @@ watch(
   () => props.activePage,
   () => {
     closeFlyout()
-    const activeGroup = groups.find(isGroupActive)
+    const activeGroup = visibleGroups.value.find(isGroupActive)
     if (activeGroup) collapsedGroups.value.delete(activeGroup.id)
   },
   { immediate: true },
@@ -355,7 +368,7 @@ function subItemState(active: boolean): string[] {
       </button>
 
       <div
-        v-for="group in groups"
+        v-for="group in visibleGroups"
         :key="group.id"
         :class="collapsed ? 'mt-4' : ''"
         :data-group="group.id"

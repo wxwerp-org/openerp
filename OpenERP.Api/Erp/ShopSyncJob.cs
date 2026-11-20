@@ -50,7 +50,6 @@ internal sealed class ShopSyncJob(
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var versionResult = await OpResults.TryInvokeAsync(() => db.ShopSyncStates
                 .AsNoTracking()
-                .Where(state => state.Id == 1)
                 .Select(state => state.Version)
                 .SingleOrDefaultAsync(cancellationToken));
             if (versionResult.IsErr)
@@ -106,7 +105,8 @@ internal sealed class ShopSyncJob(
             var accessToken = tokenResult.Value;
 
             var stateRow = await db.ShopSyncStates
-                .SingleOrDefaultAsync(state => state.Id == 1, cancellationToken);
+                .IgnoreQueryFilters()
+                .SingleOrDefaultAsync(cancellationToken);
             if (stateRow is not null)
             {
                 previousCompletedAt = stateRow.LastCompletedAt;
@@ -117,10 +117,11 @@ internal sealed class ShopSyncJob(
             }
             else
             {
-                stateRow = new ShopSyncState { Id = 1 };
+                stateRow = new ShopSyncState();
                 db.ShopSyncStates.Add(stateRow);
             }
 
+            stateRow.DeletedAt = null;
             stateRow.Version = startedVersion;
             stateRow.LastStartedAt = startedAt;
             stateRow.LastError = null;
@@ -214,7 +215,7 @@ internal sealed class ShopSyncJob(
         long version,
         CancellationToken cancellationToken)
     {
-        var existingShops = await db.Shops.ToDictionaryAsync(shop => shop.Sid, cancellationToken);
+        var existingShops = await db.Shops.IgnoreQueryFilters().ToDictionaryAsync(shop => shop.Sid, cancellationToken);
         var seenSids = new HashSet<int>();
         foreach (var result in results)
         {
@@ -228,6 +229,7 @@ internal sealed class ShopSyncJob(
                 db.Shops.Add(shop);
             }
 
+            shop.DeletedAt = null;
             shop.Name = Clip(result.Shop.Name, 200) ?? "";
             shop.Platform = Clip(result.Shop.Platform, 64) ?? "";
             shop.Region = Clip(result.Region, 64);
@@ -237,10 +239,10 @@ internal sealed class ShopSyncJob(
             shop.SyncedAt = result.CheckedAt;
         }
 
-        foreach (var stale in existingShops.Values.Where(shop => !seenSids.Contains(shop.Sid)).ToArray())
-            db.Shops.Remove(stale);
+        foreach (var stale in existingShops.Values.Where(shop => !seenSids.Contains(shop.Sid)))
+            stale.DeletedAt ??= completedAt;
 
-        var existingPlatforms = await db.ShopPlatforms.ToDictionaryAsync(platform => platform.Name, cancellationToken);
+        var existingPlatforms = await db.ShopPlatforms.IgnoreQueryFilters().ToDictionaryAsync(platform => platform.Name, cancellationToken);
         var seenPlatforms = new HashSet<string>(StringComparer.Ordinal);
         foreach (var platform in platforms)
         {
@@ -255,13 +257,14 @@ internal sealed class ShopSyncJob(
                 db.ShopPlatforms.Add(row);
             }
 
+            row.DeletedAt = null;
             row.DisplayName = Clip(platform.DisplayName, 100) ?? name;
             row.Icon = Clip(platform.Icon, 100);
             row.IsProduction = platform.IsProduction;
         }
 
-        foreach (var stale in existingPlatforms.Values.Where(platform => !seenPlatforms.Contains(platform.Name)).ToArray())
-            db.ShopPlatforms.Remove(stale);
+        foreach (var stale in existingPlatforms.Values.Where(platform => !seenPlatforms.Contains(platform.Name)))
+            stale.DeletedAt ??= completedAt;
 
         stateRow.Version = version;
         stateRow.LastCompletedAt = completedAt;
@@ -292,13 +295,15 @@ internal sealed class ShopSyncJob(
             using var scope = scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var stateRow = await db.ShopSyncStates
-                .SingleOrDefaultAsync(state => state.Id == 1, CancellationToken.None);
+                .IgnoreQueryFilters()
+                .SingleOrDefaultAsync(CancellationToken.None);
             if (stateRow is null)
             {
-                stateRow = new ShopSyncState { Id = 1 };
+                stateRow = new ShopSyncState();
                 db.ShopSyncStates.Add(stateRow);
             }
 
+            stateRow.DeletedAt = null;
             stateRow.Version = version;
             stateRow.LastError = error;
             await db.SaveChangesAsync(CancellationToken.None);

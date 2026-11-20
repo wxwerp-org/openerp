@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using OpResult;
+using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using Xunit;
 
@@ -86,6 +87,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         Assert.True(alpha.GetProperty("isTokenOk").GetBoolean());
         Assert.Equal(JsonValueKind.Null, alpha.GetProperty("tokenError").ValueKind);
         Assert.Equal(lastSyncedAt.AddMinutes(-5), alpha.GetProperty("syncedAt").GetDateTimeOffset());
+        Assert.Equal(8, alpha.EnumerateObject().Count());
     }
 
     [Fact]
@@ -290,7 +292,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
             });
         db.ShopSyncStates.Add(new ShopSyncState
         {
-            Id = 1, Version = 5, LastCompletedAt = completedAt, Total = 3, Valid = 1, Invalid = 1, Unknown = 1
+            Version = 5, LastCompletedAt = completedAt, Total = 3, Valid = 1, Invalid = 1, Unknown = 1
         });
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -311,10 +313,11 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         builder.Services.AddSingleton<IErpClient>(new TestErpClient());
         builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
         builder.Services.AddSingleton(job ?? new FakeShopSyncJob());
+        ErpEndpointTestAuth.Configure(builder);
         var app = builder.Build();
         app.MapErp();
         await app.StartAsync(cancellationToken);
-        var http = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        var http = ErpEndpointTestAuth.CreateClient(app, UserAccount.UserRole);
         return new TestApp(app, http);
     }
 

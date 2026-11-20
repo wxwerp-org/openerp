@@ -71,6 +71,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 app.UseAccountAuthentication();
 app.MapDefaultEndpoints();
 app.MapAccounts();
+app.MapUserManagement();
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     await app.Services.GetRequiredService<FileStore>().EnsureBucketAsync(app.Lifetime.ApplicationStopping);

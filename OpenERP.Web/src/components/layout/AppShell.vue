@@ -12,12 +12,16 @@ import { navigationPages, workspacePages, type WorkspacePage } from '../../route
 import { useToast } from '../../composables/useToast'
 import AppToast from '../../ui/AppToast.vue'
 
-defineProps<{ account: Account }>()
+const props = defineProps<{ account: Account }>()
 
 const route = useRoute()
 const router = useRouter()
 const sidebarCollapsed = ref(false)
+const administrator = computed(() => props.account.role === 'Administrator')
 const openTabs = ref<WorkspacePage[]>(workspacePages.slice(0, 3))
+const visibleTabs = computed(() =>
+  openTabs.value.filter((tab) => !tab.administratorOnly || administrator.value),
+)
 const { toast, showToast } = useToast()
 const profileOpen = ref(false)
 const passwordOpen = ref(false)
@@ -70,7 +74,8 @@ watch(
 
 function navigate(page: string): void {
   const target = navigationPages.find((item) => item.id === page)
-  if (target && route.path !== target.path) void router.push(target.path)
+  if (target && (!target.administratorOnly || administrator.value) && route.path !== target.path)
+    void router.push(target.path)
 }
 
 function closeTab(page: string): void {
@@ -129,6 +134,7 @@ async function handleAccountAction(
       :collapsed="sidebarCollapsed"
       :rail="reportRail"
       :touch-rail="touchRail"
+      :administrator="administrator"
       @update:collapsed="sidebarCollapsed = $event"
       @navigate="navigate"
       @preview="showToast(`原型演示：${$event}`)"
@@ -136,7 +142,7 @@ async function handleAccountAction(
 
     <div class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
       <header class="relative z-50 flex h-38 flex-none items-stretch bg-topnav">
-        <WorkspaceTabs :items="openTabs" :active-page="activePage ?? ''" @close="closeTab" />
+        <WorkspaceTabs :items="visibleTabs" :active-page="activePage ?? ''" @close="closeTab" />
         <AccountMenu
           ref="accountMenu"
           :account="account"

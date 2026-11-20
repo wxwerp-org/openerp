@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.Builder;
@@ -19,18 +20,42 @@ public sealed class OrderSyncHubTests
     [Fact]
     public async Task Manual_sync_reports_configuration_and_token_failures_at_their_respective_stages()
     {
-        // Given 已登录的管理员，独立测试库中存在一条无法解密的凭证。
+        // Given 普通用户已登录，独立测试库中有一家可选店铺和一条无法解密的凭证。
         var ct = TestContext.Current.CancellationToken;
         await using var fixture = new AspireIntegrationFixture();
         await fixture.InitializeAsync();
         await fixture.EnsureApiStartedAsync(ct);
+        using var administrator = fixture.CreateApiClient();
+        await AuthenticationIntegrationTests.LoginAsync(administrator, ct, fixture.AdminPassword);
+        const string username = "manual-sync-user";
+        const string password = "manual-sync-password";
+        using var created = await administrator.PostAsJsonAsync("/api/users",
+            new { username, name = "订单同步员工", password }, ct);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         using var client = fixture.CreateApiClient();
-        await AuthenticationIntegrationTests.LoginAsync(client, ct, fixture.AdminPassword);
+        await AuthenticationIntegrationTests.LoginAsync(client, ct, password, username);
         await using var db = new NpgsqlConnection(await fixture.GetPostgresConnectionStringAsync(ct));
         await db.OpenAsync(ct);
-        await using var seed = new NpgsqlCommand(
-            """INSERT INTO "ErpSettings" ("Id", "ProtectedAccessToken") VALUES (1, 'invalid-protected-token')""", db);
+        await using var seed = new NpgsqlCommand("""
+            INSERT INTO "ErpSettings" ("Id", "ProtectedAccessToken") VALUES (uuidv7(), 'invalid-protected-token');
+            INSERT INTO "Shops" ("Id", "Sid", "Name", "Platform") VALUES (uuidv7(), 30, '同步店铺', 'TemuPop');
+            """, db);
         await seed.ExecuteNonQueryAsync(ct);
+
+        // When 从普通用户入口读取同步可用性和可选店铺。Then 业务入口可用，系统配置返回 403。
+        using var availability = await client.GetAsync("/api/erp/order-sync-availability", ct);
+        Assert.Equal(HttpStatusCode.OK, availability.StatusCode);
+        var capability = await availability.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.True(capability.GetProperty("configured").GetBoolean());
+        Assert.True(capability.GetProperty("orderSyncEnabled").GetBoolean());
+        using var shops = await client.GetAsync("/api/erp/shops?platform=TemuPop", ct);
+        Assert.Equal(HttpStatusCode.OK, shops.StatusCode);
+        var directory = await shops.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal("30", Assert.Single(directory.GetProperty("items").EnumerateArray()).GetProperty("sid").GetString());
+        using var configuration = await client.GetAsync("/api/erp/config", ct);
+        Assert.Equal(HttpStatusCode.Forbidden, configuration.StatusCode);
+        using var automaticSettings = await client.GetAsync("/api/erp/order-sync-settings", ct);
+        Assert.Equal(HttpStatusCode.Forbidden, automaticSettings.StatusCode);
 
         await using var connection = new HubConnectionBuilder()
             .WithUrl(new Uri(fixture.ApiEndpoint, "/api/hubs/erp"), options =>

@@ -34,7 +34,7 @@ internal static class ResetAdminPassword
         {
             var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options;
             await using var db = new AppDbContext(options);
-            var store = new AccountStore(db, options, new PasswordHasher<AdminAccount>(), TimeProvider.System);
+            var store = new AccountStore(db, options, new PasswordHasher<UserAccount>(), TimeProvider.System);
             if (!await store.ResetPasswordAsync(password!, CancellationToken.None))
                 return Fail("数据库中没有管理员账号。");
         }

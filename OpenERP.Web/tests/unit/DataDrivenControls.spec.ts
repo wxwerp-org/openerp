@@ -1,5 +1,5 @@
-import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { describe, expect, it, vi } from 'vitest'
 import RealtimeSalesCard from '../../src/components/dashboard/RealtimeSalesCard.vue'
 import HomeView from '../../src/views/HomeView.vue'
 import ShopsView from '../../src/views/ShopsView.vue'
@@ -38,18 +38,45 @@ describe('数据驱动控件与文档结构', () => {
     expect(pressed[0]!.text()).toBe('按SPU')
   })
 
-  it('Given 用户创建时间 When 连续排序 Then 行顺序和 aria-sort 同步变化', async () => {
+  it('Given 真实用户创建时间及未知时间 When 连续排序 Then 行顺序和 aria-sort 同步变化', async () => {
+    const makeUser = (username: string, createdAt: string | null) => ({
+      id: username,
+      username,
+      name: username,
+      role: 'User',
+      createdAt,
+      phone: null,
+      email: null,
+      lastLoginAt: null,
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json([
+          makeUser('admin', null),
+          makeUser('bob', '2026-11-18T04:00:00Z'),
+          makeUser('alice', '2026-11-17T04:00:00Z'),
+        ]),
+      ),
+    )
     const wrapper = mount(UsersView)
-    const header = wrapper.get('th[data-sort="created"]')
-    const button = header.get('button')
+    try {
+      await flushPromises()
+      const header = wrapper.get('th[data-sort="created"]')
+      const usernames = () => wrapper.findAll('tbody th[scope="row"]').map((cell) => cell.text())
+      expect(wrapper.findAll('tbody tr')[0].get('[data-testid="user-created-at"]').text()).toBe('—')
 
-    await button.trigger('click')
-    expect(header.attributes('aria-sort')).toBe('ascending')
-    expect(wrapper.get('#userTableBody tr td[data-testid="user-name"]').text()).toBe('alex.chen')
+      await header.get('button').trigger('click')
+      expect(header.attributes('aria-sort')).toBe('ascending')
+      expect(usernames()).toEqual(['alice', 'bob', 'admin'])
 
-    await button.trigger('click')
-    expect(header.attributes('aria-sort')).toBe('descending')
-    expect(wrapper.get('#userTableBody tr td[data-testid="user-name"]').text()).toBe('lucy.lin')
+      await header.get('button').trigger('click')
+      expect(header.attributes('aria-sort')).toBe('descending')
+      expect(usernames()).toEqual(['bob', 'alice', 'admin'])
+    } finally {
+      wrapper.unmount()
+      vi.unstubAllGlobals()
+    }
   })
 
   it('Given 列表与页面 When 渲染文档结构 Then 每页有 h1 且表格有 caption 和列 scope', () => {

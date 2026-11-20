@@ -43,6 +43,21 @@ function sessionResponse(value = admin, accessToken = 'unit-access'): Response {
 }
 
 describe('真实会话路由', () => {
+  it('Given 普通用户已登录 When 直接访问受限页或随后导航 Then 返回首页且不加载管理 API', async () => {
+    const fetch = vi.fn(async (url: string) => {
+      if (url === '/api/auth/csrf') return Response.json({ requestToken: 'token' })
+      if (url === '/api/auth/refresh')
+        return sessionResponse({ ...admin, username: 'employee', role: 'User' })
+      return new Response(null, { status: 404 })
+    })
+    mockInitializedFetch(fetch)
+    const { router } = await mountAt('/users')
+    expect(router.currentRoute.value.path).toBe('/')
+    await router.push('/settings')
+    expect(router.currentRoute.value.path).toBe('/')
+    expect(fetch.mock.calls.map(([url]) => url)).not.toContain('/api/users')
+  })
+
   it('Given 首次直达受保护页且会话仍在验证 When 会话确认无效 Then 始终隐藏业务界面并保留目标地址', async () => {
     let resolve: (response: Response) => void = () => {
       throw new Error('未发起会话请求')

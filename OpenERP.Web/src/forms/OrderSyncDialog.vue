@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { apiRequest } from '../account/session'
+import { account, apiRequest } from '../account/session'
 import ErpAccessNotice from '../components/ErpAccessNotice.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppCheckbox from '../ui/AppCheckbox.vue'
@@ -71,6 +71,9 @@ const pageCount = ref(0)
 const errorMessage = ref('')
 const orderSyncErrors = ref<Record<string, string>>({})
 const orderSyncEnabled = ref(false)
+const canManageSchedule = computed(
+  () => orderSyncEnabled.value && account.value?.role === 'Administrator',
+)
 
 type SyncSettingsStatus = 'idle' | 'loading' | 'ready' | 'error'
 type SyncShopStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -145,6 +148,7 @@ const syncSchedulePickerShops = computed<SelectableShop[]>(() => {
 
 const syncScheduleCanSave = computed(
   () =>
+    canManageSchedule.value &&
     syncSettingsStatus.value === 'ready' &&
     configStatus.value === 'configured' &&
     !syncSettingsSaving.value &&
@@ -185,21 +189,19 @@ function isNullableString(value: unknown): value is string | null {
 
 function parseConfig(value: unknown): {
   configured: boolean
-  baseUrl: string
   orderSyncEnabled: boolean
 } {
   if (
     !isRecord(value) ||
     typeof value.configured !== 'boolean' ||
-    typeof value.baseUrl !== 'string'
+    typeof value.orderSyncEnabled !== 'boolean'
   ) {
     throw new Error('服务器配置响应格式无效。')
   }
 
   return {
     configured: value.configured,
-    baseUrl: value.baseUrl,
-    orderSyncEnabled: value.orderSyncEnabled === true,
+    orderSyncEnabled: value.orderSyncEnabled,
   }
 }
 
@@ -310,7 +312,7 @@ function applySyncSettings(settings: SyncSettings): void {
 }
 
 async function loadSyncSchedule(): Promise<void> {
-  if (!orderSyncEnabled.value) return
+  if (!canManageSchedule.value) return
 
   const version = ++syncScheduleRequestVersion
   syncSettingsStatus.value = 'loading'
@@ -340,7 +342,7 @@ async function loadSyncSchedule(): Promise<void> {
 }
 
 async function loadSyncScheduleShops(version: number): Promise<void> {
-  if (!orderSyncEnabled.value) return
+  if (!canManageSchedule.value) return
   if (configStatus.value !== 'configured') {
     syncScheduleShops.value = []
     syncScheduleShopsStatus.value = 'error'
@@ -374,7 +376,7 @@ async function loadSyncScheduleShops(version: number): Promise<void> {
 }
 
 async function retrySyncShops(): Promise<void> {
-  if (!orderSyncEnabled.value || syncSettingsSaving.value) return
+  if (!canManageSchedule.value || syncSettingsSaving.value) return
   await loadSyncScheduleShops(++syncScheduleRequestVersion)
 }
 
@@ -426,7 +428,7 @@ function clearSyncSettingsMessage(): void {
 
 function setOrderSyncEnabled(enabled: boolean): void {
   orderSyncEnabled.value = enabled
-  if (enabled) {
+  if (canManageSchedule.value) {
     if (syncSettingsStatus.value === 'idle' || syncSettingsStatus.value === 'error') {
       void loadSyncSchedule()
       return
@@ -446,7 +448,7 @@ function setOrderSyncEnabled(enabled: boolean): void {
   syncScheduleEnabled.value = false
   syncScheduleShopSids.value = []
   syncScheduleIntervalMinutes.value = 0
-  orderSyncErrors.value = {}
+  if (!enabled) orderSyncErrors.value = {}
 }
 
 async function syncShop(shop: Shop): Promise<void> {
@@ -550,7 +552,9 @@ async function loadPage(
     if (checkConfiguration || configStatus.value === 'loading' || configStatus.value === 'error') {
       configStatus.value = 'loading'
 
-      const configResponse = await apiRequest('/api/erp/config', { signal: controller.signal })
+      const configResponse = await apiRequest('/api/erp/order-sync-availability', {
+        signal: controller.signal,
+      })
       if (!isCurrentRequest()) return
       if (!configResponse.ok) {
         throw new Error(await httpErrorMessage(configResponse, '无法读取服务端配置'))
@@ -770,7 +774,7 @@ onUnmounted(() => {
       </div>
 
       <div
-        v-if="orderSyncEnabled"
+        v-if="canManageSchedule"
         :class="syncCardClass"
         aria-labelledby="sync-settings-title"
         data-testid="sync-settings-card"

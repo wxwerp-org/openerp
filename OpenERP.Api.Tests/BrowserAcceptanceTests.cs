@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Security;
 using Microsoft.EntityFrameworkCore;
+using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using Xunit;
 using Xunit.Sdk;
@@ -17,9 +18,10 @@ public sealed class BrowserAcceptanceTests(ITestOutputHelper output)
         // Given 使用本次测试独立的未初始化数据库和 HTTPS 前端。
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(8));
-        await using var fixture = new AspireIntegrationFixture(initializeAdmin: false);
+        await using var fixture = new AspireIntegrationFixture(initializeAdmin: false, useBrowserErpStub: true);
         await fixture.InitializeAsync();
         var endpoint = await fixture.StartWebAsync(timeout.Token);
+        Assert.NotEmpty(await fixture.GetApiLogLinesAsync(BrowserErpStartup.ReadyMessage, timeout.Token));
         // Given 本地两张主单覆盖两个平台店铺，宿主没有配置上游 Token。
         await SeedOrderAsync(fixture, timeout.Token);
         var root = new DirectoryInfo(AppContext.BaseDirectory);
@@ -40,6 +42,7 @@ public sealed class BrowserAcceptanceTests(ITestOutputHelper output)
         start.Environment["PLAYWRIGHT_BASE_URL"] = endpoint.ToString();
         start.Environment["OPENERP_TEST_ADMIN_PASSWORD"] = fixture.AdminPassword;
         start.Environment["OPENERP_TEST_LOCAL_ORDERS"] = "1";
+        start.Environment["OPENERP_TEST_BROWSER_ERP_TOKEN"] = BrowserErpStartup.TestToken;
         // Node 在 macOS 上未必识别开发证书的本机信任；只导出已通过 .NET 严格校验的公钥证书。
         var certificatePath = Path.Combine(Path.GetTempPath(), $"openerp-browser-ca-{Guid.NewGuid():N}.pem");
         string? certificate = null;
@@ -107,5 +110,8 @@ public sealed class BrowserAcceptanceTests(ITestOutputHelper output)
         if (saved.IsErr)
             throw new XunitException(saved.Error.Message);
         Assert.Equal(2, saved.Value.Added);
+
+        db.Shops.Add(new Shop { Sid = 30, Name = "验收店铺", Platform = "TemuPop", IsTokenOk = true });
+        await db.SaveChangesAsync(ct);
     }
 }

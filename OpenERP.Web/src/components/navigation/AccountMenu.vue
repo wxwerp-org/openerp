@@ -145,6 +145,7 @@ onUnmounted(() => document.removeEventListener('click', closeOnOutsideClick))
       <AppIcon name="i-lock" :class="menuIconClass" />修改密码
     </button>
     <button
+      v-if="account.role === 'Administrator'"
       type="button"
       role="menuitem"
       :class="menuItemClass"

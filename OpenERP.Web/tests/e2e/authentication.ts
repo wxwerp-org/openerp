@@ -7,6 +7,8 @@ type SessionResponse = {
   accessToken: string
   accessTokenExpiresAt: string
   account: {
+    id: string
+    role: 'Administrator' | 'User'
     username: string
     name: string
     phone: string | null
@@ -24,6 +26,10 @@ export async function expectSessionResponse(response: {
     accessToken: expect.any(String),
     accessTokenExpiresAt: expect.any(String),
     account: {
+      id: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      ),
+      role: 'Administrator',
       username: expect.any(String),
       name: expect.any(String),
       expiresAt: expect.any(String),
@@ -56,6 +62,8 @@ export async function enterWorkspace(page: Page): Promise<void> {
 
   const now = Date.now()
   const account = {
+    id: '019ab104-7d00-7000-8000-000000000001',
+    role: 'Administrator',
     username: 'admin',
     name: '验收管理员',
     phone: null,
@@ -63,6 +71,9 @@ export async function enterWorkspace(page: Page): Promise<void> {
     lastLoginAt: new Date(now).toISOString(),
     expiresAt: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
   }
+  await page.route('**/api/users', (route) =>
+    route.fulfill({ json: [{ ...account, createdAt: null }] }),
+  )
   await page.route('**/api/auth/status', (route) => route.fulfill({ json: { initialized: true } }))
   await page.route('**/api/auth/refresh', (route) =>
     route.fulfill({

@@ -1,7 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { captureScenario, desktop, type Probe, type Scenario, wide } from './visual-probe'
+import {
+  captureScenario,
+  desktop,
+  type Probe,
+  type Scenario,
+  visualAccount,
+  wide,
+} from './visual-probe'
 
 test.skip(!process.env.VISUAL_PROBE, '仅 VISUAL_PROBE=1 时采集视觉探针。')
 
@@ -79,12 +86,14 @@ const mockShop = (index: number) => ({
   syncedAt: '2026-10-01T08:00:00.000Z',
 })
 
-async function mockErpConfig(page: Page, overrides: Record<string, unknown> = {}): Promise<void> {
-  await page.route('**/api/erp/config', (route) =>
+async function mockSyncAvailability(
+  page: Page,
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
+  await page.route('**/api/erp/order-sync-availability', (route) =>
     route.fulfill({
       json: {
         configured: true,
-        baseUrl: 'https://erp.test',
         orderSyncEnabled: false,
         ...overrides,
       },
@@ -124,7 +133,7 @@ async function mockShopsDirectory(
   const items = options.items ?? [mockShop(1), mockShop(2), mockShop(3)]
   const totalCount = options.totalCount ?? items.length
   const configured = options.configured ?? true
-  await mockErpConfig(page, { configured })
+  await mockSyncAvailability(page, { configured })
   await page.route('**/api/erp/platforms', (route) =>
     route.fulfill({
       json: {
@@ -201,7 +210,7 @@ async function mockShopsLoading(page: Page): Promise<void> {
 }
 
 async function mockOrderSync(page: Page): Promise<void> {
-  await mockErpConfig(page, { orderSyncEnabled: true })
+  await mockSyncAvailability(page, { orderSyncEnabled: true })
   await page.route('**/api/erp/order-sync-settings', (route) =>
     route.fulfill({ json: { enabled: true, shopSids: [1], intervalMinutes: 30 } }),
   )
@@ -245,7 +254,12 @@ const scenarios: Scenario[] = [
   {
     name: 'users-1440',
     path: '/users',
-    waitFor: async (page) => page.locator('#userTableBody tr').first().waitFor(),
+    prepare: async (page) => {
+      await page.route('**/api/users', (route) =>
+        route.fulfill({ json: [{ ...visualAccount, createdAt: null }] }),
+      )
+    },
+    waitFor: async (page) => page.getByRole('rowheader', { name: 'admin', exact: true }).waitFor(),
   },
   {
     name: 'products-1440',
@@ -277,7 +291,7 @@ const scenarios: Scenario[] = [
     path: '/orders',
     prepare: async (page) => {
       await mockOrders(page)
-      await mockErpConfig(page)
+      await mockSyncAvailability(page)
     },
     waitFor: async (page) =>
       page.getByRole('region', { name: '订单列表' }).locator('tbody tr').first().waitFor(),
@@ -287,7 +301,7 @@ const scenarios: Scenario[] = [
     path: '/orders',
     prepare: async (page) => {
       await mockOrders(page, [], 0)
-      await mockErpConfig(page)
+      await mockSyncAvailability(page)
     },
     waitFor: async (page) => page.getByText('暂无同步订单').waitFor(),
   },
@@ -296,7 +310,7 @@ const scenarios: Scenario[] = [
     path: '/orders',
     prepare: async (page) => {
       await mockOrdersError(page)
-      await mockErpConfig(page)
+      await mockSyncAvailability(page)
     },
     waitFor: async (page) => page.getByText('无法加载订单，请稍后重试。').waitFor(),
   },
@@ -305,7 +319,7 @@ const scenarios: Scenario[] = [
     path: '/orders',
     prepare: async (page) => {
       await mockOrders(page)
-      await mockErpConfig(page)
+      await mockSyncAvailability(page)
     },
     waitFor: async (page) =>
       page.getByRole('region', { name: '订单列表' }).locator('tbody tr').first().waitFor(),

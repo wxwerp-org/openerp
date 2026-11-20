@@ -64,28 +64,34 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
         var reset = await RunApiAsync(fixture.AdminPassword, ct, "reset-admin-password", "--stdin");
         Assert.Equal(1, reset.ExitCode);
         Assert.True(reset.Output.Contains("数据库中没有管理员账号", StringComparison.Ordinal));
-        Assert.False(await db.AdminAccounts.AnyAsync(ct));
+        Assert.False(await db.Users.AnyAsync(ct));
 
         // Then Production 无须初始密码或 JWT 签名密钥，重复启动保留同一条未初始化占位；
         // 文件和订单同步仍要求初始化；来自 HTTPS 反代的请求可以获取防伪令牌。
         var storage = await fixture.GetStorageConnectionStringAsync(ct);
+        Guid? adminId = null;
         for (var attempt = 0; attempt < 2; attempt++)
         {
             var started = await RunApiOnDatabaseAsync(_connectionString, null, [], ct,
                 configureStart: start => start.Environment["ASPNETCORE_FORWARDEDHEADERS_ENABLED"] = "true",
                 storageConnectionString: storage, verifyListening: VerifyProductionRoutesAsync);
             Assert.True(started.Started, started.Output);
-            var admin = await db.AdminAccounts.AsNoTracking().SingleAsync(ct);
-            Assert.Equal(1, admin.Id);
+            var admin = await db.Users.AsNoTracking().SingleAsync(ct);
+            Assert.NotEqual(Guid.Empty, admin.Id);
+            adminId ??= admin.Id;
+            Assert.Equal(adminId.Value, admin.Id);
+            Assert.Equal(UserAccount.AdminUsername, admin.Username);
             Assert.Equal("管理员", admin.Name);
             Assert.Null(admin.Phone);
             Assert.Null(admin.Email);
             Assert.Null(admin.PasswordHash);
         }
 
-        var rejected = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlRawAsync(
-            """INSERT INTO "AdminAccounts" ("Id", "Name", "PasswordHash") VALUES (2, 'test', 'unused')""", ct));
-        Assert.Equal(PostgresErrorCodes.CheckViolation, rejected.SqlState);
+        var rejected = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Users" ("Id", "Username", "Name", "PasswordHash")
+            VALUES ({Guid.NewGuid()}, {UserAccount.AdminUsername}, 'test', 'unused')
+            """, ct));
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, rejected.SqlState);
     }
 
     [Theory]
@@ -97,7 +103,7 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
         var ct = TestContext.Current.CancellationToken;
         await using var db = CreateContext();
         await db.Database.GetService<IMigrator>().MigrateAsync("20261116092521_RequireInitialPasswordChange", ct);
-        var hash = new PasswordHasher<AdminAccount>().HashPassword(new AdminAccount(), fixture.AdminPassword);
+        var hash = new PasswordHasher<UserAccount>().HashPassword(new UserAccount(), fixture.AdminPassword);
         var now = new DateTimeOffset(2026, 11, 16, 0, 0, 0, TimeSpan.Zero);
         var expiresAt = now.AddHours(24);
         var first = Guid.NewGuid();
@@ -114,9 +120,10 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
         Assert.False(await db.Database.SqlQueryRaw<bool>("""
             SELECT EXISTS (
                 SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'AdminAccounts' AND column_name = 'MustChangePassword') AS "Value"
+                WHERE table_name = 'Users' AND column_name = 'MustChangePassword') AS "Value"
             """).SingleAsync(ct));
-        var existing = await db.AdminAccounts.AsNoTracking().SingleAsync(ct);
+        var existing = await db.Users.AsNoTracking().SingleAsync(ct);
+        Assert.Equal(UserAccount.AdminUsername, existing.Username);
         Assert.Equal("现有管理员", existing.Name);
         Assert.Equal("123456", existing.Phone);
         Assert.Equal("existing@example.com", existing.Email);
@@ -159,14 +166,14 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
         await observer.OpenAsync(ct);
         await using var transaction = await observer.BeginTransactionAsync(ct);
         await using var lockAdmin = new NpgsqlCommand(
-            """SELECT "Id" FROM "AdminAccounts" WHERE "Id" = 1 FOR UPDATE""", observer, transaction);
-        Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
+            """SELECT "Id" FROM "Users" WHERE "Username" = 'admin' FOR UPDATE""", observer, transaction);
+        Assert.IsType<Guid>(await lockAdmin.ExecuteScalarAsync(ct));
 
         using var operations = new CancellationTokenSource();
         var reset = RunApiAsync(replacement, operations.Token, "reset-admin-password", "--stdin");
         var resetOperation = new BlockedOperation("重置密码 CLI", reset,
             () => $"退出码 {reset.Result.ExitCode}");
-        Task<AdminRefreshToken?>? login = null;
+        Task<UserRefreshToken?>? login = null;
         Exception? failure = null;
         try
         {
@@ -230,7 +237,7 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
         new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options;
 
     private AccountStore CreateStore(AppDbContext db, TimeProvider clock) =>
-        new(db, CreateOptions(), new PasswordHasher<AdminAccount>(), clock);
+        new(db, CreateOptions(), new PasswordHasher<UserAccount>(), clock);
 
     private Task<(int ExitCode, string Output, bool Started)> RunApiAsync(string? password, CancellationToken ct, params string[] args) =>
         RunApiOnDatabaseAsync(_connectionString, password, args, ct);
