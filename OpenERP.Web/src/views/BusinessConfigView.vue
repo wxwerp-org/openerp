@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { erpAccessLocation } from '../router/workspace'
 import AppIcon from '../ui/AppIcon.vue'
 import AppToast from '../ui/AppToast.vue'
 import BaseConfig from '../settings/BaseConfig.vue'
@@ -30,8 +32,12 @@ const groups: Record<string, SettingsGroup> = {
   multiplatform: { title: '多平台', items: ['平台授权', '店铺设置'] },
 }
 
-const activeGroup = ref('base')
-const activeItem = ref('基础')
+const route = useRoute()
+const router = useRouter()
+const localSelection = ref({ group: 'base', item: '基础' })
+const erpAccess = computed(() => route.query.section === erpAccessLocation.query.section)
+const activeGroup = computed(() => (erpAccess.value ? 'base' : localSelection.value.group))
+const activeItem = computed(() => (erpAccess.value ? 'ERP 接入' : localSelection.value.item))
 const { toast, showToast } = useToast()
 const group = computed(() => groups[activeGroup.value])
 const showBase = computed(() => activeGroup.value === 'base' && activeItem.value === '基础')
@@ -40,9 +46,15 @@ const firstItemClass = 'flex h-32 w-full cursor-pointer items-center pl-16 text-
 const secondItemClass =
   'flex h-32 w-full cursor-pointer items-center truncate rounded-4 px-8 text-left text-12/32'
 
-function selectGroup(key: string): void {
-  activeGroup.value = key
-  activeItem.value = groups[key].items[0]
+function selectItem(group: string, item: string): void {
+  const openErp = group === 'base' && item === 'ERP 接入'
+  if (!openErp) localSelection.value = { group, item }
+  if (erpAccess.value !== openErp) {
+    void router.replace({
+      query: { ...route.query, section: openErp ? erpAccessLocation.query.section : undefined },
+      hash: route.hash,
+    })
+  }
 }
 
 function showEditToast(): void {
@@ -68,7 +80,7 @@ function showEditToast(): void {
           ]"
           type="button"
           :data-settings-group="key"
-          @click="selectGroup(key)"
+          @click="selectItem(key, item.items[0])"
         >
           {{ item.title }}
         </button>
@@ -112,7 +124,7 @@ function showEditToast(): void {
             ]"
             type="button"
             :data-settings-item="item"
-            @click="activeItem = item"
+            @click="selectItem(activeGroup, item)"
           >
             {{ item }}
           </button>

@@ -1,6 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import BusinessConfigView from '../../src/views/BusinessConfigView.vue'
+import { createSettingsRouter } from './settingsRouter'
 
 const configPath = '/api/erp/config'
 
@@ -23,7 +24,9 @@ describe('系统设置中的 ERP 接入', () => {
   afterEach(() => wrapper?.unmount())
 
   async function openSettings() {
-    wrapper = mount(BusinessConfigView)
+    const router = createSettingsRouter()
+    wrapper = mount(BusinessConfigView, { global: { plugins: [router] } })
+    await router.isReady()
     await wrapper.get('[data-settings-item="ERP 接入"]').trigger('click')
     await flushPromises()
     return wrapper.get('#settingsContent')

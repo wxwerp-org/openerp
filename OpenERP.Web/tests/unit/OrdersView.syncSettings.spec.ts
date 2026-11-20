@@ -1,4 +1,4 @@
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { adminAccount } from './adminAccount'
 import { installNativeDialogShim } from './installNativeDialogShim'
@@ -123,7 +123,7 @@ async function mountPanel(): Promise<VueWrapper> {
   await checkSession()
   const { default: OrdersView } = await import('../../src/views/OrdersView.vue')
   installNativeDialogShim()
-  const wrapper = mount(OrdersView)
+  const wrapper = mount(OrdersView, { global: { stubs: { RouterLink: RouterLinkStub } } })
   await wrapper.get('[data-testid="orders-toolbar"] [aria-haspopup="dialog"]').trigger('click')
   await flushPromises()
   return wrapper

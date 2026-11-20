@@ -7,6 +7,8 @@ export type WorkspacePage = {
   path: string
 }
 
+export const erpAccessLocation = { name: 'business', query: { section: 'erp' } } as const
+
 export const workspacePages: WorkspacePage[] = [
   { id: 'dashboard', label: '首页', path: '/' },
   { id: 'newdev', label: '新品开发', path: '/newdev' },

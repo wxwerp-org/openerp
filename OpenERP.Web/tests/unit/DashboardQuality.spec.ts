@@ -16,6 +16,7 @@ import OrderNoticeDialog from '../../src/forms/OrderNoticeDialog.vue'
 import ProfileDialog from '../../src/account/ProfileDialog.vue'
 import PasswordDialog from '../../src/account/PasswordDialog.vue'
 import { adminAccount } from './adminAccount'
+import { createSettingsRouter } from './settingsRouter'
 
 describe('工作台数据控件与无障碍质量', () => {
   it.each([
@@ -79,6 +80,7 @@ describe('工作台数据控件与无障碍质量', () => {
 
     for (const component of components) {
       const wrapper = mount(component, {
+        global: { plugins: component === BusinessConfigView ? [createSettingsRouter()] : [] },
         props: dialogComponents.includes(component) ? { open: false, account: adminAccount } : {},
       })
       for (const button of wrapper.findAll('button').filter((item) => !item.text().trim())) {

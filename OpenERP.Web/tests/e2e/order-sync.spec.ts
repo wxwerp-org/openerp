@@ -3,11 +3,11 @@ import { enterWorkspace } from './authentication'
 
 const syncShop = { sid: '1', name: '测试店铺 1', platform: 'TemuPop', region: 'US' }
 
-async function prepareSync(page: Page, shops = [syncShop]) {
+async function prepareSync(page: Page, shops = [syncShop], configured = true) {
   await enterWorkspace(page)
   await page.route('**/api/erp/config', (route) =>
     route.fulfill({
-      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: true },
+      json: { configured, baseUrl: 'https://erp.test', orderSyncEnabled: true },
     }),
   )
   await page.route('**/api/erp/order-sync-settings', (route) =>
@@ -83,4 +83,16 @@ test('Given 本地店铺目录为空 When 点击前往授权店铺 Then 进入�
   await panel.getByRole('link', { name: '前往授权店铺' }).click()
   await expect(page).toHaveURL(/\/shops$/)
   await expect(page.getByRole('heading', { name: '授权店铺', exact: true })).toBeVisible()
+})
+
+test('Given 缺少 ERP Token When 从订单同步提示前往配置 Then 离开弹窗并可填写 Token', async ({
+  page,
+}) => {
+  await prepareSync(page, [], false)
+  const panel = page.getByRole('dialog', { name: '同步历史订单' })
+  const notice = panel.getByRole('alert').filter({ hasText: '尚未配置私有 ERP AccessToken' })
+  await expect(notice).toContainText('系统设置 → 基础 → ERP 接入')
+  await notice.getByRole('link', { name: '前往 ERP 接入' }).click()
+  await expect(panel).toBeHidden()
+  await expect(page.getByLabel('私有 ERP AccessToken', { exact: true })).toBeEditable()
 })

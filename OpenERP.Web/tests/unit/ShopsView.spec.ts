@@ -1,4 +1,4 @@
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref, type Ref } from 'vue'
 import type { ErpHubState, ShopSyncStatus } from '../../src/composables/useErpHub'
@@ -356,7 +356,7 @@ describe('授权店铺页', () => {
 
 async function mountView(): Promise<VueWrapper> {
   const { default: ShopsView } = await import('../../src/views/ShopsView.vue')
-  const view = mount(ShopsView)
+  const view = mount(ShopsView, { global: { stubs: { RouterLink: RouterLinkStub } } })
   await flushPromises()
   await flushPromises()
   return view

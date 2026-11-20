@@ -138,6 +138,29 @@ async function mockDirectory(
   })
 }
 
+test('Given 缺少 ERP Token When 从授权店铺的提示进入设置 Then 可填写 Token 且刷新后仍在接入页', async ({
+  page,
+}) => {
+  await mockDirectory(page)
+  await page.route('**/api/erp/config', (route) =>
+    route.fulfill({
+      json: { configured: false, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+    }),
+  )
+  await page.goto('/shops')
+  const notice = page.getByRole('alert').filter({ hasText: '尚未配置私有 ERP AccessToken' })
+  await expect(notice).toContainText('系统设置 → 基础 → ERP 接入')
+  const link = notice.getByRole('link')
+  await expect(link).toHaveAccessibleName('前往 ERP 接入')
+  await link.click()
+  const token = page.getByLabel('私有 ERP AccessToken', { exact: true })
+  await expect(token).toBeEditable()
+  await page.reload()
+  await expect(token).toBeEditable()
+  await page.goBack()
+  await expect(page.getByRole('heading', { name: '授权店铺', exact: true })).toBeVisible()
+})
+
 test('Given 本地店铺目录 When 打开授权页 Then 汇总、表格与最后同步可见且没有订单同步入口', async ({
   page,
 }) => {

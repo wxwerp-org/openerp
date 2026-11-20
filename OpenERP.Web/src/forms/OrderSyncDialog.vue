@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { apiRequest } from '../account/session'
+import ErpAccessNotice from '../components/ErpAccessNotice.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppCheckbox from '../ui/AppCheckbox.vue'
 import AppDialog from '../ui/AppDialog.vue'
@@ -764,14 +765,7 @@ onUnmounted(() => {
       </div>
 
       <div v-if="noticeKind" class="shrink-0 pb-12">
-        <AppNotice
-          v-if="noticeKind === 'unconfigured'"
-          tone="amber"
-          icon="i-warning"
-          role="alert"
-          title="尚未配置私有 ERP AccessToken"
-          description="请在服务端配置私有 ERP AccessToken 后重试。"
-        />
+        <ErpAccessNotice v-if="noticeKind === 'unconfigured'" />
         <AppNotice v-else tone="red" icon="i-warning" role="alert" :title="errorMessage" />
       </div>
 
@@ -940,7 +934,7 @@ onUnmounted(() => {
             </template>
             <template v-else-if="shopsStatus === 'loading'">正在加载店铺列表</template>
             <template v-else-if="configStatus === 'unconfigured'"
-              >完成服务端配置后可查看店铺</template
+              >保存 ERP AccessToken 后可查看店铺</template
             >
             <template v-else>店铺列表</template>
           </span>
