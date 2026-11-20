@@ -61,7 +61,7 @@ docker compose up -d
 
 ### 一次性配置
 
-1. 准备已在 `/opt/openerp/` 运行的单容器实例，保留该目录的 `.env`、`data/` 和现用 Compose 文件。沿用已有 HTTPS 反代。部署账号需要能在实例目录写入文件、操作 Docker 并完成实例备份。服务器需要 Bash、Docker Compose、`jq`、`flock` 和 GNU tar，且应为完整数据备份留足磁盘空间。
+1. 确认单容器实例已按 `/opt/openerp/docker-compose.yaml` 运行，沿用该目录的端口配置、`data/` 和已有 HTTPS 反代。部署账号需要能在实例目录写入文件并操作 Docker。服务器需要 Bash、Docker Compose、`jq`、`flock` 和 `tar`。
 2. 为 houqin 准备一对专用 SSH 密钥，将公钥加入部署账号的 `authorized_keys`。通过服务器控制台或已验证的运维通道取得 SSH 主机公钥。
 3. 在 GitHub 仓库 **Settings → Secrets and variables → Actions** 中配置下表。私钥使用完整 OpenSSH 私钥文本，部署时由临时 runner 读取。[GitHub Actions secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets) · [GitHub Actions variables](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-variables)
 
@@ -74,11 +74,11 @@ docker compose up -d
 
 ### 升级和故障处理
 
-部署先比对发布时记录的附件 SHA-256，再检查当前实例。服务器拉取镜像并核对 GHCR 发布摘要后才停机。已有的 `compose.yaml` 会随原数据备份，切换完成后 `docker compose` 自动选用新版 `docker-compose.yaml`。每次升级都将成套备份留在 `/opt/openerp/.houqin-backups/`，归档路径会写入部署日志。升级结束时核对实际运行镜像，并从 runner 通过公网 HTTPS 检查 `/api/auth/status`。
+部署先核对 Release 附件的 SHA-256。服务器核对现有实例、端口与挂载，拉取目标镜像并核对 GHCR 发布摘要。上述检查通过后，才安装同一份 `docker-compose.yaml` 并运行 `docker compose up -d`。新容器沿用原数据和凭据，按镜像入口执行迁移并启动服务。最后，工作流核对实际运行镜像，从 GitHub runner 通过公网 HTTPS 检查 `/api/auth/status`。
 
 连接或镜像拉取失败时，原实例继续运行。修正配置后，在该次运行选择 **Re-run failed jobs**，或执行 `gh run rerun <run-id> --failed`。已经部署的同一次运行重试时会再次核对实例；较早的运行不能覆盖已接管的新版本。[GitHub 重试说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)
 
-若切换后容器未能启动或 HTTPS 检查失败，先在实例目录用 `docker compose ps -a` 和 `docker compose logs --tail=100 openerp` 核对启动和迁移阶段。需要回退时，停机并将当前数据、`.env` 和 Compose 文件移到独立目录保留现场，再按[备份与恢复](#停机备份与恢复)把日志中那份 `pre-update.tar` 的数据和配置一起还原，保留原文件属主和权限，最后执行 `docker compose up -d`。备份含实例凭据，归档应按密钥保管。
+若切换后容器未能启动，或公网 HTTPS 检查超时，可在实例目录执行 `docker compose ps -a` 和 `docker compose logs --tail=100 openerp` 查看启动阶段。数据库迁移先于 API 和 Web 启动。公网验收要求接口返回 HTTP 200，且 `initialized` 为布尔值。
 
 ## 重置管理员密码
 

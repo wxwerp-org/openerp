@@ -101,7 +101,7 @@ jobs:
       queue: max
     steps:
       - name: 检出本次 Release 的部署脚本
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
