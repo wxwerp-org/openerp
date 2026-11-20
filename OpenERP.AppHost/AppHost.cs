@@ -34,7 +34,7 @@ builder.Services.AddHealthChecks()
     .AddCheck("seaweedfs-s3", new SeaweedFsS3HealthCheck(storage.Resource), timeout: TimeSpan.FromSeconds(10));
 storage.WithHealthCheck("seaweedfs-s3");
 
-var api = builder.AddProject<Projects.OpenERP_Api>("api")
+var api = builder.AddDotnetProject("api", "../OpenERP.Api/OpenERP.Api.csproj")
     .WithReference(database)
     .WithHttpsEndpoint()
     .WithHttpHealthCheck("/health", endpointName: "https")

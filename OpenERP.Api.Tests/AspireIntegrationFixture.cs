@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Dotnet;
 using Aspire.Hosting.JavaScript;
 using Aspire.Hosting.Publishing;
 using Aspire.Hosting.Testing;
@@ -63,10 +64,6 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
 
     internal string? TestSecretsDirectoryPath => _testSecretsDirectory?.FullName;
 
-    internal static IReadOnlyList<string> ApiLaunchArguments { get; } =
-        ["exec", "--depsfile", Path.ChangeExtension(typeof(AspireIntegrationFixture).Assembly.Location, "deps.json"),
-            typeof(OpenERP.Api.FileStore).Assembly.Location];
-
     public async ValueTask InitializeAsync()
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
@@ -115,14 +112,19 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
         }
 
         // 在测试输出目录直接执行 API，使用与该目录实际复制的程序集相匹配的依赖清单。
-        var api = appHost.Resources.OfType<ProjectResource>().Single(resource => resource.Name == "api");
-#pragma warning disable ASPIREPROJECTS001 // 仍由 Aspire 管理端点、重启与清理。
-        api.Annotations.Add(new ProjectLaunchArgsOverrideAnnotation(ApiLaunchArguments));
-#pragma warning restore ASPIREPROJECTS001
+        var api = appHost.Resources.OfType<DotnetProjectResource>().Single(resource => resource.Name == "api");
+        var depsFile = Path.ChangeExtension(typeof(AspireIntegrationFixture).Assembly.Location, "deps.json");
+        var apiAssembly = typeof(OpenERP.Api.FileStore).Assembly.Location;
+        var apiBuilder = appHost.CreateResourceBuilder(api)
+            .WithBuildEnvironment(context =>
+            {
+                context.EnvironmentVariables["RunCommand"] = "dotnet";
+                context.EnvironmentVariables["RunArguments"] = $"exec --depsfile \"{depsFile}\" \"{apiAssembly}\"";
+            });
 
         if (_useBrowserErpStub)
         {
-            appHost.CreateResourceBuilder(api)
+            apiBuilder
                 .WithEnvironment("ASPNETCORE_HOSTINGSTARTUPASSEMBLIES", typeof(BrowserErpStartup).Assembly.GetName().Name)
                 // 等待测试的手动操作，避免凭证保存与店铺定时刷新互相影响。
                 .WithEnvironment("ShopSync__InitialDelaySeconds", "86400");

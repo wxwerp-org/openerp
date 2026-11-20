@@ -1,23 +1,23 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.6.5">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AspireUseCliBundle>true</AspireUseCliBundle>
     <UserSecretsId>99cf50b3-efe8-4fbd-91f6-d5e6b399175b</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.Docker" Version="13.6.5" />
+    <PackageReference Include="Aspire.Hosting.AppHost" Version="17.0.0" />
+    <PackageReference Include="Aspire.Hosting.Docker" Version="17.0.0" />
     <PackageReference Include="AWSSDK.S3" Version="4.0.103.4" />
-    <PackageReference Include="CommunityToolkit.Aspire.Hosting.SeaweedFS" Version="13.6.1" />
-    <ProjectReference Include="../OpenERP.Api/OpenERP.Api.csproj" />
-    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.6.5" />
-    <PackageReference Include="Aspire.Hosting.Redis" Version="13.6.5" />
-    <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.6.5" />
-    <PackageReference Include="Aspire.Hosting.EntityFrameworkCore" Version="13.6.5-preview.1.26559.7" />
-    <PackageReference Include="Aspire.Hosting.Browsers" Version="13.6.5-preview.1.26559.7" />
+    <PackageReference Include="CommunityToolkit.Aspire.Hosting.SeaweedFS" Version="17.0.0" />
+    <PackageReference Include="Aspire.Hosting.Dotnet" Version="17.0.0" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="17.0.0" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="17.0.0" />
+    <PackageReference Include="Aspire.Hosting.JavaScript" Version="17.0.0" />
+    <PackageReference Include="Aspire.Hosting.EntityFrameworkCore" Version="17.0.0-preview.1.26567.5" />
+    <PackageReference Include="Aspire.Hosting.Browsers" Version="17.0.0-preview.1.26567.5" />
   </ItemGroup>
 </Project>

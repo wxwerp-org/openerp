@@ -8,9 +8,7 @@ namespace OpenERP.AppHost;
 
 internal static class SingleContainerArtifacts
 {
-#pragma warning disable ASPIREPIPELINES001 // Aspire 13.6 通过此参数向组装步骤传入本次构建上下文。
     public static async Task StageAsync(PipelineStepContext context, string staging, string deploy, string apiImage)
-#pragma warning restore ASPIREPIPELINES001
     {
         var web = context.Model.Resources.Single(resource => resource.Name == "web");
         if (!web.TryGetContainerImageName(out var webImage))
@@ -21,9 +19,7 @@ internal static class SingleContainerArtifacts
         File.Copy(Path.Combine(deploy, "Dockerfile"), Path.Combine(staging, "Dockerfile"));
         File.Copy(Path.Combine(deploy, "entrypoint.sh"), Path.Combine(staging, "entrypoint.sh"));
 
-#pragma warning disable ASPIREPIPELINES004 // 直接读取本次 EF 步骤的输出目录，兼容自定义发布位置。
         var output = context.Services.GetRequiredService<IPipelineOutputService>().GetOutputDirectory();
-#pragma warning restore ASPIREPIPELINES004
         File.Copy(Path.Combine(output, "efmigrations", "migrations"), Path.Combine(staging, "efbundle"));
 
         await CopyFromImageAsync(context.Logger, apiImage, context.CancellationToken,

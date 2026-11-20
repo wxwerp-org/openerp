@@ -19,7 +19,7 @@ internal static class ComposeDeployment
         var deploy = Path.GetFullPath("../deploy", builder.AppHostDirectory);
         var compose = builder.AddDockerComposeEnvironment("compose").WithDashboard(false);
 
-        var api = builder.AddProject<Projects.OpenERP_Api>("api");
+        var api = builder.AddDotnetProject("api", "../OpenERP.Api/OpenERP.Api.csproj");
         var apiImage = $"api:{runId}";
 #pragma warning disable ASPIREPIPELINES003 // 为本次 API 构建分配独立本地标签。
         api.WithContainerBuildOptions(options => options.LocalImageTag = runId);
@@ -81,11 +81,9 @@ internal static class ComposeDeployment
             requiredBy: ["build-openerp"]);
         openerp.WithPipelineConfiguration(context =>
         {
-#pragma warning disable ASPIREPIPELINES001 // 仅使用 Aspire 13.6 定义的发布步骤名和镜像推送标签。
             const string publish = WellKnownPipelineSteps.Publish;
             const string push = WellKnownPipelineSteps.Push;
             const string pushImage = WellKnownPipelineTags.PushContainerImage;
-#pragma warning restore ASPIREPIPELINES001
             context.Steps.Single(step => step.Name == BundleStep).RequiredBySteps.Remove(publish);
             foreach (var step in context.GetSteps(pushImage)
                          .Where(step => step.Resource?.Name is "api" or "web"))
