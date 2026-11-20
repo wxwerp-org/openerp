@@ -23,12 +23,21 @@ flock -n 9 || fail '此实例正在更新，或无法锁定实例。'
 
 work=$(mktemp -d "$instance/.houqin-update.XXXXXXXX")
 cleanup() {
-    local status=$?
-    trap '' INT TERM
+    local status=$? message=
+    trap '' HUP INT TERM
+    if (( status != 0 )) && [[ -f $work/previous-compose.yaml && ! -e $work/docker-compose.yaml ]]; then
+        if restore_compose; then
+            message='更新失败，已还原切换前的 Compose 文件。'
+        else
+            message='更新失败，未还原实例的 Compose 文件。'
+        fi
+    fi
     rm -rf -- "$work" || true
+    [[ -z $message ]] || printf '%s\n' "$message" >&2 || true
     exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 install -m 0644 -- "$incoming" "$work/docker-compose.yaml"
@@ -86,13 +95,25 @@ validate_config <<< "$next_config" || fail 'Release 附件必须沿用原 Compos
 
 container_id() {
     local id
-    id=$(compose "$1" ps --all --quiet)
+    id=$(compose "$1" ps --all --quiet) || return
     [[ -n $id && $id != *$'\n'* ]] || fail 'Compose 项目必须恰有一个现有容器。'
     printf '%s\n' "$id"
 }
 
 inspect() {
     docker container inspect --format '{{json .}}' "$1"
+}
+
+restore_compose() {
+    local id info started_at
+    id=$(container_id "$current") || return
+    [[ $id == "$current_id" ]] || return 1
+    info=$(inspect "$id") || return
+    started_at=$(jq -er '.State.StartedAt | strings | select(length > 0)' <<< "$current_info") || return
+    jq -e --arg started_at "$started_at" '
+        .State.Status == "running" and .State.StartedAt == $started_at
+    ' <<< "$info" >/dev/null || return
+    mv -f -- "$work/previous-compose.yaml" "$current"
 }
 
 current_id=$(container_id "$current")
@@ -126,6 +147,7 @@ release_image_id() {
 docker pull "$expected_image"
 expected_id=$(release_image_id)
 
+cp -p -- "$current" "$work/previous-compose.yaml"
 record_run
 mv -f -- "$work/docker-compose.yaml" "$current" || fail '无法替换实例的 Compose 文件。'
 compose "$current" up -d --pull never --no-build
