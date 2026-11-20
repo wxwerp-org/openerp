@@ -42,6 +42,7 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
                 WHEN source.dispatched ~ @epoch THEN to_timestamp(source.dispatched::bigint) AT TIME ZONE 'UTC'
             END AS dispatched_at
         ) AS parsed
+        WHERE o."DeletedAt" IS NULL
         """;
 
     internal async Task<OpResult<OrderListResponse>> ReadAsync(OrderListRequest request, CancellationToken ct)

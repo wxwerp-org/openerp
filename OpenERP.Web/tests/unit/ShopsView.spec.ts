@@ -1,7 +1,9 @@
 import { flushPromises, mount, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref, type Ref } from 'vue'
+import * as session from '../../src/account/session'
 import type { ErpHubState, ShopSyncStatus } from '../../src/composables/useErpHub'
+import { adminAccount } from './adminAccount'
 import { installNativeDialogShim } from './installNativeDialogShim'
 
 type ShopRow = {
@@ -80,6 +82,21 @@ describe('授权店铺页', () => {
     expect(wrapper.text()).toContain('共 2 家店铺')
     expect(wrapper.findAll('[data-testid="shop-summary-card"]')).toHaveLength(4)
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/erp/shops?'))).toBe(true)
+  })
+
+  it('Given 系统配置受限 When 访问授权店铺 Then 通过业务可用性启用目录同步', async () => {
+    const local = defaultHandler([shop()], { valid: 1, invalid: 0, unknown: 0, lastSyncedAt: null })
+    installFetch((url) => {
+      if (url === '/api/erp/config') return new Response(null, { status: 403 })
+      if (url === '/api/erp/order-sync-availability')
+        return jsonResponse({ configured: true, orderSyncEnabled: true })
+      return local(url)
+    })
+    wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('上游连接：已配置')
+    expect(firstButton(wrapper, '立即同步').attributes('disabled')).toBeUndefined()
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain('/api/erp/config')
   })
 
   it('Given 点击无效汇总卡 When 查询 Then 后端按 status 过滤且汇总不随 status 变化', async () => {
@@ -221,12 +238,14 @@ describe('授权店铺页', () => {
     expect(firstButton(wrapper, '立即同步').attributes('disabled')).toBeDefined()
   })
 
-  it('Given 未配置 Token When 打开 Then 提示配置且禁用同步但保留本地数据', async () => {
+  it('Given 普通用户且未配置 Token When 打开 Then 提示联系管理员且禁用同步但保留本地数据', async () => {
+    vi.spyOn(session, 'account', 'get').mockReturnValue(
+      ref({ ...adminAccount, role: 'User', username: 'employee' }),
+    )
     installFetch((url) => {
-      if (url === '/api/erp/config')
+      if (url === '/api/erp/order-sync-availability')
         return jsonResponse({
           configured: false,
-          baseUrl: 'https://erp.test',
           orderSyncEnabled: false,
         })
       return defaultHandler([shop()], { valid: 1, invalid: 0, unknown: 0, lastSyncedAt: null })(url)
@@ -234,6 +253,8 @@ describe('授权店铺页', () => {
     wrapper = await mountView()
 
     expect(wrapper.text()).toContain('尚未配置私有 ERP AccessToken')
+    expect(wrapper.text()).toContain('请联系管理员配置 ERP 接入')
+    expect(wrapper.text()).not.toContain('前往 ERP 接入')
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
     expect(firstButton(wrapper, '立即同步').attributes('disabled')).toBeDefined()
   })
@@ -248,7 +269,7 @@ describe('授权店铺页', () => {
 
   it('Given 本地接口失败 When 打开 Then 显示错误详情且可重试', async () => {
     installFetch((url) => {
-      if (url === '/api/erp/config') return configResponse()
+      if (url === '/api/erp/order-sync-availability') return configResponse()
       if (url === '/api/erp/platforms') return platformsResponse()
       if (url === '/api/erp/shop-sync') return jsonResponse(statusBody())
       return jsonResponse({ title: '本地店铺数据暂时不可用', detail: '数据库连接失败。' }, 503)
@@ -436,7 +457,7 @@ function defaultHandler(
 ) {
   const summaryWithVersion = { ...summary, syncVersion: summary.syncVersion ?? 0 }
   return (url: string): Response => {
-    if (url === '/api/erp/config') return configResponse()
+    if (url === '/api/erp/order-sync-availability') return configResponse()
     if (url === '/api/erp/platforms') return platformsResponse()
     if (url === '/api/erp/shop-sync') return jsonResponse(statusBody())
     if (!url.startsWith('/api/erp/shops')) throw new Error(`意外的请求：${url}`)

@@ -556,6 +556,19 @@
           "YamlDotNet": "16.3.0"
         }
       },
+      "Mapster": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "lsJwj0ALW/I8LSCxF6WVa9bqp5E693CC5wDzNUxkiLWr/sD2hjNMvc1p/9A9BLMfCsK6ra4hgPYg7ILkouG2Kw==",
+        "dependencies": {
+          "Mapster.Core": "10.0.14"
+        }
+      },
+      "Mapster.Core": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "8ad9PtJ9iKXjdwanPBGQrFb3ww0qJLkNE7y2A1vueCoqNaA2rSQZjyFvYPw9708uKTKy4zMhgKUPqNXUg/1ZUw=="
+      },
       "MessagePack": {
         "type": "Transitive",
         "resolved": "2.5.307",
@@ -1628,6 +1641,7 @@
           "AWSSDK.S3": "[4.0.103.4, )",
           "Aspire.Npgsql.EntityFrameworkCore.PostgreSQL": "[13.6.5, )",
           "Aspire.StackExchange.Redis": "[13.6.5, )",
+          "Mapster": "[10.0.14, )",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "[10.0.15, )",
           "Microsoft.AspNetCore.DataProtection.EntityFrameworkCore": "[10.0.15, )",
           "Microsoft.EntityFrameworkCore": "[10.0.15, )",

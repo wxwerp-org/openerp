@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpResult;
+using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using Xunit;
@@ -202,7 +203,7 @@ public sealed class OrderSyncSettingsEndpointTests
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddSingleton<IErpClient>(erp ?? new TestErpClient());
         builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore(token));
-        builder.Services.AddAuthorization();
+        ErpEndpointTestAuth.Configure(builder);
         builder.Services.AddSingleton<IOrderSyncSettingsStore>(new TestSettingsStore());
         builder.Services.AddSingleton<OrderSyncJobs>();
         builder.Services.AddSingleton<OrderSyncScheduler>();
@@ -210,7 +211,7 @@ public sealed class OrderSyncSettingsEndpointTests
         var app = builder.Build();
         app.MapErp();
         await app.StartAsync(cancellationToken);
-        var http = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        var http = ErpEndpointTestAuth.CreateClient(app, UserAccount.AdministratorRole);
         return new TestApp(app, http, (TestSettingsStore)app.Services.GetRequiredService<IOrderSyncSettingsStore>());
     }
 

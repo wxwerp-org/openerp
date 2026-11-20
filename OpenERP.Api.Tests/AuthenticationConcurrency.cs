@@ -25,8 +25,8 @@ internal static class AuthenticationConcurrency
                    wait_event_type = 'Lock' AND matches AS blocked
             FROM (
                 SELECT pid, state, wait_event_type, wait_event,
-                       (query LIKE '%"AdminAccounts"%FOR UPDATE%'
-                        OR (@includeUpdates AND query LIKE '%UPDATE "AdminAccounts"%')) AS matches
+                       (query LIKE '%"Users"%FOR UPDATE%'
+                        OR (@includeUpdates AND query LIKE '%UPDATE "Users"%')) AS matches
                 FROM pg_stat_activity
                 WHERE datname = current_database() AND pid <> pg_backend_pid()
             ) sessions

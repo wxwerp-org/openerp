@@ -6,6 +6,8 @@ const fixedAccountExpiry = new Date(Date.now() + refreshLifetimeMs).toISOString(
 
 function account(expiresAt = fixedAccountExpiry) {
   return {
+    id: '019b2b91-0f43-7891-b8a7-87a15139c721',
+    role: 'Administrator',
     username: 'admin',
     name: '值班管理员',
     phone: null,

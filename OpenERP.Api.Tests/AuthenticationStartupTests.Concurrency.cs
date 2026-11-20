@@ -80,8 +80,8 @@ public sealed partial class AuthenticationStartupTests
         await observer.OpenAsync(ct);
         await using var transaction = await observer.BeginTransactionAsync(ct);
         await using var lockAdmin = new NpgsqlCommand(
-            """SELECT "Id" FROM "AdminAccounts" WHERE "Id" = 1 FOR UPDATE""", observer, transaction);
-        Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
+            """SELECT "Id" FROM "Users" WHERE "Username" = 'admin' FOR UPDATE""", observer, transaction);
+        Assert.IsType<Guid>(await lockAdmin.ExecuteScalarAsync(ct));
 
         // When 测试包装器延迟真实 CLI 启动；Then 能观察真实锁且 CLI 在解锁后成功。
         using var operations = new CancellationTokenSource();
@@ -131,8 +131,8 @@ public sealed partial class AuthenticationStartupTests
             await observer.OpenAsync(ct);
             await using var transaction = await observer.BeginTransactionAsync(ct);
             await using var lockAdmin = new NpgsqlCommand(
-                """SELECT "Id" FROM "AdminAccounts" WHERE "Id" = 1 FOR UPDATE""", observer, transaction);
-            Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
+                """SELECT "Id" FROM "Users" WHERE "Username" = 'admin' FOR UPDATE""", observer, transaction);
+            Assert.IsType<Guid>(await lockAdmin.ExecuteScalarAsync(ct));
 
             var reset = RunApiOnDatabaseAsync(_connectionString, fixture.AdminPassword,
                 ["reset-admin-password", "--stdin"], cancellation.Token,
@@ -189,8 +189,8 @@ public sealed partial class AuthenticationStartupTests
             await observer.OpenAsync(ct);
             await using var transaction = await observer.BeginTransactionAsync(ct);
             await using var lockAdmin = new NpgsqlCommand(
-                """SELECT "Id" FROM "AdminAccounts" WHERE "Id" = 1 FOR UPDATE""", observer, transaction);
-            Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
+                """SELECT "Id" FROM "Users" WHERE "Username" = 'admin' FOR UPDATE""", observer, transaction);
+            Assert.IsType<Guid>(await lockAdmin.ExecuteScalarAsync(ct));
 
             using var operations = new CancellationTokenSource();
             reset = RunApiAsync(fixture.AdminPassword, operations.Token, "reset-admin-password", "--stdin");

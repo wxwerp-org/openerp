@@ -193,8 +193,8 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
             await observer.OpenAsync(ct);
             await using var transaction = await observer.BeginTransactionAsync(ct);
             await using var lockAdmin = new NpgsqlCommand(
-                """SELECT "Id" FROM "AdminAccounts" WHERE "Id" = 1 FOR UPDATE""", observer, transaction);
-            Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
+                """SELECT "Id" FROM "Users" WHERE "Username" = 'admin' FOR UPDATE""", observer, transaction);
+            Assert.IsType<Guid>(await lockAdmin.ExecuteScalarAsync(ct));
 
             first.DefaultRequestHeaders.Remove(CsrfHeader);
             var changeTask = first.PostAsJsonAsync("/api/auth/change-password",
@@ -272,26 +272,42 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
     {
         // Given 登录成功并留存旧 Bearer、refresh Cookie 和匿名 CSRF token。
         var ct = TestContext.Current.CancellationToken;
-        using var client = fixture.CreateApiClient();
-        var account = await LoginAsync(client, ct, AdminPassword);
+        using var beforeUpgrade = fixture.CreateApiClient();
+        var account = await LoginAsync(beforeUpgrade, ct, AdminPassword);
         var loginAt = account.GetProperty("lastLoginAt").GetDateTimeOffset();
         var expiresAt = account.GetProperty("expiresAt").GetDateTimeOffset();
         Assert.Equal(TimeSpan.FromHours(24), expiresAt - loginAt);
-        var oldAccessToken = Assert.IsType<string>(client.DefaultRequestHeaders.Authorization?.Parameter);
-        var oldRefreshCookie = GetCookiePair(client, RefreshCookieName);
-        var oldCsrfCookie = GetCookiePair(client, CsrfCookieName);
-        var oldCsrfToken = client.DefaultRequestHeaders.GetValues(CsrfHeader).Single();
+        var oldAccessToken = Assert.IsType<string>(beforeUpgrade.DefaultRequestHeaders.Authorization?.Parameter);
+        var oldRefreshCookie = GetCookiePair(beforeUpgrade, RefreshCookieName);
+        var oldCsrfCookie = GetCookiePair(beforeUpgrade, CsrfCookieName);
+        var oldCsrfToken = beforeUpgrade.DefaultRequestHeaders.GetValues(CsrfHeader).Single();
 
-        // Given 回退到含旧 AdminSessions 的数据库架构并标记旧账户状态。
-        var connectionString = await fixture.GetPostgresConnectionStringAsync(ct);
+        // Given 在独立旧版数据库中保留管理员资料、旧会话和用于验证匿名 CSRF 的密钥。
+        var sourceConnectionString = await fixture.GetPostgresConnectionStringAsync(ct);
+        await using var source = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(sourceConnectionString).Options);
+        var admin = await source.Users.AsNoTracking().SingleAsync(user => user.Username == "admin", ct);
+        var keys = await source.DataProtectionKeys.AsNoTracking().ToListAsync(ct);
+        Assert.NotEmpty(keys);
+
+        await using var legacyFixture = new AspireIntegrationFixture(initializeAdmin: false);
+        await legacyFixture.InitializeAsync();
+        var connectionString = await legacyFixture.GetPostgresConnectionStringAsync(ct);
         await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options))
         {
             await db.Database.GetService<IMigrator>().MigrateAsync("20261116092521_RequireInitialPasswordChange", ct);
-            await db.Database.ExecuteSqlRawAsync("""UPDATE "AdminAccounts" SET "MustChangePassword" = TRUE""", ct);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "AdminAccounts" ("Id", "Name", "Phone", "Email", "PasswordHash", "LastLoginAt", "MustChangePassword")
+                VALUES (1, {admin.Name}, {admin.Phone}, {admin.Email}, {admin.PasswordHash}, {loginAt}, TRUE);
+                INSERT INTO "AdminSessions" ("Id", "AdminId", "ExpiresAt") VALUES ({Guid.NewGuid()}, 1, {expiresAt});
+                """, ct);
+            foreach (var key in keys)
+                db.DataProtectionKeys.Add(new() { FriendlyName = key.FriendlyName, Xml = key.Xml });
+            await db.SaveChangesAsync(ct);
         }
 
-        // When API 重启并应用新迁移；Then 账户资料保留，旧会话表和旧令牌失效。
-        await fixture.RestartApiAsync(ct);
+        // When 新版 API 启动并应用迁移；Then 账户资料保留，旧会话表和旧令牌失效。
+        await legacyFixture.EnsureApiStartedAsync(ct);
+        using var client = legacyFixture.CreateApiClient();
         await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options))
         {
             Assert.False(await db.Database.SqlQueryRaw<bool>("""
@@ -300,7 +316,7 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
                     WHERE table_name = 'AdminSessions') AS "Value"
                 """).SingleAsync(ct));
             Assert.Empty(await db.RefreshTokens.AsNoTracking().ToListAsync(ct));
-            var existing = await db.AdminAccounts.AsNoTracking().SingleAsync(ct);
+            var existing = await db.Users.AsNoTracking().SingleAsync(user => user.Username == "admin", ct);
             Assert.Equal("管理员", existing.Name);
             Assert.Equal(loginAt, existing.LastLoginAt);
         }
@@ -341,7 +357,10 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(ct);
         await using var command = new NpgsqlCommand(
-            """UPDATE "RefreshTokens" SET "ExpiresAt" = now() - interval '1 second'""", connection);
+            """
+            UPDATE "RefreshTokens" SET "ExpiresAt" = now() - interval '1 second'
+            WHERE "DeletedAt" IS NULL AND "UserId" = (SELECT "Id" FROM "Users" WHERE "Username" = 'admin')
+            """, connection);
         Assert.True(await command.ExecuteNonQueryAsync(ct) > 0);
         using var expired = await client.GetAsync("/api/auth/me", ct);
         await AssertProblemAsync(expired, HttpStatusCode.Unauthorized, ct);
@@ -383,10 +402,10 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
         Assert.Equal(HttpStatusCode.OK, recovered.StatusCode);
     }
 
-    internal static async Task<JsonElement> LoginAsync(HttpClient client, CancellationToken ct, string password)
+    internal static async Task<JsonElement> LoginAsync(HttpClient client, CancellationToken ct, string password, string username = "admin")
     {
         await RefreshCsrfAsync(client, ct);
-        using var content = JsonContent.Create(new { username = "admin", password });
+        using var content = JsonContent.Create(new { username, password });
         using var login = await PostAnonymouslyAsync(client, "/api/auth/login", content, ct);
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var body = await login.Content.ReadFromJsonAsync<JsonElement>(ct);

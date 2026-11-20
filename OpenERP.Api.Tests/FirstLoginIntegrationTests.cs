@@ -30,10 +30,10 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         // Given 数据库账号缺失或查询故障；Then 初始化入口和匿名业务拒绝继续。
         await using var connection = new NpgsqlConnection(await fixture.GetPostgresConnectionStringAsync(ct));
         await connection.OpenAsync(ct);
-        await using (var missing = new NpgsqlCommand("""DELETE FROM "AdminAccounts" """, connection))
+        await using (var missing = new NpgsqlCommand("""DELETE FROM "Users" WHERE "Username" = 'admin'""", connection))
             Assert.Equal(1, await missing.ExecuteNonQueryAsync(ct));
         await AssertUnavailableAsync(client, ct);
-        await using var broken = new NpgsqlCommand("""ALTER TABLE "AdminAccounts" RENAME TO "UnavailableAdminAccounts" """, connection);
+        await using var broken = new NpgsqlCommand("""ALTER TABLE "Users" RENAME TO "UnavailableUsers" """, connection);
         await broken.ExecuteNonQueryAsync(ct);
         await AssertUnavailableAsync(client, ct);
     }
@@ -54,7 +54,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         // When 运行中的数据库丢失管理员记录，外键级联删除登录凭证。
         await using var connection = new NpgsqlConnection(await fixture.GetPostgresConnectionStringAsync(ct));
         await connection.OpenAsync(ct);
-        await using var delete = new NpgsqlCommand("""DELETE FROM "AdminAccounts" WHERE "Id" = 1""", connection);
+        await using var delete = new NpgsqlCommand("""DELETE FROM "Users" WHERE "Username" = 'admin'""", connection);
         Assert.Equal(1, await delete.ExecuteNonQueryAsync(ct));
         using var response = await AuthenticationIntegrationTests.PostAnonymouslyAsync(client, "/api/auth/refresh", null, ct);
 
@@ -101,7 +101,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
             CREATE FUNCTION fail_admin_initialization() RETURNS trigger LANGUAGE plpgsql AS $$
             BEGIN RAISE EXCEPTION 'test transaction rollback'; END;
             $$;
-            CREATE CONSTRAINT TRIGGER fail_admin_initialization AFTER UPDATE ON "AdminAccounts"
+            CREATE CONSTRAINT TRIGGER fail_admin_initialization AFTER UPDATE ON "Users"
             DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_admin_initialization();
             """, observer))
             await fail.ExecuteNonQueryAsync(ct);
@@ -110,15 +110,15 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         Assert.False(rejected.Headers.Contains("Set-Cookie"));
         await AssertStatusAsync(first, false, ct);
         await using (var recover = new NpgsqlCommand(
-            """DROP TRIGGER fail_admin_initialization ON "AdminAccounts" """, observer))
+            """DROP TRIGGER fail_admin_initialization ON "Users" """, observer))
             await recover.ExecuteNonQueryAsync(ct);
 
         // When 数据库行锁释放前两个请求已在不同连接等待；Then 只有一方成功。
         await using (var transaction = await observer.BeginTransactionAsync(ct))
         {
             await using var lockAdmin = new NpgsqlCommand(
-                """SELECT "Id" FROM "AdminAccounts" WHERE "Id" = 1 FOR UPDATE""", observer, transaction);
-            Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
+                """SELECT "Id" FROM "Users" WHERE "Username" = 'admin' FOR UPDATE""", observer, transaction);
+            Assert.IsType<Guid>(await lockAdmin.ExecuteScalarAsync(ct));
             using var operations = new CancellationTokenSource();
             var firstAttempt = InitializeAsync(first, firstPassword, operations.Token);
             var secondAttempt = InitializeAsync(second, secondPassword, operations.Token);
@@ -151,7 +151,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
 
             await AssertStatusAsync(first, true, ct);
             await AssertCodeAsync(await InitializeAsync(first, losingPassword, ct), "already_initialized", ct);
-            await using var refreshTokens = new NpgsqlCommand("""SELECT COUNT(*) FROM "RefreshTokens" """, observer);
+            await using var refreshTokens = new NpgsqlCommand("""SELECT COUNT(*) FROM "RefreshTokens" WHERE "DeletedAt" IS NULL""", observer);
             Assert.Equal(0L, await refreshTokens.ExecuteScalarAsync(ct));
             using var anonymous = await first.GetAsync("/api/ping", ct);
             Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
@@ -203,13 +203,14 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         await observer.OpenAsync(ct);
         await using var transaction = await observer.BeginTransactionAsync(ct);
         await using var lockAdmin = new NpgsqlCommand(
-            """SELECT "Id" FROM "AdminAccounts" WHERE "Id" = 1 FOR UPDATE""", observer, transaction);
-        Assert.Equal(1, await lockAdmin.ExecuteScalarAsync(ct));
+            """SELECT "Id" FROM "Users" WHERE "Username" = 'admin' FOR UPDATE""", observer, transaction);
+        var adminId = Assert.IsType<Guid>(await lockAdmin.ExecuteScalarAsync(ct));
         // 模拟残留会话，验证 CLI 对占位账号设置密码时同样撤销全部会话。
         await using var insert = new NpgsqlCommand("""
-            INSERT INTO "RefreshTokens" ("Id", "AdminId", "TokenHash", "ExpiresAt")
-            VALUES (gen_random_uuid(), 1, @tokenHash, now() + interval '1 hour')
+            INSERT INTO "RefreshTokens" ("Id", "UserId", "TokenHash", "ExpiresAt")
+            VALUES (gen_random_uuid(), @userId, @tokenHash, now() + interval '1 hour')
             """, observer, transaction);
+        insert.Parameters.AddWithValue("userId", adminId);
         insert.Parameters.AddWithValue("tokenHash", RandomNumberGenerator.GetBytes(32));
         Assert.Equal(1, await insert.ExecuteNonQueryAsync(ct));
 
@@ -244,7 +245,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         Assert.Equal(0, result.ExitCode);
         Assert.False(result.Output.Contains(resetPassword, StringComparison.Ordinal), "CLI 输出泄露了重置密码。");
         await AssertCodeAsync(await initialize!, "already_initialized", ct);
-        await using var refreshTokens = new NpgsqlCommand("""SELECT COUNT(*) FROM "RefreshTokens" """, observer);
+        await using var refreshTokens = new NpgsqlCommand("""SELECT COUNT(*) FROM "RefreshTokens" WHERE "DeletedAt" IS NULL""", observer);
         Assert.Equal(0L, await refreshTokens.ExecuteScalarAsync(ct));
         await AssertStatusAsync(browser, true, ct);
         await AuthenticationIntegrationTests.LoginAsync(browser, ct, resetPassword);

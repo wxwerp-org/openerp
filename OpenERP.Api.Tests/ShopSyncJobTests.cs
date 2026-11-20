@@ -53,13 +53,16 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         var ct = TestContext.Current.CancellationToken;
         await MigrateAsync(ct);
         await SeedAsync(ct);
+        await using var db = CreateDbContext();
+        var originalIds = await db.Shops.AsNoTracking().ToDictionaryAsync(shop => shop.Sid, shop => shop.Id, ct);
+        var includePreviousShop = false;
         var erp = new TestErpClient
         {
-            GetAllShops = (_, _, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>([
-                new("30", "店铺三十（新）", "TemuPop", "US", "member-30"),
+            GetAllShops = (_, _, _) => Task.FromResult(OpResults.Ok<IReadOnlyList<ErpShop>>(includePreviousShop
+                ? [new("99", "恢复店铺", "TemuPop", null, null), new("30", "同店再次更新", "TemuPop", "US", "member-30")]
+                : [new("30", "店铺三十（新）", "TemuPop", "US", "member-30"),
                 new("6", "AE 店", "AliExpress", "GB", "member-6"),
-                new("9", "失效店", "TemuPop", null, null)
-            ])),
+                new("9", "失效店", "TemuPop", null, null)])),
             GetPlatforms = (_, _) => Task.FromResult<(OpResult<IReadOnlyList<ErpPlatform>>, int)>((
                 OpResults.Ok<IReadOnlyList<ErpPlatform>>([
                     new("TemuPop", "Temu半托管", "icon-temupop", true, 2),
@@ -83,7 +86,6 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         var final = await WaitForIdleAsync(job, notifier, ct);
 
         // Then 新增与变更店铺按 SID 写入，旧店铺删除，失败店铺记为未知。
-        await using var db = CreateDbContext();
         var shops = await db.Shops.AsNoTracking().OrderBy(shop => shop.Sid).ToArrayAsync(ct);
         Assert.Equal([6, 9, 30], shops.Select(shop => shop.Sid));
         var shop30 = shops.Single(shop => shop.Sid == 30);
@@ -91,6 +93,8 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         Assert.Equal("member-30", shop30.MemberId);
         Assert.True(shop30.IsTokenOk);
         Assert.NotNull(shop30.SyncedAt);
+        Assert.Equal(originalIds[30], shop30.Id);
+        Assert.All(shops, shop => Assert.Equal(7, shop.Id.Version));
         var shop6 = shops.Single(shop => shop.Sid == 6);
         Assert.Equal("GB", shop6.Region);
         Assert.False(shop6.IsTokenOk);
@@ -102,9 +106,12 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         var platforms = await db.ShopPlatforms.AsNoTracking().OrderBy(platform => platform.Name).ToArrayAsync(ct);
         Assert.Equal(["AliExpress", "TemuPop"], platforms.Select(platform => platform.Name));
         Assert.Equal("速卖通", platforms[0].DisplayName);
+        var deleted = await db.Shops.IgnoreQueryFilters().AsNoTracking().SingleAsync(shop => shop.Sid == 99, ct);
+        Assert.NotNull(deleted.DeletedAt);
+        Assert.Equal(originalIds[99], deleted.Id);
 
         // Then 同步结果与计数落库，推送最终状态。
-        var state = await db.ShopSyncStates.AsNoTracking().SingleAsync(state => state.Id == 1, ct);
+        var state = await db.ShopSyncStates.AsNoTracking().SingleAsync(ct);
         Assert.Equal(final.Version, state.Version);
         Assert.Equal(3, state.Total);
         Assert.Equal(1, state.Valid);
@@ -122,6 +129,17 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         Assert.Null(final.Error);
         Assert.Contains(notifier.Statuses, status => status.Running && status.Total == 3);
         Assert.Equal(final, notifier.Statuses[^1]);
+
+        // When 同一店铺再次同步且此前缺失的店铺重新出现。Then 继续使用原 UUID。
+        includePreviousShop = true;
+        Assert.False((await job.TryStartAsync(ct)).IsErr);
+        Assert.Null((await WaitForIdleAsync(job, notifier, ct)).Error);
+        var current = await db.Shops.AsNoTracking().OrderBy(shop => shop.Sid).ToArrayAsync(ct);
+        Assert.Equal([30, 99], current.Select(shop => shop.Sid));
+        Assert.Equal("同店再次更新", current[0].Name);
+        Assert.Equal("恢复店铺", current[1].Name);
+        Assert.Equal(originalIds[30], current[0].Id);
+        Assert.Equal(originalIds[99], current[1].Id);
     }
 
     [Fact]
@@ -156,7 +174,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         var shops = await db.Shops.AsNoTracking().OrderBy(shop => shop.Sid).ToArrayAsync(ct);
         Assert.Equal([30, 99], shops.Select(shop => shop.Sid));
         Assert.False(shops[0].IsTokenOk);
-        var state = await db.ShopSyncStates.AsNoTracking().SingleAsync(state => state.Id == 1, ct);
+        var state = await db.ShopSyncStates.AsNoTracking().SingleAsync(ct);
         Assert.Equal(previousCompletedAt, state.LastCompletedAt);
         Assert.Contains("ERP 请求超时", state.LastError);
         Assert.Equal(final.Version, state.Version);
@@ -253,7 +271,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         await using var db = CreateDbContext();
         var shops = await db.Shops.AsNoTracking().OrderBy(shop => shop.Sid).ToArrayAsync(ct);
         Assert.Equal([30, 99], shops.Select(shop => shop.Sid));
-        var state = await db.ShopSyncStates.AsNoTracking().SingleAsync(state => state.Id == 1, ct);
+        var state = await db.ShopSyncStates.AsNoTracking().SingleAsync(ct);
         Assert.Contains("无效的店铺 ID", state.LastError);
         Assert.Equal(previousCompletedAt, state.LastCompletedAt);
     }
@@ -382,7 +400,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         });
         db.ShopSyncStates.Add(new ShopSyncState
         {
-            Id = 1, Version = 7, LastCompletedAt = finishedAt, Total = 2, Valid = 1, Invalid = 1, Unknown = 0
+            Version = 7, LastCompletedAt = finishedAt, Total = 2, Valid = 1, Invalid = 1, Unknown = 0
         });
         await db.SaveChangesAsync(cancellationToken);
     }

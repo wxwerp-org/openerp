@@ -11,6 +11,7 @@ internal sealed class AccessTokens
     private const string Audience = "OpenERP.Api";
     private const string SigningAlgorithm = SecurityAlgorithms.RsaSha256;
     internal const string LoginIdClaim = "sid";
+    internal const string RoleClaim = "role";
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(20);
 
     private readonly JsonWebTokenHandler _handler = new();
@@ -34,10 +35,11 @@ internal sealed class AccessTokens
         ValidateAudience = true,
         ValidateIssuerSigningKey = true,
         ValidateLifetime = true,
+        RoleClaimType = RoleClaim,
         ClockSkew = TimeSpan.Zero
     };
 
-    internal (string Value, DateTimeOffset ExpiresAt)? Issue(AdminRefreshToken login, DateTimeOffset now)
+    internal (string Value, DateTimeOffset ExpiresAt)? Issue(UserRefreshToken login, DateTimeOffset now)
     {
         var deadline = now.Add(Lifetime);
         if (login.ExpiresAt < deadline)
@@ -57,7 +59,8 @@ internal sealed class AccessTokens
             Expires = expiresAt.UtcDateTime,
             SigningCredentials = _signingCredentials,
             Subject = new ClaimsIdentity([
-                new Claim(JwtRegisteredClaimNames.Sub, AdminAccount.Username),
+                new Claim(JwtRegisteredClaimNames.Sub, login.UserId.ToString("D")),
+                new Claim(RoleClaim, login.User.Role),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
                 new Claim(LoginIdClaim, login.Id.ToString("D"))
             ])

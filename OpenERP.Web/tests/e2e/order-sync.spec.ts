@@ -5,9 +5,9 @@ const syncShop = { sid: '1', name: '测试店铺 1', platform: 'TemuPop', region
 
 async function prepareSync(page: Page, shops = [syncShop], configured = true) {
   await enterWorkspace(page)
-  await page.route('**/api/erp/config', (route) =>
+  await page.route('**/api/erp/order-sync-availability', (route) =>
     route.fulfill({
-      json: { configured, baseUrl: 'https://erp.test', orderSyncEnabled: true },
+      json: { configured, orderSyncEnabled: true },
     }),
   )
   await page.route('**/api/erp/order-sync-settings', (route) =>

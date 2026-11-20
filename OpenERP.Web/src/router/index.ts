@@ -45,7 +45,7 @@ const router = createRouter({
       path: page.path,
       name: page.id,
       component: views[page.id],
-      meta: { title: page.label, workspace: true },
+      meta: { title: page.label, workspace: true, administratorOnly: page.administratorOnly },
     })),
     {
       path: '/service-connection',

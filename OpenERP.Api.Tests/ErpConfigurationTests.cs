@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using Xunit;
@@ -57,20 +58,8 @@ public sealed class ErpConfigurationTests
     {
         // Given API 已配置 ERP Token，并以指定环境运行。
         var ct = TestContext.Current.CancellationToken;
-        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = environment });
-        builder.Logging.ClearProviders();
-        builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
-        builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-secret"));
-        builder.Services.AddHttpClient<IErpClient, WxwErpClient>();
-        builder.Services.AddAuthorization();
-        builder.Services.AddSingleton<OrderSyncJobs>();
-        builder.Services.AddSingleton<IOrderSyncSettingsStore>(new TestSettingsStore());
-        builder.Services.AddOptions<OrderSyncSchedulerOptions>();
-        builder.Services.AddSingleton<OrderSyncScheduler>();
-        await using var app = builder.Build();
-        app.MapErp();
-        await app.StartAsync(ct);
-        using var http = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        await using var app = await StartAppAsync(environment, new TestErpTokenStore("test-secret"), ct);
+        using var http = ErpEndpointTestAuth.CreateClient(app, UserAccount.AdministratorRole);
 
         // When 浏览器查询 ERP 配置。
         using var configResponse = await http.GetAsync("/api/erp/config", ct);
@@ -101,5 +90,103 @@ public sealed class ErpConfigurationTests
         Assert.Equal(HttpStatusCode.NotFound, selection.StatusCode);
         using var save = await http.PutAsync("/api/erp/order-sync-settings", null, ct);
         Assert.Equal(HttpStatusCode.NotFound, save.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("GET", "/api/erp/config")]
+    [InlineData("PUT", "/api/erp/config")]
+    [InlineData("GET", "/api/erp/order-sync-settings")]
+    [InlineData("PUT", "/api/erp/order-sync-settings")]
+    [InlineData("GET", "/api/erp/order-sync-settings/shops")]
+    public async Task Ordinary_user_cannot_read_or_write_erp_configuration(string method, string route)
+    {
+        // Given 已登录普通用户，ERP 已配置。
+        var ct = TestContext.Current.CancellationToken;
+        await using var app = await StartAppAsync("Production", new TestErpTokenStore("test-secret"), ct);
+        using var http = ErpEndpointTestAuth.CreateClient(app, UserAccount.UserRole);
+
+        // When 直接访问 ERP 或定时同步设置。
+        using var request = new HttpRequestMessage(new HttpMethod(method), route);
+        if (request.Method == HttpMethod.Put)
+            request.Content = JsonContent.Create(new { accessToken = "changed", enabled = false, shopSids = Array.Empty<int>() });
+        using var response = await http.SendAsync(request, ct);
+
+        // Then 服务端拒绝普通用户。
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("Development", true, true)]
+    [InlineData("Production", true, true)]
+    [InlineData("Production", false, true)]
+    [InlineData("Staging", true, false)]
+    public async Task Ordinary_user_can_read_only_order_sync_availability(
+        string environment, bool configured, bool orderSyncEnabled)
+    {
+        // Given 普通用户已登录，环境和 ERP Token 状态已知。
+        var ct = TestContext.Current.CancellationToken;
+        await using var app = await StartAppAsync(environment, new TestErpTokenStore(configured ? "test-secret" : ""), ct);
+        using var http = ErpEndpointTestAuth.CreateClient(app, UserAccount.UserRole);
+
+        // When 订单同步界面查询可用性。
+        using var response = await http.GetAsync("/api/erp/order-sync-availability", ct);
+
+        // Then 响应仅包含 ERP 配置状态与环境支持状态。
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(configured, payload.GetProperty("configured").GetBoolean());
+        Assert.Equal(orderSyncEnabled, payload.GetProperty("orderSyncEnabled").GetBoolean());
+        Assert.Equal(2, payload.EnumerateObject().Count());
+    }
+
+    [Fact]
+    public async Task Availability_reports_unavailable_configuration_to_authenticated_user()
+    {
+        // Given 普通用户已登录，ERP 配置存储暂时不可读。
+        var ct = TestContext.Current.CancellationToken;
+        await using var app = await StartAppAsync("Production", new FailingErpTokenStore(), ct);
+        using var http = ErpEndpointTestAuth.CreateClient(app, UserAccount.UserRole);
+
+        // When 查询可用性。Then 返回 503，客户端可以区分尚未配置与暂时不可用。
+        using var response = await http.GetAsync("/api/erp/order-sync-availability", ct);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Availability_requires_authentication()
+    {
+        // Given 访客未登录。When 查询可用性。Then 拒绝匿名请求。
+        var ct = TestContext.Current.CancellationToken;
+        await using var app = await StartAppAsync("Production", new TestErpTokenStore("test-secret"), ct);
+        using var http = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        using var response = await http.GetAsync("/api/erp/order-sync-availability", ct);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    private static async Task<WebApplication> StartAppAsync(
+        string environment, IErpTokenStore tokens, CancellationToken ct)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = environment });
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
+        builder.Services.AddSingleton(tokens);
+        builder.Services.AddSingleton<IErpClient, TestErpClient>();
+        ErpEndpointTestAuth.Configure(builder);
+        builder.Services.AddSingleton<OrderSyncJobs>();
+        builder.Services.AddSingleton<IOrderSyncSettingsStore>(new TestSettingsStore());
+        builder.Services.AddOptions<OrderSyncSchedulerOptions>();
+        builder.Services.AddSingleton<OrderSyncScheduler>();
+        var app = builder.Build();
+        app.MapErp();
+        try
+        {
+            await app.StartAsync(ct);
+            return app;
+        }
+        catch
+        {
+            await app.DisposeAsync();
+            throw;
+        }
     }
 }

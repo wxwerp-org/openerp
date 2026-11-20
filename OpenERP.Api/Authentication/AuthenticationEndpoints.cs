@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
+using Mapster;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -10,11 +10,12 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Npgsql;
 
 namespace OpenERP.Api.Authentication;
 
-internal static partial class AuthenticationEndpoints
+internal static class AuthenticationEndpoints
 {
     private const string RefreshCookie = "__Secure-OpenERP.Refresh";
 
@@ -25,7 +26,7 @@ internal static partial class AuthenticationEndpoints
         services.AddSingleton(tokens);
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<AccountStore>();
-        services.AddSingleton<IPasswordHasher<AdminAccount>, PasswordHasher<AdminAccount>>();
+        services.AddSingleton<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
         services.AddDataProtection().SetApplicationName("OpenERP").PersistKeysToDbContext<AppDbContext>();
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
         {
@@ -53,8 +54,9 @@ internal static partial class AuthenticationEndpoints
             };
             options.Events.OnTokenValidated = ValidateLoginAsync;
         });
-        services.AddAuthorizationBuilder().SetFallbackPolicy(
-            new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+        services.AddAuthorizationBuilder()
+            .AddPolicy(UserAccount.AdministratorRole, policy => policy.RequireRole(UserAccount.AdministratorRole))
+            .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
         services.AddAntiforgery(options =>
         {
             options.HeaderName = "X-CSRF-TOKEN";
@@ -74,7 +76,8 @@ internal static partial class AuthenticationEndpoints
         {
             var context = statusContext.HttpContext;
             if (context.Response.StatusCode == StatusCodes.Status401Unauthorized ||
-                context.Response.StatusCode == StatusCodes.Status400BadRequest && IsAccountEndpoint(context))
+                (context.Response.StatusCode == StatusCodes.Status400BadRequest ||
+                 context.Response.StatusCode == StatusCodes.Status403Forbidden) && IsAccountEndpoint(context))
                 await Results.Problem(statusCode: context.Response.StatusCode).ExecuteAsync(context);
         });
 
@@ -104,7 +107,7 @@ internal static partial class AuthenticationEndpoints
         app.Use(async (context, next) =>
         {
             if (context.GetEndpoint() is { } endpoint && endpoint.Metadata.GetMetadata<IAllowAnonymous>() is null &&
-                context.Features.Get<AdminRefreshToken>() is null)
+                context.Features.Get<UserRefreshToken>() is null)
             {
                 var store = context.RequestServices.GetRequiredService<AccountStore>();
                 bool initialized;
@@ -211,11 +214,11 @@ internal static partial class AuthenticationEndpoints
     private static async Task<Results<Ok<TokenResponse>, ProblemHttpResult>> RefreshAsync(
         HttpContext context, AccountStore store, AccessTokens tokens, TimeProvider clock, CancellationToken ct)
     {
-        AdminRefreshToken? login = null;
+        UserRefreshToken? login = null;
         if (context.Request.Cookies.TryGetValue(RefreshCookie, out var refreshToken))
         {
             login = await store.FindActiveRefreshTokenAsync(HashRefreshToken(refreshToken), ct);
-            // 管理员记录缺失时会级联删除凭证，由现有异常处理返回 503。
+            // 管理员记录缺失时，由现有异常处理返回 503。
             if (login is null)
                 await store.IsInitializedAsync(ct);
         }
@@ -242,7 +245,8 @@ internal static partial class AuthenticationEndpoints
         if (!AccountStore.IsValidPassword(request.NewPassword))
             return TypedResults.Problem("新密码长度必须为 6–20 个字符。", statusCode: 400);
 
-        var result = await store.ChangePasswordAsync(CurrentLogin(context).Id, request.OldPassword, request.NewPassword!, ct);
+        var login = CurrentLogin(context);
+        var result = await store.ChangePasswordAsync(login.UserId, login.Id, request.OldPassword, request.NewPassword!, ct);
         if (result == PasswordChangeResult.SessionExpired)
             return TypedResults.Problem("登录会话已失效。", statusCode: 401);
         if (result == PasswordChangeResult.InvalidPassword)
@@ -255,20 +259,13 @@ internal static partial class AuthenticationEndpoints
     private static async Task<Results<Ok<AccountProfile>, ProblemHttpResult, ValidationProblem>> UpdateProfileAsync(
         UpdateProfileRequest request, HttpContext context, AccountStore store, CancellationToken ct)
     {
-        var name = request.Name?.Trim();
-        var phone = TrimOptional(request.Phone);
-        var email = TrimOptional(request.Email);
-        var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrEmpty(name) || name.Length > 20)
-            errors["name"] = ["姓名必填且不得超过 20 个字符。"];
-        if (phone is { Length: > 20 })
-            errors["phone"] = ["电话不得超过 20 个字符。"];
-        if (email is not null && !EmailPattern().IsMatch(email))
-            errors["email"] = ["邮箱格式无效。"];
+        var changes = ProfileChanges.Normalize(request.Name, request.Phone, request.Email);
+        var errors = changes.Validate();
         if (errors.Count > 0)
             return TypedResults.ValidationProblem(errors);
 
-        var login = await store.UpdateProfileAsync(CurrentLogin(context).Id, name!, phone, email, ct);
+        var current = CurrentLogin(context);
+        var login = await store.UpdateProfileAsync(current.UserId, current.Id, changes, ct);
         if (login is null)
             return TypedResults.Problem("登录会话已失效。", statusCode: 401);
 
@@ -279,7 +276,7 @@ internal static partial class AuthenticationEndpoints
     {
         var id = context.Principal?.FindFirstValue(AccessTokens.LoginIdClaim);
         var store = context.HttpContext.RequestServices.GetRequiredService<AccountStore>();
-        AdminRefreshToken? login;
+        UserRefreshToken? login;
         try
         {
             login = Guid.TryParseExact(id, "D", out var loginId)
@@ -291,14 +288,19 @@ internal static partial class AuthenticationEndpoints
             throw new AccountStoreUnavailableException(exception);
         }
 
-        if (login is null)
+        var subject = context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        var role = context.Principal?.FindFirstValue(AccessTokens.RoleClaim);
+        if (login is null || !Guid.TryParseExact(subject, "D", out var userId) ||
+            login.UserId != userId || login.User.Role != role)
             context.Fail("登录会话已失效。");
         else
             context.HttpContext.Features.Set(login);
     }
 
     private static bool IsAccountEndpoint(HttpContext context) =>
-        context.Request.Path.StartsWithSegments("/api/auth") || context.Request.Path.StartsWithSegments("/api/account");
+        context.Request.Path.StartsWithSegments("/api/auth") ||
+        context.Request.Path.StartsWithSegments("/api/account") ||
+        context.Request.Path.StartsWithSegments("/api/users");
 
     internal static bool IsDatabaseFailure(Exception? exception)
     {
@@ -311,13 +313,12 @@ internal static partial class AuthenticationEndpoints
         return false;
     }
 
-    private static AdminRefreshToken CurrentLogin(HttpContext context) => context.Features.Get<AdminRefreshToken>()!;
+    private static UserRefreshToken CurrentLogin(HttpContext context) => context.Features.Get<UserRefreshToken>()!;
 
-    private static AccountProfile ToProfile(AdminRefreshToken login) =>
-        new(AdminAccount.Username, login.Admin.Name, login.Admin.Phone, login.Admin.Email,
-            login.Admin.LastLoginAt, login.ExpiresAt);
+    private static AccountProfile ToProfile(UserRefreshToken login) =>
+        login.User.Adapt<AccountProfile>() with { ExpiresAt = login.ExpiresAt };
 
-    private static TokenResponse? IssueAccess(AccessTokens tokens, AdminRefreshToken login, DateTimeOffset now) =>
+    private static TokenResponse? IssueAccess(AccessTokens tokens, UserRefreshToken login, DateTimeOffset now) =>
         tokens.Issue(login, now) is { } access ? new(access.Value, access.ExpiresAt, ToProfile(login)) : null;
 
     private static byte[] HashRefreshToken(string token) => SHA256.HashData(Encoding.UTF8.GetBytes(token));
@@ -334,11 +335,6 @@ internal static partial class AuthenticationEndpoints
         TypedResults.Problem("请先设置管理员密码。", statusCode: 409,
             extensions: new Dictionary<string, object?> { ["code"] = "initialization_required" });
 
-    [GeneratedRegex(@"^[^\s@]+@[^\s@]+$")]
-    private static partial Regex EmailPattern();
-
-    private static string? TrimOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
     private sealed record CsrfResponse(string RequestToken);
 
     /// <summary>管理员密码初始化状态。</summary>
@@ -350,7 +346,5 @@ internal static partial class AuthenticationEndpoints
     private sealed record LoginRequest(string? Username, string? Password);
     private sealed record ChangePasswordRequest(string? OldPassword, string? NewPassword);
     private sealed record UpdateProfileRequest(string? Name, string? Phone, string? Email);
-    private sealed record AccountProfile(
-        string Username, string Name, string? Phone, string? Email, DateTimeOffset? LastLoginAt, DateTimeOffset ExpiresAt);
     private sealed record TokenResponse(string AccessToken, DateTimeOffset AccessTokenExpiresAt, AccountProfile Account);
 }

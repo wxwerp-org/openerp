@@ -1,5 +1,5 @@
 import type { RouteLocationNormalized, RouteLocationRaw, Router } from 'vue-router'
-import type { SessionState } from '../account/session'
+import { account, type SessionState } from '../account/session'
 
 function isAuthRoute(name: unknown): boolean {
   return name === 'login' || name === 'initialize' || name === 'legacy-password-change'
@@ -23,6 +23,12 @@ export function sessionRedirect(
     return { name: 'login', query, replace: true }
   }
   if (state === 'authenticated' && authRoute) return destination
+  if (
+    state === 'authenticated' &&
+    to.meta.administratorOnly &&
+    account.value?.role !== 'Administrator'
+  )
+    return { name: 'dashboard', replace: true }
 }
 
 export function returnDestination(router: Router, value: unknown): string {

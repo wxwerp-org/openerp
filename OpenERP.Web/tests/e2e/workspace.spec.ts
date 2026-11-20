@@ -12,9 +12,9 @@ test.beforeEach(async ({ page }) => {
 })
 
 async function mockShops(page: Page, count = 1): Promise<void> {
-  await page.route('**/api/erp/config', (route) =>
+  await page.route('**/api/erp/order-sync-availability', (route) =>
     route.fulfill({
-      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+      json: { configured: true, orderSyncEnabled: false },
     }),
   )
   await page.route('**/api/erp/platforms', (route) =>
@@ -78,9 +78,9 @@ async function mockShops(page: Page, count = 1): Promise<void> {
 }
 
 async function mockPagedShops(page: Page, totalCount = 45): Promise<void> {
-  await page.route('**/api/erp/config', (route) =>
+  await page.route('**/api/erp/order-sync-availability', (route) =>
     route.fulfill({
-      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+      json: { configured: true, orderSyncEnabled: false },
     }),
   )
   await page.route('**/api/erp/platforms', (route) =>
@@ -153,7 +153,7 @@ async function mockHub(page: Page): Promise<void> {
   await page.route('**/api/hubs/erp/**', (route) => route.abort())
 }
 
-test('Given 原型工作台 When 打开首页并进入用户管理 Then 全部卡片和四条用户数据可见', async ({
+test('Given 原型工作台 When 打开首页并进入用户管理 Then 首页卡片和管理员账号可见', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1920, height: 1080 })
@@ -167,7 +167,7 @@ test('Given 原型工作台 When 打开首页并进入用户管理 Then 全部�
   await page.locator('[data-group="settings"] button[aria-expanded]').click()
   await page.locator('[data-nav-page="users"]').click()
   await expect(page).toHaveURL(/\/users$/)
-  await expect(page.locator('#userTableBody tr')).toHaveCount(4)
+  await expect(page.getByRole('rowheader', { name: 'admin', exact: true })).toBeVisible()
   await expect(page.locator('[data-testid="page-tab"] [aria-current="page"]')).toHaveText(
     '用户管理',
   )
@@ -404,9 +404,9 @@ test('Given 店铺列表返回长错误详情 When 加载失败 Then 提示条�
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.route('**/api/erp/config', (route) =>
+  await page.route('**/api/erp/order-sync-availability', (route) =>
     route.fulfill({
-      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+      json: { configured: true, orderSyncEnabled: false },
     }),
   )
   const longDetail = 'problemdetail'.repeat(60)

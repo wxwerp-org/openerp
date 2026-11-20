@@ -16,13 +16,9 @@ public interface IOrderSyncSettingsStore
         bool enabled, IReadOnlyList<int> shopSids, CancellationToken cancellationToken);
 }
 
-/// <summary>定时同步设置实体；全表仅保留 Id 为 1 的一行。</summary>
-public sealed class OrderSyncSettings
+/// <summary>定时同步设置实体；全表最多保留一行。</summary>
+public sealed class OrderSyncSettings : Entity
 {
-    public const int SingletonId = 1;
-
-    public int Id { get; set; } = SingletonId;
-
     public bool Enabled { get; set; }
 
     public int[] ShopSids { get; set; } = [];
@@ -34,7 +30,7 @@ public sealed class OrderSyncSettingsStore(AppDbContext db) : IOrderSyncSettings
     {
         var settings = await db.OrderSyncSettings
             .AsNoTracking()
-            .SingleOrDefaultAsync(row => row.Id == OrderSyncSettings.SingletonId, cancellationToken);
+            .SingleOrDefaultAsync(cancellationToken);
         return settings is null
             ? new OrderSyncSettingsSnapshot(false, [])
             : new OrderSyncSettingsSnapshot(settings.Enabled, settings.ShopSids);
@@ -49,9 +45,9 @@ public sealed class OrderSyncSettingsStore(AppDbContext db) : IOrderSyncSettings
             // 单条插入或更新语句原子替换整份配置，避免并发保存把 Enabled 和 ShopSids 合并成用户未提交的组合。
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO "OrderSyncSettings" ("Id", "Enabled", "ShopSids")
-                VALUES ({OrderSyncSettings.SingletonId}, {enabled}, {normalized})
-                ON CONFLICT ("Id") DO UPDATE
-                SET "Enabled" = EXCLUDED."Enabled", "ShopSids" = EXCLUDED."ShopSids"
+                VALUES ({Guid.CreateVersion7()}, {enabled}, {normalized})
+                ON CONFLICT ("Singleton") DO UPDATE
+                SET "Enabled" = EXCLUDED."Enabled", "ShopSids" = EXCLUDED."ShopSids", "DeletedAt" = NULL
                 """, cancellationToken);
         }
         catch (DbException)

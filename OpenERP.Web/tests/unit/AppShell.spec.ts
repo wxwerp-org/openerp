@@ -14,18 +14,22 @@ function createTestRouter(): Router {
       { path: '/newdev', component: Page, meta: { title: '新品开发' } },
       { path: '/products', component: Page, meta: { title: '产品管理' } },
       { path: '/orders', component: Page, meta: { title: '订单列表' } },
+      { path: '/reports/orders', component: Page, meta: { title: '商品量报表' } },
       { path: '/settings', component: Page, meta: { title: '业务配置' } },
       { path: '/users', component: Page, meta: { title: '用户管理' } },
     ],
   })
 }
 
-async function mountAt(path: string): Promise<{ wrapper: VueWrapper; router: Router }> {
+async function mountAt(
+  path: string,
+  account = adminAccount,
+): Promise<{ wrapper: VueWrapper; router: Router }> {
   const router = createTestRouter()
   await router.push(path)
   await router.isReady()
   const wrapper = mount(AppShell, {
-    props: { account: adminAccount },
+    props: { account },
     global: { plugins: [router] },
   })
   await flushPromises()
@@ -69,6 +73,21 @@ describe('原型应用公共框架', () => {
     }
     expect(wrapper.get('[data-testid="account-button"]').text()).toContain(adminAccount.name)
     expect(wrapper.find('button[aria-label="通知"]').exists()).toBe(true)
+  })
+
+  it('Given 普通用户 When 打开导航和账户菜单 Then 保留日常业务与本人资料入口并隐藏管理入口', async () => {
+    const account = { ...adminAccount, role: 'User' as const }
+    const mounted = await mountAt('/', account)
+    wrapper = mounted.wrapper
+    await wrapper.get('[data-testid="account-button"]').trigger('click')
+
+    expect(wrapper.find('[data-nav-page="orders"]').exists()).toBe(true)
+    expect(wrapper.find('[data-nav-page="shops"]').exists()).toBe(true)
+    expect(wrapper.find('[data-account-action="profile"]').exists()).toBe(true)
+    expect(wrapper.find('[data-account-action="password"]').exists()).toBe(true)
+    expect(wrapper.find('[data-nav-page="users"]').exists()).toBe(false)
+    expect(wrapper.find('[data-nav-page="business"]').exists()).toBe(false)
+    expect(wrapper.find('[data-account-action="settings"]').exists()).toBe(false)
   })
 
   it('Given 顶部管理员入口 When 点击账户按钮 Then 展示账户菜单', async () => {

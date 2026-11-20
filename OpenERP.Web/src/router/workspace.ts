@@ -5,6 +5,7 @@ export type WorkspacePage = {
   id: WorkspacePageId
   label: string
   path: string
+  administratorOnly?: boolean
 }
 
 export const erpAccessLocation = { name: 'business', query: { section: 'erp' } } as const
@@ -15,14 +16,15 @@ export const workspacePages: WorkspacePage[] = [
   { id: 'product', label: '产品管理', path: '/products' },
   { id: 'orders', label: '订单列表', path: '/orders' },
   { id: 'order-report', label: '商品量报表', path: '/reports/orders' },
-  { id: 'business', label: '业务配置', path: '/settings' },
-  { id: 'users', label: '用户管理', path: '/users' },
+  { id: 'business', label: '业务配置', path: '/settings', administratorOnly: true },
+  { id: 'users', label: '用户管理', path: '/users', administratorOnly: true },
 ]
 
 export type NavigationPage = {
   id: string
   label: string
   path: string
+  administratorOnly?: boolean
 }
 
 export const standalonePages: NavigationPage[] = [

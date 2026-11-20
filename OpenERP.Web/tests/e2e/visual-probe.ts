@@ -4,6 +4,8 @@ import type { Account } from '../../src/account/session'
 export const VISUAL_TOKEN = 'visual-access-token'
 
 export const visualAccount: Account = {
+  id: '019ab104-7d00-7000-8000-000000000001',
+  role: 'Administrator',
   username: 'admin',
   name: '验收管理员',
   phone: null,

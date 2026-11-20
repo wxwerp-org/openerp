@@ -1,6 +1,10 @@
 import { readonly, ref } from 'vue'
 
+export type AccountRole = 'Administrator' | 'User'
+
 export type Account = {
+  id: string
+  role: AccountRole
   username: string
   name: string
   phone: string | null
@@ -119,6 +123,8 @@ function isAccount(value: unknown): value is Account {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<Account>
   return (
+    typeof candidate.id === 'string' &&
+    (candidate.role === 'Administrator' || candidate.role === 'User') &&
     typeof candidate.username === 'string' &&
     typeof candidate.name === 'string' &&
     (typeof candidate.phone === 'string' || candidate.phone === null) &&

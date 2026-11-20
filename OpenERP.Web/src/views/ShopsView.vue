@@ -161,7 +161,7 @@ onUnmounted(() => {
 
 async function loadConfig(): Promise<void> {
   try {
-    const response = await apiRequest('/api/erp/config')
+    const response = await apiRequest('/api/erp/order-sync-availability')
     if (!response.ok) {
       configError.value = await problemDetail(response, '无法读取上游连接状态。')
       configStatus.value = 'error'

@@ -4,6 +4,8 @@ import { ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import type { OrderSyncTask } from '../../src/composables/orderSyncTask'
 import type { ErpHubState } from '../../src/composables/useErpHub'
+import { login, logout } from '../../src/account/session'
+import { adminAccount } from './adminAccount'
 import OrdersView from '../../src/views/OrdersView.vue'
 import { installNativeDialogShim } from './installNativeDialogShim'
 
@@ -51,46 +53,53 @@ function task(overrides: Partial<OrderSyncTask> = {}): OrderSyncTask {
 
 function configureFetch({
   loadOrders,
+  availability,
   shopStatus = 200,
   emptyShops = false,
 }: {
   loadOrders?: (query: URLSearchParams) => Response
+  availability?: () => Response
   shopStatus?: number
   emptyShops?: boolean
 } = {}) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
-      const url = new URL(String(input), 'http://localhost')
-      switch (url.pathname) {
-        case '/api/orders':
-          return loadOrders?.(url.searchParams) ?? ordersPage('本地订单')
-        case '/api/erp/config':
-          return Response.json({
-            configured: true,
-            baseUrl: 'https://erp.test',
-            orderSyncEnabled: true,
-          })
-        case '/api/erp/shops':
-          if (shopStatus !== 200) {
-            return Response.json({ title: '上游服务不可达' }, { status: shopStatus })
-          }
-          return Response.json({
-            items: emptyShops ? [] : shops,
-            page: 1,
-            pageSize: 20,
-            totalCount: emptyShops ? 0 : 2,
-            pageCount: emptyShops ? 0 : 1,
-          })
-        case '/api/erp/order-sync-settings':
-          return Response.json({ enabled: false, shopSids: [], intervalMinutes: 30 })
-        case '/api/erp/order-sync-settings/shops':
-          return Response.json({ items: emptyShops ? [] : shops })
-        default:
-          throw new Error(`意外的请求：${url.pathname}`)
-      }
-    }),
-  )
+  const fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), 'http://localhost')
+    switch (url.pathname) {
+      case '/api/auth/csrf':
+        return Response.json({ requestToken: 'test-csrf' })
+      case '/api/auth/login':
+        return Response.json({
+          accessToken: 'employee-token',
+          accessTokenExpiresAt: adminAccount.expiresAt,
+          account: { ...adminAccount, username: 'employee', role: 'User' },
+        })
+      case '/api/auth/logout':
+        return new Response(null, { status: 204 })
+      case '/api/erp/order-sync-availability':
+        return availability?.() ?? Response.json({ configured: true, orderSyncEnabled: true })
+      case '/api/orders':
+        return loadOrders?.(url.searchParams) ?? ordersPage('本地订单')
+      case '/api/erp/shops':
+        if (shopStatus !== 200) {
+          return Response.json({ title: '上游服务不可达' }, { status: shopStatus })
+        }
+        return Response.json({
+          items: emptyShops ? [] : shops,
+          page: 1,
+          pageSize: 20,
+          totalCount: emptyShops ? 0 : 2,
+          pageCount: emptyShops ? 0 : 1,
+        })
+      case '/api/erp/order-sync-settings':
+        return Response.json({ enabled: false, shopSids: [], intervalMinutes: 30 })
+      case '/api/erp/order-sync-settings/shops':
+        return Response.json({ items: emptyShops ? [] : shops })
+      default:
+        throw new Error(`意外的请求：${url.pathname}`)
+    }
+  })
+  vi.stubGlobal('fetch', fetch)
+  return fetch
 }
 
 function ordersPage(number?: string, page = 1) {
@@ -144,6 +153,53 @@ describe('订单列表同步面板', () => {
     vi.unstubAllGlobals()
   })
 
+  it('Given 普通用户有手动同步能力 When 从订单页同步店铺 Then 可发起并看到结果且不读系统设置', async () => {
+    const fetch = configureFetch()
+    installNativeDialogShim()
+    await login('employee', 'password')
+    try {
+      hub.startOrderSync.mockImplementation(async () => {
+        const result = task({ status: 'succeeded', stage: 'done' })
+        orderSyncTasks.value[42] = result
+        return { accepted: true, status: result, error: null }
+      })
+      wrapper = mount(OrdersView)
+      await openPanel(wrapper)
+      await syncButton(wrapper).trigger('click')
+      await flushPromises()
+
+      expect(wrapper.get('dialog[open]').text()).toContain('同步完成')
+      expect(wrapper.find('[data-testid="sync-settings-card"]').exists()).toBe(false)
+      const paths = fetch.mock.calls.map(([url]) => String(url).split('?')[0])
+      expect(paths).not.toContain('/api/erp/config')
+      expect(paths).not.toContain('/api/erp/order-sync-settings')
+      expect(paths).not.toContain('/api/erp/order-sync-settings/shops')
+    } finally {
+      await logout()
+    }
+  })
+
+  it('Given 普通用户且 ERP 未接入 When 打开同步面板 Then 提示联系管理员且不查询同步店铺', async () => {
+    const fetch = configureFetch({
+      availability: () => Response.json({ configured: false, orderSyncEnabled: true }),
+    })
+    installNativeDialogShim()
+    await login('employee', 'password')
+    try {
+      wrapper = mount(OrdersView)
+      await openPanel(wrapper)
+
+      const panel = wrapper.get('dialog[open]')
+      expect(panel.get('[role="alert"]').text()).toContain('请联系管理员配置 ERP 接入后重试。')
+      expect(panel.find('[data-testid="sync-settings-card"]').exists()).toBe(false)
+      expect(fetch.mock.calls.some(([url]) => String(url).startsWith('/api/erp/shops?'))).toBe(
+        false,
+      )
+    } finally {
+      await logout()
+    }
+  })
+
   it('Given 店铺授权无效和未知 When 手动同步 Then 两店均可发起且同步期间禁止重复和跨店提交', async () => {
     configureFetch()
     installNativeDialogShim()
@@ -175,7 +231,7 @@ describe('订单列表同步面板', () => {
     expect(syncButton(wrapper, '另一店铺').element.disabled).toBe(true)
   })
 
-  it('Given 其他客户端已抢占任务 When 服务端拒绝启动 Then 显示原因且保留重试入口', async () => {
+  it('Given 其他客户端已抢占任务 When 服务端拒绝启动并刷新店铺 Then 保留原因和重试入口', async () => {
     configureFetch()
     installNativeDialogShim()
     hub.startOrderSync.mockResolvedValue({
@@ -187,6 +243,10 @@ describe('订单列表同步面板', () => {
     await openPanel(wrapper)
 
     await syncButton(wrapper).trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toBe('已有店铺正在同步，请稍后重试')
+    await wrapper.get('dialog button[aria-label="刷新"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[role="alert"]').text()).toBe('已有店铺正在同步，请稍后重试')

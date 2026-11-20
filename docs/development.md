@@ -146,7 +146,7 @@ pnpm --dir OpenERP.Web test:e2e
 OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class '*BrowserAcceptanceTests'
 ```
 
-该入口创建测试专用数据库，从未初始化状态启动 HTTPS 前端，将实际端点及本次测试要设置的密码通过环境传给 Playwright，并串行运行浏览器用例；测试密码不会注入 API 作为预置密码。初始化用例保存设置页和设置成功后的登录页截图，完成后由 Aspire 测试夹具清理测试资源。它先通过 .NET 严格校验前端证书，再通过 `NODE_EXTRA_CA_CERTS` 将已校验的服务端 PEM 证书提供给 Node 客户端，不跳过证书校验；临时文件在结束后删除。独立运行 Playwright 时，Node 如不识别本机开发证书，需用 `NODE_EXTRA_CA_CERTS` 指定对应的公开 PEM 证书。不设置开关时，此浏览器入口明确跳过，不计作浏览器验收通过。
+该入口创建测试专用数据库，从未初始化状态启动 HTTPS 前端，将实际端点及本次测试要设置的密码通过环境传给 Playwright，并串行运行浏览器用例；测试密码不会注入 API 作为预置密码。员工角色用例通过真实管理页面创建并改名，登录后从订单页同步并核对新增订单。该宿主仅替换外部 ERP 的 HTTP 传输。初始化和角色用例保存实际界面截图，完成后由 Aspire 测试夹具清理测试资源。它先通过 .NET 严格校验前端证书，再通过 `NODE_EXTRA_CA_CERTS` 将已校验的服务端 PEM 证书提供给 Node 客户端，不跳过证书校验；临时文件在结束后删除。独立运行 Playwright 时，Node 如不识别本机开发证书，需用 `NODE_EXTRA_CA_CERTS` 指定对应的公开 PEM 证书。不设置开关时，此浏览器入口明确跳过，不计作浏览器验收通过。
 
 ### 真实 ERP 验证
 
@@ -181,9 +181,9 @@ python3 deploy/tests/smoke.py --compose ./aspire-output/docker-compose.yaml
 
 默认验收本次构建的 `openerp:local`。已有两个本地版本时，通过 `--image <旧镜像> --upgrade-image <新镜像>` 检查升级后数据能否读回。Release 工作流先验收本次组装的镜像，再推送同一个镜像并上传版本化配置，服务器操作见[部署说明](deployment.md)。
 
-## 管理员账户与会话
+## 用户、权限与会话
 
-系统只有一个管理员，用户名固定为 `admin`，不提供注册、员工权限或邮箱找回密码。姓名必填（最多 20 个字符），手机号可选（最多 20 个字符），邮箱可选并校验格式；手机号、邮箱仅作为个人资料。菜单中的资料与最近登录时间来自数据库，保存资料不会改变最近登录时间。
+系统的唯一管理员 `admin` 可以管理用户和系统设置。管理员创建的账号具有 `User` 角色，可查询业务数据、发起手动同步和维护本人资料。管理员用户名固定。姓名必填（最多 20 个字符），手机号可选（最多 20 个字符），邮箱可选并校验格式；手机号、邮箱仅作为个人资料。菜单中的资料与最近登录时间来自数据库，保存资料不会改变最近登录时间。
 
 ### 本地初始化与密码重置
 
@@ -197,31 +197,36 @@ Development 环境启动 API 时自动应用 EF Core 迁移。对于已创建的
 dotnet OpenERP.Api/bin/Debug/net10.0/OpenERP.Api.dll reset-admin-password
 ```
 
-命令以隐藏输入提示新密码和确认密码，并撤销所有登录。正式环境的操作与自动化方式见[管理员密码重置](deployment.md#重置管理员密码)。
+命令以隐藏输入提示新密码和确认密码，并撤销管理员在所有设备上的登录。正式环境的操作与自动化方式见[管理员密码重置](deployment.md#重置管理员密码)。
 
 ### 会话规则与接口
 
-API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且不超过刷新期限。验证时不设时钟宽限。前端只在内存中保存 access token，每 5 分钟主动尝试刷新。刷新期限自登录起固定为 24 小时，刷新不延长期限或轮换凭证。刷新值只通过 `HttpOnly`、`Secure`、`SameSite=Strict` 的持久 Cookie 传递，Cookie 仅发往当前主机的 `/api/auth` 路径。服务端只在 PostgreSQL 的独立 `RefreshTokens` 表中保存刷新值的哈希。浏览器关闭或 API 重启后仍可使用有效的刷新凭证。
+API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 `Administrator` 或 `User`。令牌最长有效期为 20 分钟，且不超过刷新期限。验证时不设时钟宽限。前端只在内存中保存 access token，每 5 分钟主动尝试刷新。刷新期限自登录起固定为 24 小时，刷新不延长期限或轮换凭证。刷新值只通过 `HttpOnly`、`Secure`、`SameSite=Strict` 的持久 Cookie 传递，Cookie 仅发往当前主机的 `/api/auth` 路径。服务端只在 PostgreSQL 的独立 `RefreshTokens` 表中保存刷新值的哈希。浏览器关闭或 API 重启后仍可使用有效的刷新凭证。
 
-普通退出撤销当前刷新凭证；网页修改密码和命令行重置会删除管理员的全部刷新凭证。服务器逐请求核验 JWT 对应的登录标识仍有效，因此已签发的 access token 也会随对应刷新凭证撤销而失效。网页修改密码必须提供旧密码；命令行重置直接设置最终密码。已受理的订单同步继续执行。
+普通退出撤销当前刷新凭证。网页修改密码撤销本人所有会话，命令行重置撤销管理员的所有会话。服务器逐请求核验 JWT 对应的登录标识仍有效，因此已签发的 access token 也会随对应刷新凭证撤销而失效。网页修改密码必须提供旧密码；命令行重置直接设置最终密码。已受理的订单同步继续执行。
 
 前端遇到网络错误或 `503` 时不能据此退出登录；收到 `401` 后先通过刷新接口确认登录是否仍有效。刷新成功后，读取请求最多重试一次；业务写请求不自动重放，以避免网络中断或令牌过期时重复执行操作。数据库不可用等服务故障应作为服务错误处理，不能当作用户已退出。
 
-| 接口                             | 用途                                                                                      |
-| -------------------------------- | ----------------------------------------------------------------------------------------- |
-| `GET /api/auth/csrf`             | 匿名获取 `{ requestToken }` 及对应 CSRF Cookie                                            |
-| `GET /api/auth/status`           | 匿名查询 `{ initialized }`，响应禁止缓存                                                  |
-| `POST /api/auth/initialize`      | 未初始化时提交 `{ newPassword }` 设置管理员密码                                           |
-| `POST /api/auth/login`           | 提交 `{ username, password }` 登录，返回 `{ accessToken, accessTokenExpiresAt, account }` |
-| `POST /api/auth/refresh`         | 不需要请求体；刷新凭证有效时返回 `{ accessToken, accessTokenExpiresAt, account }`         |
-| `GET /api/auth/me`               | 查询当前账户                                                                              |
-| `POST /api/auth/logout`          | 不需要请求体；撤销当前刷新凭证                                                            |
-| `POST /api/auth/change-password` | 提交 `{ oldPassword, newPassword }` 修改密码                                              |
-| `PUT /api/account/profile`       | 提交 `{ name, phone, email }` 保存资料                                                    |
+| 接口 | 用途 |
+| --- | --- |
+| `GET /api/auth/csrf` | 匿名获取 `{ requestToken }` 及对应 CSRF Cookie |
+| `GET /api/auth/status` | 匿名查询 `{ initialized }`，响应禁止缓存 |
+| `POST /api/auth/initialize` | 未初始化时提交 `{ newPassword }` 设置管理员密码 |
+| `POST /api/auth/login` | 提交 `{ username, password }` 登录，返回 `{ accessToken, accessTokenExpiresAt, account }` |
+| `POST /api/auth/refresh` | 不需要请求体；刷新凭证有效时返回 `{ accessToken, accessTokenExpiresAt, account }` |
+| `GET /api/auth/me` | 查询当前账户 |
+| `POST /api/auth/logout` | 不需要请求体；撤销当前刷新凭证 |
+| `POST /api/auth/change-password` | 提交 `{ oldPassword, newPassword }` 修改密码 |
+| `PUT /api/account/profile` | 提交 `{ name, phone, email }` 保存本人资料 |
+| `GET /api/users`、`GET /api/users/{id}` | 管理员读取用户列表或指定用户详情 |
+| `POST /api/users` | 管理员创建普通用户 |
+| `PUT /api/users/{id}`、`DELETE /api/users/{id}` | 管理员编辑或软删除员工账号 |
 
 前端通过应用同源的 HTTPS `/api` 地址访问后端。初始化、登录、刷新和退出要求 `X-CSRF-TOKEN` 请求头及对应 CSRF Cookie，先请求 `/api/auth/csrf` 取得令牌。防伪校验继续使用存放于 PostgreSQL 的 Data Protection 密钥。Bearer 认证的业务写请求，包括密码修改、资料保存和文件上传，无需附带 CSRF 令牌。业务 API（包括 `/api/ping`、ERP 和文件）默认需要登录，健康检查保持匿名。
 
-`account`、`GET /api/auth/me` 和资料保存响应保留现有账户字段：`username`、`name`、`phone`、`email`、`lastLoginAt`、`expiresAt`，时间使用 ISO 8601。这里的 `expiresAt` 表示 24 小时刷新期限；access token 的到期时间单独由 `accessTokenExpiresAt` 返回。未初始化时登录及受保护接口返回 `409`，ProblemDetails 顶层 `code` 为 `initialization_required`；初始化重复请求或并发败者返回 `409`、`already_initialized`。前端保留安全的原目标地址，完成初始化和登录后回到该地址。
+`account`、`GET /api/auth/me` 和资料保存响应包含 `id`、`role`、`username`、`name`、`phone`、`email`、`lastLoginAt`、`expiresAt`，时间使用 ISO 8601。这里的 `expiresAt` 表示 24 小时刷新期限；access token 的到期时间单独由 `accessTokenExpiresAt` 返回。未初始化时登录及受保护接口返回 `409`，ProblemDetails 顶层 `code` 为 `initialization_required`；初始化重复请求或并发败者返回 `409`、`already_initialized`。前端保留安全的原目标地址，完成初始化和登录后回到有权访问的页面。普通用户访问用户管理、ERP 配置或定时同步设置接口返回 `403`。
+
+普通用户改名后，旧用户名立即可用。删除时保留原行与 UUID 并撤销该账号的登录，满 7 天后可重新分配该用户名。新建同名账号获得独立 UUID。
 
 初始化、退出和改密成功返回 `204`。错误使用 ProblemDetails：输入或旧密码错误为 `400`，凭证或登录标识失效为 `401`，数据库不可用或管理员记录异常缺失为 `503`。初始化请求断线或服务错误后只重新查询状态，不自动重放写请求；查询已初始化不代表刚才的请求一定是赢家，应转到登录页确认。
 
@@ -229,16 +234,17 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 
 上游地址固定为 `https://v3-api.wxwerp.com`。管理员在「系统设置 → 基础 → ERP 接入」填写或更换 Token。API 使用 ASP.NET Core Data Protection 保护 Token，并保存在 PostgreSQL 中。备份数据库时一并保留 Data Protection 密钥表。页面只显示保存状态。验证凭证与店铺权限时，以实际 ERP 请求的结果为准。
 
-| 接口                                                               | 行为                                                                                                                                                                                      |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/erp/config`                                              | 查询配置记录是否存在，返回 `configured`、`baseUrl` 和 `orderSyncEnabled`。查询失败返回 `503`                                                                                              |
-| `PUT /api/erp/config`                                              | 管理员提交 `{ accessToken }` 保存或更换 Token，成功返回 `204`。下一次读取凭证的操作使用新值                                                                                               |
+| 接口 | 行为 |
+| --- | --- |
+| `GET /api/erp/order-sync-availability` | 已登录用户查询 `configured` 和 `orderSyncEnabled`，供业务页面判断能否同步 |
+| `GET /api/erp/config` | 管理员查询配置记录是否存在，返回 `configured`、`baseUrl` 和 `orderSyncEnabled`。查询失败返回 `503` |
+| `PUT /api/erp/config` | 管理员提交 `{ accessToken }` 保存或更换 Token，成功返回 `204`。下一次读取凭证的操作使用新值 |
 | `GET /api/erp/shops?page=1&pageSize=20&platform=&status=&keyword=` | 只读本地店铺目录；`status` 为 `valid`、`invalid`、`unknown`；按页返回 `items`、`summary`（含 `lastSyncedAt` 与目录版本 `syncVersion`）与分页信息；每页 1–100 条，超范围页码钳制到最后一页 |
-| `GET /api/erp/platforms`                                           | 返回本地有店铺的平台（名称、展示名、图标、是否生产可用、店铺数）；平台元数据来自上游同步，不在本地写死                                                                                    |
-| `GET /api/erp/shop-sync`                                           | 返回店铺同步的当前或最近一次状态（运行中、开始/完成时间、总数、已检查、有效/无效/未知、错误、单调递增的 `version`）                                                                       |
-| `GET /api/erp/order-sync-settings`                                 | 仅 Development / Production 提供；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes`                                                                                           |
-| `PUT /api/erp/order-sync-settings`                                 | 仅 Development / Production 提供；保存启用状态和店铺选择；启用时至少选择一家店铺                                                                                                          |
-| `GET /api/erp/order-sync-settings/shops`                           | 仅 Development / Production 提供。使用同一 Token 向上游分页读取可见的 TemuPop 店铺。凭证缺失或读取失败返回 `503`，上游查询失败返回 `502`                                                  |
+| `GET /api/erp/platforms` | 返回本地有店铺的平台（名称、展示名、图标、是否生产可用、店铺数）；平台元数据来自上游同步，不在本地写死 |
+| `GET /api/erp/shop-sync` | 返回店铺同步的当前或最近一次状态（运行中、开始/完成时间、总数、已检查、有效/无效/未知、错误、单调递增的 `version`） |
+| `GET /api/erp/order-sync-settings` | 仅管理员在 Development / Production 可用；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes` |
+| `PUT /api/erp/order-sync-settings` | 仅管理员在 Development / Production 可用；保存启用状态和店铺选择；启用时至少选择一家店铺 |
+| `GET /api/erp/order-sync-settings/shops` | 仅管理员在 Development / Production 可用。使用同一 Token 向上游分页读取可见的 TemuPop 店铺。凭证缺失或读取失败返回 `503`，上游查询失败返回 `502` |
 
 每轮授权店铺同步、每家店的订单同步和每次定时同步选店请求，分别通过 scoped `IErpTokenStore.GetAsync` 读取并解密一次 Token。读取失败由存储层返回 `OpResult`。配置状态只检查记录是否存在，因此旧密文损坏时管理员仍可查看配置并替换凭证。
 
@@ -292,7 +298,7 @@ API 使用 RS256 签发 Bearer access token，最长有效期为 20 分钟，且
 
 - 定时同步与手动同步同样只在 Development / Production 提供。订单列表工具栏「同步历史订单」面板中的「定时同步」卡片只配置是否启用和选择店铺，不提供周期配置。
 - 周期来自 API 配置 `OrderSync:SchedulerIntervalMinutes`（默认 `30`，允许 `1`–`1440` 分钟），启动时校验；修改后需重启 API，保存设置本身不需要重启。每轮受理后等待一个周期再尝试下一轮；若上一轮仍在运行，本轮跳过并等下一周期。启用后首次执行同样等待一个周期。
-- 设置保存在 PostgreSQL 的 `OrderSyncSettings` 单行表（`Id` 固定为 `1`，数据库检查约束拒绝第二行），迁移为 `AddOrderSyncSettings`。保存后 API 唤醒调度器重新读取设置；启用后首次执行仍等待一个完整周期。
+- 设置保存在 PostgreSQL 的 `OrderSyncSettings` 单行表，使用 UUIDv7 主键和独立的数据库单行约束。保存后 API 唤醒调度器重新读取设置；启用后首次执行仍等待一个完整周期。
 - 启用时必须至少选择一家店铺，空选返回 `400`，前端也会禁用保存。历史空选数据不会触发同步。启用还要求已配置私有 ERP AccessToken；未配置时保存启用状态返回 `503`，前端禁用开关和保存。
 - 选店列表通过 `GET /api/erp/order-sync-settings/shops` 从上游分页拉取可见 TemuPop 店铺的基础信息，独立于本地店铺表格的分页，提供「全选可见店铺」和清空辅助。保存设置时不再调用 ERP 校验店铺可见性：Token 权限变化后该店会在定时轮次中记录失败，其他店铺继续，可在卡片中清空或重新选择。
 - 定时批次按顺序逐店同步，单店失败只记录该店失败并继续后续店铺，不在同一周期内自动退避重试；下一周期会重新扫描全部选中店铺，批次结束后也可手动补跑。重复同步复用订单记录的幂等 upsert，不会写入重复订单。

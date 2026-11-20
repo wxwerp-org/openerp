@@ -41,10 +41,16 @@ namespace OpenERP.Api.Migrations
                     b.ToTable("DataProtectionKeys");
                 });
 
-            modelBuilder.Entity("OpenERP.Api.Authentication.AdminAccount", b =>
+            modelBuilder.Entity("OpenERP.Api.Authentication.UserAccount", b =>
                 {
-                    b.Property<int>("Id")
-                        .HasColumnType("integer");
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Email")
                         .HasColumnType("text");
@@ -64,22 +70,30 @@ namespace OpenERP.Api.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.HasKey("Id");
 
-                    b.ToTable("AdminAccounts", null, t =>
+                    b.HasIndex("Username")
+                        .IsUnique()
+                        .HasFilter("\"DeletedAt\" IS NULL");
+
+                    b.ToTable("Users", null, t =>
                         {
-                            t.HasCheckConstraint("CK_AdminAccounts_Singleton", "\"Id\" = 1");
+                            t.HasCheckConstraint("CK_Users_KeepAdministrator", "\"Username\" <> 'admin' OR \"DeletedAt\" IS NULL");
                         });
                 });
 
-            modelBuilder.Entity("OpenERP.Api.Authentication.AdminRefreshToken", b =>
+            modelBuilder.Entity("OpenERP.Api.Authentication.UserRefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<int>("AdminId")
-                        .HasColumnType("integer");
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
@@ -88,37 +102,54 @@ namespace OpenERP.Api.Migrations
                         .IsRequired()
                         .HasColumnType("bytea");
 
-                    b.HasKey("Id");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
 
-                    b.HasIndex("AdminId");
+                    b.HasKey("Id");
 
                     b.HasIndex("TokenHash")
                         .IsUnique();
+
+                    b.HasIndex("UserId");
 
                     b.ToTable("RefreshTokens", (string)null);
                 });
 
             modelBuilder.Entity("OpenERP.Api.Erp.ErpSettings", b =>
                 {
-                    b.Property<int>("Id")
-                        .HasColumnType("integer");
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ProtectedAccessToken")
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("Singleton")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Singleton")
+                        .IsUnique();
 
                     b.ToTable("ErpSettings", null, t =>
                         {
-                            t.HasCheckConstraint("CK_ErpSettings_Singleton", "\"Id\" = 1");
+                            t.HasCheckConstraint("CK_ErpSettings_Singleton", "\"Singleton\"");
                         });
                 });
 
             modelBuilder.Entity("OpenERP.Api.Erp.Shop", b =>
                 {
-                    b.Property<int>("Sid")
-                        .HasColumnType("integer");
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool?>("IsTokenOk")
                         .HasColumnType("boolean");
@@ -141,6 +172,9 @@ namespace OpenERP.Api.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int>("Sid")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset?>("SyncedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -148,7 +182,10 @@ namespace OpenERP.Api.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.HasKey("Sid");
+                    b.HasKey("Id");
+
+                    b.HasIndex("Sid")
+                        .IsUnique();
 
                     b.HasIndex("Platform", "IsTokenOk");
 
@@ -157,9 +194,11 @@ namespace OpenERP.Api.Migrations
 
             modelBuilder.Entity("OpenERP.Api.Erp.ShopPlatform", b =>
                 {
-                    b.Property<string>("Name")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
@@ -173,15 +212,26 @@ namespace OpenERP.Api.Migrations
                     b.Property<bool>("IsProduction")
                         .HasColumnType("boolean");
 
-                    b.HasKey("Name");
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
 
                     b.ToTable("ShopPlatforms", (string)null);
                 });
 
             modelBuilder.Entity("OpenERP.Api.Erp.ShopSyncState", b =>
                 {
-                    b.Property<int>("Id")
-                        .HasColumnType("integer");
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Invalid")
                         .HasColumnType("integer");
@@ -195,6 +245,11 @@ namespace OpenERP.Api.Migrations
 
                     b.Property<DateTimeOffset?>("LastStartedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Singleton")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<int>("Total")
                         .HasColumnType("integer");
@@ -210,28 +265,38 @@ namespace OpenERP.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Singleton")
+                        .IsUnique();
+
                     b.ToTable("ShopSyncStates", null, t =>
                         {
-                            t.HasCheckConstraint("CK_ShopSyncStates_Singleton", "\"Id\" = 1");
+                            t.HasCheckConstraint("CK_ShopSyncStates_Singleton", "\"Singleton\"");
                         });
                 });
 
             modelBuilder.Entity("OpenERP.Api.Orders.OrderLineRecord", b =>
                 {
-                    b.Property<string>("ErpId")
-                        .HasColumnType("text");
-
-                    b.Property<int>("Ordinal")
-                        .HasColumnType("integer");
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
 
                     b.Property<bool?>("Appended")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool?>("Disabled")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ErpId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Oguid")
                         .HasColumnType("text");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer");
 
                     b.Property<string>("ProductId")
                         .HasColumnType("text");
@@ -245,15 +310,18 @@ namespace OpenERP.Api.Migrations
                     b.Property<string>("SkuId")
                         .HasColumnType("text");
 
-                    b.HasKey("ErpId", "Ordinal");
+                    b.HasKey("Id");
+
+                    b.HasIndex("ErpId", "Ordinal")
+                        .IsUnique();
 
                     b.ToTable("OrderLines", (string)null);
                 });
 
             modelBuilder.Entity("OpenERP.Api.Orders.OrderRecord", b =>
                 {
-                    b.Property<string>("ErpId")
-                        .HasColumnType("text");
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("CreatedRaw")
                         .HasColumnType("text");
@@ -261,10 +329,17 @@ namespace OpenERP.Api.Migrations
                     b.Property<string>("CreatedSource")
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("DispatchedRaw")
                         .HasColumnType("text");
 
                     b.Property<string>("DispatchedSource")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ErpId")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("OrderNumber")
@@ -294,15 +369,18 @@ namespace OpenERP.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.HasKey("ErpId");
+                    b.HasKey("Id");
 
                     b.ToTable("Orders", (string)null);
                 });
 
             modelBuilder.Entity("OpenERP.Api.Orders.OrderSyncSettings", b =>
                 {
-                    b.Property<int>("Id")
-                        .HasColumnType("integer");
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean");
@@ -311,20 +389,36 @@ namespace OpenERP.Api.Migrations
                         .IsRequired()
                         .HasColumnType("integer[]");
 
+                    b.Property<bool>("Singleton")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Singleton")
+                        .IsUnique();
 
                     b.ToTable("OrderSyncSettings", null, t =>
                         {
-                            t.HasCheckConstraint("CK_OrderSyncSettings_Singleton", "\"Id\" = 1");
+                            t.HasCheckConstraint("CK_OrderSyncSettings_Singleton", "\"Singleton\"");
                         });
                 });
 
             modelBuilder.Entity("OpenERP.Api.Orders.PlatformOrderRecord", b =>
                 {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ErpId")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("PoNumber")
+                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<int>("Sid")
@@ -336,20 +430,23 @@ namespace OpenERP.Api.Migrations
                     b.Property<string>("StatusText")
                         .HasColumnType("text");
 
-                    b.HasKey("ErpId", "PoNumber");
+                    b.HasKey("Id");
+
+                    b.HasIndex("ErpId", "PoNumber")
+                        .IsUnique();
 
                     b.ToTable("PlatformOrders", (string)null);
                 });
 
-            modelBuilder.Entity("OpenERP.Api.Authentication.AdminRefreshToken", b =>
+            modelBuilder.Entity("OpenERP.Api.Authentication.UserRefreshToken", b =>
                 {
-                    b.HasOne("OpenERP.Api.Authentication.AdminAccount", "Admin")
+                    b.HasOne("OpenERP.Api.Authentication.UserAccount", "User")
                         .WithMany()
-                        .HasForeignKey("AdminId")
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Admin");
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("OpenERP.Api.Orders.OrderLineRecord", b =>
@@ -357,6 +454,7 @@ namespace OpenERP.Api.Migrations
                     b.HasOne("OpenERP.Api.Orders.OrderRecord", null)
                         .WithMany("Lines")
                         .HasForeignKey("ErpId")
+                        .HasPrincipalKey("ErpId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -366,6 +464,7 @@ namespace OpenERP.Api.Migrations
                     b.HasOne("OpenERP.Api.Orders.OrderRecord", null)
                         .WithMany("PlatformOrders")
                         .HasForeignKey("ErpId")
+                        .HasPrincipalKey("ErpId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

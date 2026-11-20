@@ -3,25 +3,12 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import BusinessConfigView from '../../src/views/BusinessConfigView.vue'
 import OrdersView from '../../src/views/OrdersView.vue'
 import ProductListView from '../../src/views/ProductListView.vue'
-import UsersView from '../../src/views/UsersView.vue'
 import { installNativeDialogShim } from './installNativeDialogShim'
 import { createSettingsRouter } from './settingsRouter'
 
 beforeAll(installNativeDialogShim)
 
 describe('原型列表与配置组件', () => {
-  it('Given 原型用户示例数据 When 渲染用户管理 Then 筛选工具表格和分页完整显示', () => {
-    const wrapper = mount(UsersView)
-
-    expect(wrapper.findAll('#userTableBody tr')).toHaveLength(4)
-    expect(wrapper.text()).toContain('lucy.lin')
-    expect(wrapper.text()).toContain('alex.chen')
-    expect(wrapper.text()).toContain('mia.zhou')
-    expect(wrapper.text()).toContain('leo.wang')
-    expect(wrapper.text()).toContain('添加用户')
-    expect(wrapper.text()).toContain('共4条')
-  })
-
   it('Given 产品列表 When 打开添加产品并空值保存 Then 全屏表单展示七分区且品名校验失败', async () => {
     const wrapper = mount(ProductListView)
 

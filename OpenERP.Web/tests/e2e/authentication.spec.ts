@@ -205,7 +205,7 @@ test('Given 未登录时直达工作台 When 错误凭证失败后成功登录 T
   await expect(page).toHaveURL(/\/login\?returnTo=/)
   await submitLogin(page, adminPassword)
   await expect(page).toHaveURL(/\/users\?from=login#main$/)
-  await expect(page.locator('#userTableBody tr')).toHaveCount(4)
+  await expect(page.getByRole('rowheader', { name: 'admin', exact: true })).toBeVisible()
   await page.reload()
   await expect(page.locator('[data-testid="account-button"]')).toBeVisible()
   await expect(page).toHaveURL(/\/users\?from=login#main$/)
@@ -356,9 +356,9 @@ test('Given 隔离宿主中的管理员已登录 When 保存关闭状态的定�
   await signInForWorkspace(request)
 
   // 只模拟 ERP 的读取结果，登录、防伪校验及设置读写均走真实服务。
-  await page.route('**/api/erp/config', (route) =>
+  await page.route('**/api/erp/order-sync-availability', (route) =>
     route.fulfill({
-      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: true },
+      json: { configured: true, orderSyncEnabled: true },
     }),
   )
   await page.route('**/api/erp/shops?**', (route) =>

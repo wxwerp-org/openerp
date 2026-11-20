@@ -58,9 +58,9 @@ async function mockDirectory(
   items: Shop[] = shops,
   totalCount = items.length,
 ): Promise<void> {
-  await page.route('**/api/erp/config', (route) =>
+  await page.route('**/api/erp/order-sync-availability', (route) =>
     route.fulfill({
-      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: false },
+      json: { configured: true, orderSyncEnabled: false },
     }),
   )
   await page.route('**/api/erp/platforms', (route) =>
@@ -142,6 +142,9 @@ test('Given 缺少 ERP Token When 从授权店铺的提示进入设置 Then 可�
   page,
 }) => {
   await mockDirectory(page)
+  await page.route('**/api/erp/order-sync-availability', (route) =>
+    route.fulfill({ json: { configured: false, orderSyncEnabled: false } }),
+  )
   await page.route('**/api/erp/config', (route) =>
     route.fulfill({
       json: { configured: false, baseUrl: 'https://erp.test', orderSyncEnabled: false },

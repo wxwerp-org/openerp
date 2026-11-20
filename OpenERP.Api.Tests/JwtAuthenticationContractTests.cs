@@ -137,7 +137,14 @@ public sealed class AccessTokenLifetimeTests
         // Given 刷新登录仍有效，先签发一个已经过期一分钟的 JWT。
         var tokens = new AccessTokens();
         var issuedAt = DateTimeOffset.UtcNow.AddMinutes(-21);
-        var login = new AdminRefreshToken { Id = Guid.NewGuid(), ExpiresAt = issuedAt.AddHours(24) };
+        var user = new UserAccount { Username = UserAccount.AdminUsername };
+        var login = new UserRefreshToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            ExpiresAt = issuedAt.AddHours(24)
+        };
         var expired = tokens.Issue(login, issuedAt);
         Assert.NotNull(expired);
 
@@ -154,7 +161,14 @@ public sealed class AccessTokenLifetimeTests
         var tokens = new AccessTokens();
         var now = DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         var deadline = now.AddMinutes(3);
-        var login = new AdminRefreshToken { Id = Guid.NewGuid(), ExpiresAt = deadline };
+        var user = new UserAccount { Username = UserAccount.AdminUsername };
+        var login = new UserRefreshToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            ExpiresAt = deadline
+        };
 
         // When 签发新的 access JWT；Then 它与 refresh 在同一时刻到期。
         var token = tokens.Issue(login, now);

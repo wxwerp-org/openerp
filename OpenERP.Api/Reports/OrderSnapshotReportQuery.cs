@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using Mapster;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using OpResult;
@@ -87,11 +88,25 @@ internal static class StoredOrderMapping
     internal static OrderShop Shop(string platform, int sid) =>
         new("wxw-erp", platform, sid.ToString(CultureInfo.InvariantCulture), $"店铺 {sid.ToString(CultureInfo.InvariantCulture)}");
 
-    internal static SourceOrderSnapshot Snapshot(OrderRecord order) => new(order.ErpId, order.OrderNumber,
-        Shop(order.Platform, order.Sid), order.Status,
-        order.PlatformOrders.OrderBy(po => po.PoNumber, StringComparer.Ordinal)
-            .Select(po => new PlatformOrderReference(po.PoNumber, po.StatusCode, po.StatusText)).ToArray(),
-        order.Lines.OrderBy(line => line.Ordinal).Select(line => new OrderItemSnapshot(
-            line.Ordinal.ToString(CultureInfo.InvariantCulture), line.ProductId, line.SkuId, line.SkuCode,
-            line.Quantity, line.Disabled, line.Appended)).ToArray());
+    private static readonly TypeAdapterConfig Mappings = CreateMappings();
+
+    internal static SourceOrderSnapshot Snapshot(OrderRecord order) =>
+        order.Adapt<SourceOrderSnapshot>(Mappings);
+
+    private static TypeAdapterConfig CreateMappings()
+    {
+        var config = new TypeAdapterConfig();
+        config.NewConfig<PlatformOrderRecord, PlatformOrderReference>()
+            .Map(target => target.Number, source => source.PoNumber);
+        config.NewConfig<OrderLineRecord, OrderItemSnapshot>()
+            .Map(target => target.LineId, source => source.Ordinal.ToString(CultureInfo.InvariantCulture));
+        config.NewConfig<OrderRecord, SourceOrderSnapshot>()
+            .Map(target => target.Id, source => source.ErpId)
+            .Map(target => target.Number, source => source.OrderNumber)
+            .Map(target => target.Shop, source => Shop(source.Platform, source.Sid))
+            .Map(target => target.PlatformOrders,
+                source => source.PlatformOrders.OrderBy(po => po.PoNumber, StringComparer.Ordinal))
+            .Map(target => target.Items, source => source.Lines.OrderBy(line => line.Ordinal));
+        return config;
+    }
 }

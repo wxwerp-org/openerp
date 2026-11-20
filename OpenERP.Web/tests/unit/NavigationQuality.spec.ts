@@ -12,7 +12,7 @@ const Page = { template: '<main>页面</main>' }
 describe('导航与临时状态质量', () => {
   it('Given 折叠侧栏 When 分组获得键盘焦点 Then 显示子菜单且 Escape 可关闭', async () => {
     const wrapper = mount(AppSidebar, {
-      props: { activePage: 'dashboard', collapsed: true },
+      props: { activePage: 'dashboard', collapsed: true, administrator: true },
       attachTo: document.body,
     })
     const sales = wrapper.get('[data-group="sales"] button[aria-expanded]')
@@ -25,7 +25,7 @@ describe('导航与临时状态质量', () => {
 
   it('Given 报表窄屏自动轨道 When 点击分组 Then 浮层展开且不改写手动折叠状态', async () => {
     const wrapper = mount(AppSidebar, {
-      props: { activePage: 'order-report', collapsed: false, rail: true },
+      props: { activePage: 'order-report', collapsed: false, rail: true, administrator: true },
       attachTo: document.body,
     })
     const sales = wrapper.get('[data-group="sales"] button[aria-expanded]')
@@ -38,7 +38,7 @@ describe('导航与临时状态质量', () => {
 
     // 手动折叠与视口轨道同时存在时，点击仍打开浮层而不是做无效的展开。
     const both = mount(AppSidebar, {
-      props: { activePage: 'order-report', collapsed: true, rail: true },
+      props: { activePage: 'order-report', collapsed: true, rail: true, administrator: true },
       attachTo: document.body,
     })
     await both.get('[data-group="sales"] button[aria-expanded]').trigger('click')

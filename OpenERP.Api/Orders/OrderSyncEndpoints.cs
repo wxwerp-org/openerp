@@ -1,23 +1,25 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
+using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 
 namespace OpenERP.Api.Orders;
 
 public static class OrderSyncEndpoints
 {
-    private const string SettingsRoute = "/api/erp/order-sync-settings";
-
     public static void MapOrderSync(this WebApplication app)
     {
-        app.MapGet(SettingsRoute, async Task<Results<Ok<OrderSyncSettingsResponse>, ProblemHttpResult>>
+        var settingsEndpoints = app.MapGroup("/api/erp/order-sync-settings")
+            .RequireAuthorization(UserAccount.AdministratorRole);
+
+        settingsEndpoints.MapGet("", async Task<Results<Ok<OrderSyncSettingsResponse>, ProblemHttpResult>>
             (IOrderSyncSettingsStore store, IOptions<OrderSyncSchedulerOptions> options, CancellationToken cancellationToken) =>
         {
             var settings = await store.GetAsync(cancellationToken);
             return TypedResults.Ok(ToResponse(settings, options.Value));
         }).WithSummary("读取定时同步设置；周期只读，由服务端配置");
 
-        app.MapPut(SettingsRoute, async Task<Results<Ok<OrderSyncSettingsResponse>, ProblemHttpResult>>
+        settingsEndpoints.MapPut("", async Task<Results<Ok<OrderSyncSettingsResponse>, ProblemHttpResult>>
             (OrderSyncSettingsRequest request, IOrderSyncSettingsStore store, OrderSyncScheduler scheduler,
                 IErpTokenStore tokens, IOptions<OrderSyncSchedulerOptions> options, CancellationToken cancellationToken) =>
         {
@@ -44,7 +46,7 @@ public static class OrderSyncEndpoints
             return TypedResults.Ok(ToResponse(saved.Value, options.Value));
         }).WithSummary("保存定时同步的启用状态与店铺选择，并立即通知调度器");
 
-        app.MapGet($"{SettingsRoute}/shops", async Task<Results<Ok<OrderSyncShopSelection>, ProblemHttpResult>>
+        settingsEndpoints.MapGet("/shops", async Task<Results<Ok<OrderSyncShopSelection>, ProblemHttpResult>>
             (IErpClient erp, IErpTokenStore tokens, CancellationToken cancellationToken) =>
         {
             var token = await tokens.GetAsync(cancellationToken);
