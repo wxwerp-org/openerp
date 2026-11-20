@@ -79,7 +79,7 @@ public sealed class ErpHubAuthenticationTests(AspireIntegrationFixture fixture) 
         // When 不带 token、或把 query token 放到普通接口。
         using var anonymous = await fixture.CreateApiClient()
             .PostAsync("/api/hubs/erp/negotiate?negotiateVersion=1", null, ct);
-        using var wrongPath = await client.GetAsync($"/api/ping?access_token={Uri.EscapeDataString(token!)}", ct);
+        using var wrongPath = await client.GetAsync($"/api/orders?access_token={Uri.EscapeDataString(token!)}", ct);
 
         // Then 两者都被拒绝，证明 query token 只对 Hub 路径生效。
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);

@@ -22,7 +22,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
 
         // When 查询管理员状态、访问业务或尝试登录。
         await AssertStatusAsync(client, false, ct);
-        await AssertCodeAsync(await client.GetAsync("/api/ping", ct), "initialization_required", ct);
+        await AssertCodeAsync(await client.GetAsync("/api/orders", ct), "initialization_required", ct);
         await AuthenticationIntegrationTests.RefreshCsrfAsync(client, ct);
         await AssertCodeAsync(await AuthenticationIntegrationTests.PostJsonAnonymouslyAsync(client, "/api/auth/login",
             new { username = "admin", password = fixture.AdminPassword }, ct), "initialization_required", ct);
@@ -36,6 +36,27 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
         await using var broken = new NpgsqlCommand("""ALTER TABLE "Users" RENAME TO "UnavailableUsers" """, connection);
         await broken.ExecuteNonQueryAsync(ct);
         await AssertUnavailableAsync(client, ct);
+    }
+
+    [Fact]
+    public async Task About_is_available_before_administrator_initialization_without_login()
+    {
+        // Given 独立空库启动完成，管理员尚未初始化，匿名设备未登录。
+        var ct = TestContext.Current.CancellationToken;
+        await using var fixture = new AspireIntegrationFixture(initializeAdmin: false);
+        await fixture.InitializeAsync();
+        await fixture.EnsureApiStartedAsync(ct);
+        using var client = fixture.CreateApiClient();
+
+        // When 匿名请求只读版本信息。
+        using var response = await client.GetAsync("/api/about", ct);
+
+        // Then 不需要初始化或登录即可返回三个构建字段。
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(["version", "commit", "buildTime"],
+            body.EnumerateObject().Select(property => property.Name));
+        Assert.Equal("0.1.0-dev", body.GetProperty("version").GetString());
     }
 
     [Fact]
@@ -153,7 +174,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
             await AssertCodeAsync(await InitializeAsync(first, losingPassword, ct), "already_initialized", ct);
             await using var refreshTokens = new NpgsqlCommand("""SELECT COUNT(*) FROM "RefreshTokens" WHERE "DeletedAt" IS NULL""", observer);
             Assert.Equal(0L, await refreshTokens.ExecuteScalarAsync(ct));
-            using var anonymous = await first.GetAsync("/api/ping", ct);
+            using var anonymous = await first.GetAsync("/api/orders", ct);
             Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
 
             // Then 仅成功提交的请求记录时间、实际连接 IP 和获胜设备的 User-Agent。
@@ -182,8 +203,8 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
 
             var profile = await AuthenticationIntegrationTests.LoginAsync(first, ct, winningPassword);
             Assert.False(profile.TryGetProperty("mustChangePassword", out _));
-            using var ping = await first.GetAsync("/api/ping", ct);
-            Assert.Equal(HttpStatusCode.OK, ping.StatusCode);
+            using var orders = await first.GetAsync("/api/orders", ct);
+            Assert.Equal(HttpStatusCode.OK, orders.StatusCode);
         }
     }
 
@@ -258,7 +279,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
     private static async Task AssertUnavailableAsync(HttpClient client, CancellationToken ct)
     {
         using var status = await client.GetAsync("/api/auth/status", ct);
-        using var business = await client.GetAsync("/api/ping", ct);
+        using var business = await client.GetAsync("/api/orders", ct);
         using var initialize = await InitializeAsync(client, "test-password", ct);
         using var login = await AuthenticationIntegrationTests.PostJsonAnonymouslyAsync(
             client, "/api/auth/login", new { username = "admin", password = "test-password" }, ct);

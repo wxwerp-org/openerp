@@ -233,10 +233,10 @@ public sealed class OrderSyncHubTests
                 await releaseResult.Task.WaitAsync(cancellationToken);
                 return OpResults.Err("ERP 读取中断。");
             }
-        }, ct);
+        }, ct, hubRole: UserAccount.AdministratorRole);
         var shopUpdates = Channel.CreateUnbounded<ShopSyncStatus>();
         var updates = Channel.CreateUnbounded<JsonElement>();
-        await using var connection = CreateConnection(app);
+        await using var connection = CreateConnection(app, role: UserAccount.AdministratorRole);
         using var shopSubscription = connection.On<ShopSyncStatus>(ErpHub.ShopSyncUpdated,
             state => shopUpdates.Writer.TryWrite(state));
         using var updateSubscription = connection.On<JsonElement>("OrderSyncUpdated",
@@ -359,9 +359,10 @@ public sealed class OrderSyncHubTests
     {
         // Given 环境未注册订单同步服务。
         var ct = TestContext.Current.CancellationToken;
-        await using var app = await StartAppAsync(orderSyncEnabled: false, new TestErpClient(), ct);
+        await using var app = await StartAppAsync(
+            orderSyncEnabled: false, new TestErpClient(), ct, hubRole: UserAccount.AdministratorRole);
         var updates = Channel.CreateUnbounded<ShopSyncStatus>();
-        await using var connection = CreateConnection(app);
+        await using var connection = CreateConnection(app, role: UserAccount.AdministratorRole);
         using var subscription = connection.On<ShopSyncStatus>(ErpHub.ShopSyncUpdated,
             state => updates.Writer.TryWrite(state));
 
@@ -372,9 +373,13 @@ public sealed class OrderSyncHubTests
         Assert.Equal(FakeShopSyncJob.Snapshot, await ReadAsync(updates, ct));
     }
 
-    private static HubConnection CreateConnection(WebApplication app, string? accessToken = null) =>
+    private static HubConnection CreateConnection(WebApplication app, string? accessToken = null, string? role = null) =>
         new HubConnectionBuilder().WithUrl(new Uri(new Uri(app.Urls.Single()), "/api/hubs/erp"), options =>
-            options.AccessTokenProvider = () => Task.FromResult(accessToken)).Build();
+        {
+            options.AccessTokenProvider = () => Task.FromResult(accessToken);
+            if (role is not null)
+                options.Headers.Add(ErpEndpointTestAuth.RoleHeader, role);
+        }).Build();
 
     private static Task<T> ReadAsync<T>(Channel<T> channel, CancellationToken ct) =>
         channel.Reader.ReadAsync(ct).AsTask().WaitAsync(TimeSpan.FromSeconds(5), ct);
@@ -388,21 +393,26 @@ public sealed class OrderSyncHubTests
     }
 
     private static async Task<WebApplication> StartAppAsync(
-        bool orderSyncEnabled, TestErpClient erp, CancellationToken ct, string? connectionString = null)
+        bool orderSyncEnabled, TestErpClient erp, CancellationToken ct, string? connectionString = null,
+        string? hubRole = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddSignalR();
-        if (connectionString is null)
-        {
-            builder.Services.AddAuthentication();
-            builder.Services.AddAuthorization();
-        }
-        else
+        if (connectionString is not null)
         {
             builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
             builder.AddAccountAuthentication();
+        }
+        else if (hubRole is not null)
+        {
+            ErpEndpointTestAuth.Configure(builder);
+        }
+        else
+        {
+            builder.Services.AddAuthentication();
+            builder.Services.AddAuthorization();
         }
         builder.Services.AddSingleton<IShopSyncJob, FakeShopSyncJob>();
         if (orderSyncEnabled)
@@ -415,7 +425,7 @@ public sealed class OrderSyncHubTests
 
         var app = builder.Build();
         var hub = app.MapHub<ErpHub>("/api/hubs/erp");
-        if (connectionString is null)
+        if (connectionString is null && hubRole is null)
             hub.AllowAnonymous();
         try
         {

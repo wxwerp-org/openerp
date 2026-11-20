@@ -70,8 +70,8 @@ public sealed record ShopSyncStatus(
     string? Error,
     long Version);
 
-/// <summary>手动触发同步的结果；可预期失败不使用异常。</summary>
-public sealed record ShopSyncStartResult(bool Accepted, ShopSyncStatus Status, string? Error);
+/// <summary>手动触发同步的结果；被拒绝时不返回目录同步状态。</summary>
+public sealed record ShopSyncStartResult(bool Accepted, ShopSyncStatus? Status, string? Error);
 
 /// <summary>同步任务契约，便于 Hub、接口和调度器共用。</summary>
 public interface IShopSyncJob

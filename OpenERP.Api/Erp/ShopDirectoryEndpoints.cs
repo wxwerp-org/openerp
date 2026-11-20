@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Claims;
 using Mapster;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
@@ -21,18 +22,26 @@ public static class ShopDirectoryEndpoints
             .WithSummary("从本地店铺目录返回有店铺的平台及计数");
 
         app.MapGet("/api/erp/shop-sync", GetShopSyncAsync)
+            .RequireAuthorization(UserAccount.AdministratorRole)
             .WithSummary("查询店铺与授权状态同步的当前或最近一次结果");
     }
 
-    private static async Task<Results<Ok<ShopDirectoryPage>, ProblemHttpResult>> GetShopsAsync(
-        [FromServices] AppDbContext db,
-        int? page,
-        int? pageSize,
-        string? platform,
-        string? status,
-        string? keyword,
-        CancellationToken cancellationToken)
+    private static async Task<Results<Ok<ShopDirectoryPage>, Ok<EmployeeShopDirectoryPage>, ProblemHttpResult>>
+        GetShopsAsync(
+            [FromServices] AppDbContext db,
+            ClaimsPrincipal user,
+            HttpRequest request,
+            CancellationToken cancellationToken)
     {
+        // 角色检查先于参数解析：员工只要携带 status 键（含空值和空白）即 403，
+        // 不能被参数绑定失败先返回的 400 抢先。
+        var isAdministrator = user.IsInRole(UserAccount.AdministratorRole);
+        if (!isAdministrator && request.Query.ContainsKey("status"))
+            return TypedResults.Problem("仅管理员可按授权状态筛选店铺。", statusCode: 403);
+
+        if (!TryReadInt(request, "page", out var page) || !TryReadInt(request, "pageSize", out var pageSize))
+            return TypedResults.Problem("page 和 pageSize 必须是整数。", statusCode: 400);
+
         var currentPage = page ?? 1;
         var currentPageSize = pageSize ?? 20;
         if (currentPage < 1)
@@ -40,6 +49,7 @@ public static class ShopDirectoryEndpoints
         if (currentPageSize is < 1 or > 100)
             return TypedResults.Problem("pageSize 必须在 1 到 100 之间。", statusCode: 400);
 
+        var status = request.Query["status"].ToString();
         ShopStatusFilter? statusFilter = null;
         if (!string.IsNullOrWhiteSpace(status))
         {
@@ -54,17 +64,11 @@ public static class ShopDirectoryEndpoints
                 return TypedResults.Problem("status 必须是 valid、invalid 或 unknown。", statusCode: 400);
         }
 
-        var normalizedPlatform = Normalize(platform);
-        var normalizedKeyword = Normalize(keyword);
+        var normalizedPlatform = Normalize(request.Query["platform"].ToString());
+        var normalizedKeyword = Normalize(request.Query["keyword"].ToString());
 
         try
         {
-            // 先读状态行再读店铺行：同步提交是原子事务，此顺序只会得到“旧版本 + 新数据”，
-            // 客户端会因 status.Version 更大而再次刷新，不会把旧数据标成最新。
-            var state = await db.ShopSyncStates
-                .AsNoTracking()
-                .SingleOrDefaultAsync(cancellationToken);
-
             IQueryable<Shop> query = db.Shops.AsNoTracking();
             if (normalizedPlatform is not null)
                 query = query.Where(shop => shop.Platform == normalizedPlatform);
@@ -75,6 +79,16 @@ public static class ShopDirectoryEndpoints
                     ? query.Where(shop => shop.Sid == sid || EF.Functions.ILike(shop.Name, pattern, "\\"))
                     : query.Where(shop => EF.Functions.ILike(shop.Name, pattern, "\\"));
             }
+
+            // 员工只读取目录最小投影，不查询授权汇总与同步状态。
+            if (!isAdministrator)
+                return await ReadEmployeePageAsync(query, currentPage, currentPageSize, cancellationToken);
+
+            // 先读状态行再读店铺行：同步提交是原子事务，此顺序只会得到“旧版本 + 新数据”，
+            // 客户端会因 status.Version 更大而再次刷新，不会把旧数据标成最新。
+            var state = await db.ShopSyncStates
+                .AsNoTracking()
+                .SingleOrDefaultAsync(cancellationToken);
 
             // 汇总只受平台和关键词影响，不受当前状态筛选影响。
             var counts = await query
@@ -114,6 +128,29 @@ public static class ShopDirectoryEndpoints
         {
             return TypedResults.Problem("本地店铺数据暂时不可用。", statusCode: 503);
         }
+    }
+
+    private static async Task<Ok<EmployeeShopDirectoryPage>> ReadEmployeePageAsync(
+        IQueryable<Shop> query, int currentPage, int currentPageSize, CancellationToken cancellationToken)
+    {
+        var totalCount = await query.CountAsync(cancellationToken);
+        var pageCount = totalCount == 0 ? 0 : (totalCount + currentPageSize - 1) / currentPageSize;
+        currentPage = pageCount == 0 ? 1 : Math.Min(currentPage, pageCount);
+
+        var rows = await query
+            .OrderBy(shop => shop.Name)
+            .ThenBy(shop => shop.Sid)
+            .Skip((currentPage - 1) * currentPageSize)
+            .Take(currentPageSize)
+            // 员工页面只需目录四列，让数据库只投影这些列。
+            .Select(shop => new { shop.Sid, shop.Name, shop.Platform, shop.Region })
+            .ToArrayAsync(cancellationToken);
+        var items = rows
+            .Select(shop => new EmployeeShopDirectoryItem(
+                shop.Sid.ToString(CultureInfo.InvariantCulture), shop.Name, shop.Platform, shop.Region))
+            .ToArray();
+        return TypedResults.Ok(new EmployeeShopDirectoryPage(
+            items, currentPage, currentPageSize, totalCount, pageCount));
     }
 
     private static async Task<Results<Ok<PlatformCatalog>, ProblemHttpResult>> GetPlatformsAsync(
@@ -164,6 +201,19 @@ public static class ShopDirectoryEndpoints
     private static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    /// <summary>读取整数查询参数；键缺省按未提供处理，其余取值按 Minimal API 绑定语义解析。</summary>
+    private static bool TryReadInt(HttpRequest request, string name, out int? value)
+    {
+        value = null;
+        if (!request.Query.TryGetValue(name, out var raw))
+            return true;
+        if (!int.TryParse(raw.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            return false;
+
+        value = parsed;
+        return true;
+    }
+
     private static TypeAdapterConfig CreateDirectoryMappings()
     {
         var config = new TypeAdapterConfig();
@@ -210,3 +260,14 @@ public sealed record ShopDirectoryPage(
     int TotalCount,
     int PageCount,
     ShopDirectorySummary Summary);
+
+/// <summary>员工可见的最小店铺投影；不含授权与同步字段。</summary>
+public sealed record EmployeeShopDirectoryItem(string Sid, string Name, string Platform, string? Region);
+
+/// <summary>员工可见的店铺分页；不返回授权汇总。</summary>
+public sealed record EmployeeShopDirectoryPage(
+    IReadOnlyList<EmployeeShopDirectoryItem> Items,
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int PageCount);

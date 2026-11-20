@@ -58,7 +58,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         var ct = TestContext.Current.CancellationToken;
         var lastSyncedAt = new DateTimeOffset(2026, 11, 18, 5, 20, 0, TimeSpan.Zero);
         await SeedAsync(lastSyncedAt, ct);
-        await using var app = await StartAppAsync(ct);
+        await using var app = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
 
         // When 打开默认分页。
         using var response = await app.Http.GetAsync("/api/erp/shops?page=1&pageSize=2", ct);
@@ -97,7 +97,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         // Given 本地有效、无效、未知各一家。
         var ct = TestContext.Current.CancellationToken;
         await SeedAsync(DateTimeOffset.UtcNow, ct);
-        await using var app = await StartAppAsync(ct);
+        await using var app = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
 
         // When 只筛选无效店铺。
         using var response = await app.Http.GetAsync("/api/erp/shops?status=invalid", ct);
@@ -120,7 +120,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         // Given 本地有三家店铺。
         var ct = TestContext.Current.CancellationToken;
         await SeedAsync(DateTimeOffset.UtcNow, ct);
-        await using var app = await StartAppAsync(ct);
+        await using var app = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
 
         // When 按平台筛选 TemuPop。
         using var platformResponse = await app.Http.GetAsync("/api/erp/shops?platform=TemuPop", ct);
@@ -151,7 +151,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         // Given 本地有三家店铺。
         var ct = TestContext.Current.CancellationToken;
         await SeedAsync(DateTimeOffset.UtcNow, ct);
-        await using var app = await StartAppAsync(ct);
+        await using var app = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
 
         // When 传入非法状态、页码和每页条数，以及超出范围的页码。
         using var status = await app.Http.GetAsync("/api/erp/shops?status=expired", ct);
@@ -198,7 +198,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         var ct = TestContext.Current.CancellationToken;
         var completedAt = ToDatabasePrecision(DateTimeOffset.UtcNow.AddMinutes(-12));
         await SeedAsync(completedAt, ct);
-        await using var idleApp = await StartAppAsync(ct);
+        await using var idleApp = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
 
         // When 查询同步状态。
         using var idleResponse = await idleApp.Http.GetAsync("/api/erp/shop-sync", ct);
@@ -218,7 +218,8 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
 
         // Given 任务正在运行。
         var running = new ShopSyncStatus(true, completedAt.AddMinutes(1), completedAt, 10, 4, 2, 1, 1, null, 6);
-        await using var runningApp = await StartAppAsync(ct, new FakeShopSyncJob(running));
+        await using var runningApp = await StartAppAsync(
+            ct, new FakeShopSyncJob(running), role: UserAccount.AdministratorRole);
 
         // When 再次查询。
         using var runningResponse = await runningApp.Http.GetAsync("/api/erp/shop-sync", ct);
@@ -237,7 +238,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         // Given 本地还没有同步过任何店铺。
         var ct = TestContext.Current.CancellationToken;
         await MigrateAsync(ct);
-        await using var app = await StartAppAsync(ct);
+        await using var app = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
 
         // When 读取店铺与平台。
         using var shopsResponse = await app.Http.GetAsync("/api/erp/shops", ct);
@@ -254,6 +255,112 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
 
         var platforms = await platformsResponse.Content.ReadFromJsonAsync<JsonElement>(ct);
         Assert.Empty(platforms.GetProperty("items").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Employee_shops_projection_contains_only_minimal_fields_and_no_summary()
+    {
+        // Given 本地有三家不同授权状态的店铺和一条同步结果，调用方是普通员工。
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(DateTimeOffset.UtcNow, ct);
+        await using var app = await StartAppAsync(ct, role: UserAccount.UserRole);
+
+        // When 按默认分页读取店铺目录。
+        using var response = await app.Http.GetAsync("/api/erp/shops?page=1&pageSize=2", ct);
+
+        // Then 只返回最小投影与分页字段，不含授权、同步字段与 summary。
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(1, body.GetProperty("page").GetInt32());
+        Assert.Equal(2, body.GetProperty("pageSize").GetInt32());
+        Assert.Equal(3, body.GetProperty("totalCount").GetInt32());
+        Assert.Equal(2, body.GetProperty("pageCount").GetInt32());
+        Assert.False(body.TryGetProperty("summary", out _));
+        var shops = body.GetProperty("items").EnumerateArray().ToArray();
+        Assert.Equal(2, shops.Length);
+        Assert.All(shops, shop => Assert.Equal(
+            ["sid", "name", "platform", "region"],
+            shop.EnumerateObject().Select(property => property.Name)));
+    }
+
+    [Fact]
+    public async Task Employee_carrying_status_key_is_forbidden_before_parameter_validation()
+    {
+        // Given 本地有三家不同授权状态的店铺，调用方是普通员工。
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(DateTimeOffset.UtcNow, ct);
+        await using var app = await StartAppAsync(ct, role: UserAccount.UserRole);
+
+        // When 员工携带 status 键，取值包括有效、未知、空值与纯空白。
+        using var invalid = await app.Http.GetAsync("/api/erp/shops?status=invalid", ct);
+        using var valid = await app.Http.GetAsync("/api/erp/shops?status=valid", ct);
+        using var unknown = await app.Http.GetAsync("/api/erp/shops?status=unknown", ct);
+        using var blank = await app.Http.GetAsync("/api/erp/shops?status=", ct);
+        using var whitespace = await app.Http.GetAsync("/api/erp/shops?status=%20%20", ct);
+
+        // Then 只要携带 status 就返回 403 ProblemDetails，空值与空白也不例外。
+        foreach (var response in new[] { invalid, valid, unknown, blank, whitespace })
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        }
+
+        // When 员工在非法分页参数之外再携带 status；Then 角色检查先于参数绑定，仍返回 403。
+        using var bindingFailure = await app.Http.GetAsync("/api/erp/shops?page=abc&status=valid", ct);
+        Assert.Equal(HttpStatusCode.Forbidden, bindingFailure.StatusCode);
+
+        // When 员工改用平台、关键词和分页筛选。
+        using var filtered = await app.Http.GetAsync("/api/erp/shops?platform=TemuPop&keyword=店&pageSize=10", ct);
+
+        // Then 不携带 status 时非状态筛选与分页仍然可用。
+        Assert.Equal(HttpStatusCode.OK, filtered.StatusCode);
+        var body = await filtered.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(2, body.GetProperty("totalCount").GetInt32());
+        Assert.Equal(2, body.GetProperty("items").GetArrayLength());
+        Assert.False(body.TryGetProperty("summary", out _));
+    }
+
+    [Fact]
+    public async Task Administrator_status_and_paging_semantics_are_unchanged()
+    {
+        // Given 本地有三家不同授权状态的店铺，调用方是管理员。
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(DateTimeOffset.UtcNow, ct);
+        await using var app = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
+
+        // When 管理员分别携带空状态、有效状态、非法状态与非法分页参数。
+        using var blank = await app.Http.GetAsync("/api/erp/shops?status=", ct);
+        using var whitespace = await app.Http.GetAsync("/api/erp/shops?status=%20", ct);
+        using var valid = await app.Http.GetAsync("/api/erp/shops?status=valid", ct);
+        using var expired = await app.Http.GetAsync("/api/erp/shops?status=expired", ct);
+        using var badPage = await app.Http.GetAsync("/api/erp/shops?page=abc", ct);
+        using var emptyPage = await app.Http.GetAsync("/api/erp/shops?page=", ct);
+
+        // Then 空状态视为未筛选，非法状态与非法分页仍返回 400。
+        Assert.Equal(HttpStatusCode.OK, blank.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, whitespace.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, valid.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, expired.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, badPage.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, emptyPage.StatusCode);
+    }
+
+    [Fact]
+    public async Task Shop_sync_status_is_administrator_only()
+    {
+        // Given 本地已有上次同步结果，普通员工与管理员分别登录。
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(DateTimeOffset.UtcNow, ct);
+        await using var employeeApp = await StartAppAsync(ct, role: UserAccount.UserRole);
+        await using var adminApp = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
+
+        // When 两者分别读取目录同步状态。
+        using var employee = await employeeApp.Http.GetAsync("/api/erp/shop-sync", ct);
+        using var admin = await adminApp.Http.GetAsync("/api/erp/shop-sync", ct);
+
+        // Then 员工被拒绝，管理员仍可读取。
+        Assert.Equal(HttpStatusCode.Forbidden, employee.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, admin.StatusCode);
     }
 
     [Fact]

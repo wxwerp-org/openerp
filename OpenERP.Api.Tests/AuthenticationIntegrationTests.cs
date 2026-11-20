@@ -33,7 +33,7 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
         // When 查询健康状态和业务，并尝试登录。
         using var health = await client.GetAsync("/health", ct);
         using var alive = await client.GetAsync("/alive", ct);
-        using var ping = await client.GetAsync("/api/ping", ct);
+        using var orders = await client.GetAsync("/api/orders", ct);
         using var me = await client.GetAsync("/api/auth/me", ct);
         using var missingToken = await PostJsonAnonymouslyAsync(client, "/api/auth/login",
             new { username = "admin", password = AdminPassword }, ct);
@@ -41,7 +41,7 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
         // Then 健康和 CSRF 正常，业务返回 401，缺少 CSRF 的登录返回 400。
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
         Assert.Equal(HttpStatusCode.OK, alive.StatusCode);
-        await AssertProblemAsync(ping, HttpStatusCode.Unauthorized, ct);
+        await AssertProblemAsync(orders, HttpStatusCode.Unauthorized, ct);
         await AssertProblemAsync(me, HttpStatusCode.Unauthorized, ct);
         await AssertProblemAsync(missingToken, HttpStatusCode.BadRequest, ct);
 
@@ -60,6 +60,42 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
         Assert.False(string.IsNullOrWhiteSpace(key));
         using var delete = await client.DeleteAsync($"/api/files/{Uri.EscapeDataString(key)}", ct);
         Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+    }
+
+    [Fact]
+    public async Task About_is_anonymous_and_does_not_renew_the_session()
+    {
+        // Given 已初始化且未登录的独立浏览器。
+        var ct = TestContext.Current.CancellationToken;
+        using var client = fixture.CreateApiClient();
+
+        // When 匿名请求只读版本信息。
+        using var response = await client.GetAsync("/api/about", ct);
+
+        // Then 返回 200 和三个字段，且不下发 Cookie（不触发会话续期）。
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(response.Headers.Contains("Set-Cookie"));
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(["version", "commit", "buildTime"],
+            body.EnumerateObject().Select(property => property.Name));
+        var version = body.GetProperty("version").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(version));
+        Assert.DoesNotContain('+', version);
+    }
+
+    [Fact]
+    public async Task Removed_ping_endpoint_returns_not_found()
+    {
+        // Given 管理员已登录。
+        var ct = TestContext.Current.CancellationToken;
+        using var client = fixture.CreateApiClient();
+        await LoginAsync(client, ct, AdminPassword);
+
+        // When 请求已删除的 /api/ping。
+        using var response = await client.GetAsync("/api/ping", ct);
+
+        // Then 路由不再存在，返回 404。
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
@@ -342,7 +378,7 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
         Assert.Equal("管理员", newAccount.GetProperty("name").GetString());
         var newExpiresAt = newAccount.GetProperty("expiresAt").GetDateTimeOffset();
         Assert.Equal(TimeSpan.FromHours(24), newExpiresAt - newAccount.GetProperty("lastLoginAt").GetDateTimeOffset());
-        using var business = await client.GetAsync("/api/ping", ct);
+        using var business = await client.GetAsync("/api/orders", ct);
         Assert.Equal(HttpStatusCode.OK, business.StatusCode);
         var me = await client.GetFromJsonAsync<JsonElement>("/api/auth/me", ct);
         Assert.Equal(newExpiresAt, me.GetProperty("expiresAt").GetDateTimeOffset());
@@ -382,12 +418,12 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
         {
             // When 同一设备查询健康与受保护的业务。
             using var health = await client.GetAsync("/health", ct);
-            using var ping = await client.GetAsync("/api/ping", ct);
+            using var orders = await client.GetAsync("/api/orders", ct);
             using var refresh = await PostAnonymouslyAsync(client, "/api/auth/refresh", null, ct);
 
             // Then 健康检查无需会话查询；业务报告服务暂不可用。
             Assert.Equal(HttpStatusCode.OK, health.StatusCode);
-            await AssertProblemAsync(ping, HttpStatusCode.ServiceUnavailable, ct);
+            await AssertProblemAsync(orders, HttpStatusCode.ServiceUnavailable, ct);
             await AssertProblemAsync(refresh, HttpStatusCode.ServiceUnavailable, ct);
         }
         finally

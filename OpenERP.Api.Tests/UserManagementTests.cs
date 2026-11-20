@@ -87,7 +87,7 @@ public sealed class UserManagementTests(AspireIntegrationFixture fixture) : IAsy
             new { oldPassword = Password, newPassword }, ct);
         Assert.Equal(HttpStatusCode.NoContent, passwordChange.StatusCode);
         await AuthenticationIntegrationTests.LoginAsync(user, ct, newPassword, username);
-        using var adminStillActive = await admin.GetAsync("/api/ping", ct);
+        using var adminStillActive = await admin.GetAsync("/api/orders", ct);
         Assert.Equal(HttpStatusCode.OK, adminStillActive.StatusCode);
     }
 
@@ -129,11 +129,11 @@ public sealed class UserManagementTests(AspireIntegrationFixture fixture) : IAsy
         Assert.Equal(HttpStatusCode.NotFound, detail.StatusCode);
         using var listing = await admin.GetFromJsonAsync<JsonDocument>("/api/users", ct);
         Assert.DoesNotContain(listing!.RootElement.EnumerateArray(), entry => entry.GetProperty("id").GetGuid() == id);
-        using var unauthorized = await user.GetAsync("/api/ping", ct);
+        using var unauthorized = await user.GetAsync("/api/orders", ct);
         Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
         using var failedRefresh = await AuthenticationIntegrationTests.PostAnonymouslyAsync(user, "/api/auth/refresh", null, ct);
         Assert.Equal(HttpStatusCode.Unauthorized, failedRefresh.StatusCode);
-        using var continuing = await otherUser.GetAsync("/api/ping", ct);
+        using var continuing = await otherUser.GetAsync("/api/orders", ct);
         Assert.Equal(HttpStatusCode.OK, continuing.StatusCode);
         using var failedLogin = await AuthenticationIntegrationTests.PostJsonAnonymouslyAsync(user, "/api/auth/login",
             new { username = after, password = Password }, ct);
