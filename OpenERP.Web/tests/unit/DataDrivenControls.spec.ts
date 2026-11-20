@@ -1,10 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
-import RealtimeSalesCard from '../../src/components/dashboard/RealtimeSalesCard.vue'
-import HomeView from '../../src/views/HomeView.vue'
+import RealtimeSalesCard from '../../src/views/prototype/dashboard/RealtimeSalesCard.vue'
 import ShopsView from '../../src/views/ShopsView.vue'
 import OrdersView from '../../src/views/OrdersView.vue'
-import ProductListView from '../../src/views/ProductListView.vue'
+import ProductPrototypeView from '../../src/views/prototype/ProductPrototypeView.vue'
 import UsersView from '../../src/views/UsersView.vue'
 
 describe('数据驱动控件与文档结构', () => {
@@ -24,7 +23,7 @@ describe('数据驱动控件与文档结构', () => {
   })
 
   it('Given 产品视图分段控件 When 选择按 SPU Then 当前选项随状态变化', async () => {
-    const products = mount(ProductListView)
+    const products = mount(ProductPrototypeView)
     const group = products.get('[role="group"][aria-label="产品维度"]')
     const spu = group.findAll('button').find((button) => button.text() === '按SPU')!
 
@@ -80,7 +79,7 @@ describe('数据驱动控件与文档结构', () => {
   })
 
   it('Given 列表与页面 When 渲染文档结构 Then 每页有 h1 且表格有 caption 和列 scope', () => {
-    for (const component of [ProductListView, OrdersView, UsersView]) {
+    for (const component of [ProductPrototypeView, OrdersView, UsersView]) {
       const wrapper = mount(component)
       expect(wrapper.findAll('h1')).toHaveLength(1)
       expect(wrapper.find('table caption').exists()).toBe(true)
@@ -89,7 +88,6 @@ describe('数据驱动控件与文档结构', () => {
   })
 
   it('Given 既有服务页面 When 渲染于单主内容外壳 Then 页面自身不重复创建 main landmark', () => {
-    expect(mount(HomeView).element.tagName).toBe('SECTION')
     expect(mount(ShopsView).element.tagName).toBe('SECTION')
   })
 })

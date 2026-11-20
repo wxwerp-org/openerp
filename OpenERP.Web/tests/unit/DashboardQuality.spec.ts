@@ -1,18 +1,16 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import PerformanceTrendCard from '../../src/components/dashboard/PerformanceTrendCard.vue'
-import RankingCard from '../../src/components/dashboard/RankingCard.vue'
-import OrderDistributionCard from '../../src/components/dashboard/OrderDistributionCard.vue'
-import InventoryOverviewCard from '../../src/components/dashboard/InventoryOverviewCard.vue'
-import ProfitCard from '../../src/components/dashboard/ProfitCard.vue'
-import DashboardView from '../../src/views/DashboardView.vue'
-import ProductListView from '../../src/views/ProductListView.vue'
+import PerformanceTrendCard from '../../src/views/prototype/dashboard/PerformanceTrendCard.vue'
+import RankingCard from '../../src/views/prototype/dashboard/RankingCard.vue'
+import OrderDistributionCard from '../../src/views/prototype/dashboard/OrderDistributionCard.vue'
+import InventoryOverviewCard from '../../src/views/prototype/dashboard/InventoryOverviewCard.vue'
+import ProfitCard from '../../src/views/prototype/dashboard/ProfitCard.vue'
+import DashboardPrototypeView from '../../src/views/prototype/DashboardPrototypeView.vue'
+import ProductPrototypeView from '../../src/views/prototype/ProductPrototypeView.vue'
 import OrdersView from '../../src/views/OrdersView.vue'
 import UsersView from '../../src/views/UsersView.vue'
 import BusinessConfigView from '../../src/views/BusinessConfigView.vue'
-import NewDevView from '../../src/views/NewDevView.vue'
-import ProductFormDialog from '../../src/forms/ProductFormDialog.vue'
-import OrderNoticeDialog from '../../src/forms/OrderNoticeDialog.vue'
+import ProductFormDialog from '../../src/views/prototype/ProductFormDialog.vue'
 import ProfileDialog from '../../src/account/ProfileDialog.vue'
 import PasswordDialog from '../../src/account/PasswordDialog.vue'
 import { adminAccount } from './adminAccount'
@@ -48,7 +46,7 @@ describe('工作台数据控件与无障碍质量', () => {
   )
 
   it('Given 产品空表 When 展示排序图标 Then 排序按钮明确禁用', () => {
-    const wrapper = mount(ProductListView)
+    const wrapper = mount(ProductPrototypeView)
     const controls = wrapper.findAll('[data-testid="product-sort"]')
     expect(controls.length).toBeGreaterThan(0)
     for (const control of controls) {
@@ -59,24 +57,17 @@ describe('工作台数据控件与无障碍质量', () => {
 
   it('Given 原型主要页面和弹窗 When 使用图标按钮 Then 每个按钮有可访问名称且装饰 SVG 不重复朗读', () => {
     const components = [
-      DashboardView,
-      ProductListView,
+      DashboardPrototypeView,
+      ProductPrototypeView,
       OrdersView,
       UsersView,
       BusinessConfigView,
-      NewDevView,
       ProductFormDialog,
-      OrderNoticeDialog,
       ProfileDialog,
       PasswordDialog,
     ]
 
-    const dialogComponents: unknown[] = [
-      ProductFormDialog,
-      OrderNoticeDialog,
-      ProfileDialog,
-      PasswordDialog,
-    ]
+    const dialogComponents: unknown[] = [ProductFormDialog, ProfileDialog, PasswordDialog]
 
     for (const component of components) {
       const wrapper = mount(component, {

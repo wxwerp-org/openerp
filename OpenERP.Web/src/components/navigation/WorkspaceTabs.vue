@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppIcon from '../../ui/AppIcon.vue'
 import { workspacePages, type WorkspacePage } from '../../router/workspace'
 
 const props = defineProps<{
   items: WorkspacePage[]
   activePage: string
+  administrator: boolean
 }>()
 
 const emit = defineEmits<{
@@ -15,7 +16,9 @@ const emit = defineEmits<{
 const menuOpen = ref(false)
 const tabMenu = ref<HTMLElement | null>(null)
 const tabAdd = ref<HTMLButtonElement | null>(null)
-const openPages = workspacePages
+const openPages = computed(() =>
+  workspacePages.filter((page) => !page.administratorOnly || props.administrator),
+)
 
 function closeOnOutsideClick(event: MouseEvent): void {
   const target = event.target as Node

@@ -1,5 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import OrderSnapshotReportView from '../../src/views/OrderSnapshotReportView.vue'
 
 type Shop = {
@@ -108,9 +109,12 @@ function jsonResponse(value: unknown, status = 200): Response {
 type Handler = (url: string, init?: RequestInit) => Response | Promise<Response>
 
 function stubFetch(handler: Handler) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
-    handler(String(input), init),
-  )
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    // 报表用例只关心报表请求；店名映射等辅助请求返回 404，避免污染断言与计数。
+    const path = new URL(String(input), 'http://localhost').pathname
+    if (path !== '/api/reports/order-snapshot') return new Response(null, { status: 404 })
+    return handler(String(input), init)
+  })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
@@ -129,8 +133,22 @@ function reportCalls(fetchMock: ReturnType<typeof stubFetch>) {
   )
 }
 
-async function mountReport(): Promise<VueWrapper> {
-  const wrapper = mount(OrderSnapshotReportView)
+let currentRouter: Router
+
+async function createReportRouter(path = '/reports/orders'): Promise<Router> {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/reports/orders', component: OrderSnapshotReportView }],
+  })
+  await router.push(path)
+  await router.isReady()
+  return router
+}
+
+async function mountReport(path = '/reports/orders'): Promise<VueWrapper> {
+  const router = await createReportRouter(path)
+  currentRouter = router
+  const wrapper = mount(OrderSnapshotReportView, { global: { plugins: [router] } })
   await flushPromises()
   return wrapper
 }
@@ -352,7 +370,8 @@ describe('本地订单商品量快照报表', () => {
         }),
       )
     })
-    wrapper = mount(OrderSnapshotReportView)
+    const router = await createReportRouter()
+    wrapper = mount(OrderSnapshotReportView, { global: { plugins: [router] } })
     await wrapper.get('select[aria-label="平台筛选"]').setValue('AliExpress')
     expect(wrapper.get('[role="status"]').text()).toContain('正在加载')
     expect(wrapper.get('[aria-busy]').attributes('aria-busy')).toBe('true')
@@ -444,5 +463,84 @@ describe('本地订单商品量快照报表', () => {
     expect(reportCalls(fetchMock)).toHaveLength(2)
     expect(wrapper.text()).toContain('PO-001')
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('Given 从工作台下钻带平台与店铺参数 When 打开报表 Then 首次请求携带筛选且控件反映 URL', async () => {
+    const fetchMock = stubFetch(() => jsonResponse(reportBody()))
+    wrapper = await mountReport(`/reports/orders?platform=TemuPop&shops=opaque%3Ashop%2F30`)
+
+    const calls = reportCalls(fetchMock).map(([input]) => String(input))
+    // 首请求只带平台用于取全量选项，店铺键在选项返回后才过滤应用。
+    expect(calls[0]).toContain('platform=TemuPop')
+    expect(calls[0]).not.toContain('shops=')
+    expect(calls.at(-1)).toContain('shops=opaque%3Ashop%2F30')
+    expect(wrapper.get('[data-testid="report-platform-filter"] select').element).toHaveProperty(
+      'value',
+      'TemuPop',
+    )
+    expect(wrapper.text()).toContain('已选 1 家店铺')
+  })
+
+  it('Given URL 含未知平台与未知店铺键 When 首次结果返回 Then 丢弃非法值并重新查询且不报错', async () => {
+    const fetchMock = stubFetch(() => jsonResponse(reportBody()))
+    wrapper = await mountReport(`/reports/orders?platform=Unknown&shops=missing%2Fkey`)
+
+    const calls = reportCalls(fetchMock)
+    expect(calls.length).toBeGreaterThanOrEqual(2)
+    expect(String(calls.at(-1)![0])).toBe('/api/reports/order-snapshot?page=1&pageSize=20')
+    expect(currentRouter.currentRoute.value.query.platform).toBeUndefined()
+    expect(currentRouter.currentRoute.value.query.shops).toBeUndefined()
+    expect(wrapper.text()).not.toContain('报表数据格式无效')
+  })
+
+  it('Given 已带筛选 When 点击清除筛选 Then 请求回到无筛选并清理 URL', async () => {
+    const fetchMock = stubFetch(() => jsonResponse(reportBody()))
+    wrapper = await mountReport(`/reports/orders?platform=TemuPop&shops=opaque%3Ashop%2F30`)
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '清除筛选')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(String(reportCalls(fetchMock).at(-1)![0])).toBe(
+      '/api/reports/order-snapshot?page=1&pageSize=20',
+    )
+    expect(currentRouter.currentRoute.value.query.platform).toBeUndefined()
+    expect(currentRouter.currentRoute.value.query.shops).toBeUndefined()
+  })
+
+  it('Given 报表已打开 When URL 筛选再次变化 Then 重置分页并请求对应筛选', async () => {
+    const fetchMock = stubFetch(() => jsonResponse(reportBody()))
+    wrapper = await mountReport()
+
+    await currentRouter.push('/reports/orders?platform=TemuPop')
+    await flushPromises()
+
+    const last = String(reportCalls(fetchMock).at(-1)![0])
+    expect(last).toContain('page=1')
+    expect(last).toContain('platform=TemuPop')
+  })
+
+  it('Given URL 同时含有效店铺与空白/超长/重复键 When 首次请求 Then 只发送合法且去重后的键', async () => {
+    const fetchMock = stubFetch(() => jsonResponse(reportBody()))
+    const longKey = 'x'.repeat(1200)
+    const query = [
+      'platform=TemuPop',
+      'shops=opaque%3Ashop%2F30',
+      'shops=',
+      'shops=%20%20',
+      `shops=${longKey}`,
+      'shops=opaque%3Ashop%2F30',
+    ].join('&')
+    wrapper = await mountReport(`/reports/orders?${query}`)
+
+    const first = String(reportCalls(fetchMock)[0]![0])
+    expect(new URL(first, 'https://local.test').searchParams.getAll('shops')).toEqual([])
+    const applied = String(reportCalls(fetchMock).at(-1)![0])
+    const params = new URL(applied, 'https://local.test').searchParams
+    expect(params.getAll('shops')).toEqual(['opaque:shop/30'])
+    expect(params.get('platform')).toBe('TemuPop')
+    expect(wrapper.text()).toContain('已选 1 家店铺')
   })
 })

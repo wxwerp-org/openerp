@@ -4,20 +4,16 @@ import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import AppShell from '../../src/components/layout/AppShell.vue'
 import { adminAccount } from './adminAccount'
 
-const Page = { template: '<main class="test-page">原型页面</main>' }
+const Page = { template: '<main class="test-page">页面</main>' }
 
 function createTestRouter(): Router {
   return createRouter({
     history: createMemoryHistory(),
-    routes: [
-      { path: '/', component: Page, meta: { title: '首页' } },
-      { path: '/newdev', component: Page, meta: { title: '新品开发' } },
-      { path: '/products', component: Page, meta: { title: '产品管理' } },
-      { path: '/orders', component: Page, meta: { title: '订单列表' } },
-      { path: '/reports/orders', component: Page, meta: { title: '商品量报表' } },
-      { path: '/settings', component: Page, meta: { title: '业务配置' } },
-      { path: '/users', component: Page, meta: { title: '用户管理' } },
-    ],
+    routes: ['/', '/orders', '/reports/orders', '/settings', '/users', '/shops'].map((path) => ({
+      path,
+      component: Page,
+      meta: { title: '测试页面' },
+    })),
   })
 }
 
@@ -36,7 +32,7 @@ async function mountAt(
   return { wrapper, router }
 }
 
-describe('原型应用公共框架', () => {
+describe('应用公共框架', () => {
   let wrapper: VueWrapper | undefined
 
   afterEach(() => {
@@ -44,53 +40,42 @@ describe('原型应用公共框架', () => {
     wrapper = undefined
   })
 
-  it('Given 直接访问用户管理 When 应用初始化 Then 保留原型默认页签并打开用户页签和完整导航', async () => {
+  it('Given 直接访问用户管理 When 应用初始化 Then 默认只有工作台并追加用户管理页签', async () => {
     const mounted = await mountAt('/users')
     wrapper = mounted.wrapper
 
     expect(wrapper.findAll('[data-testid="page-tab"]').map((tab) => tab.text())).toEqual([
-      '首页',
-      '新品开发',
-      '产品管理',
+      '工作台',
       '用户管理',
     ])
     expect(wrapper.get('[data-testid="page-tab"] [aria-current="page"]').text()).toBe('用户管理')
-    for (const label of [
-      '产品',
-      '销售',
-      'FBA',
-      '采购',
-      '仓库',
-      '物流',
-      '广告',
-      '客服',
-      '财务',
-      '统计',
-      '工具',
-      '设置',
-    ]) {
-      expect(wrapper.get('[data-testid="side-nav"]').text()).toContain(label)
+    const sidebarText = wrapper.get('[data-testid="side-nav"]').text()
+    for (const label of ['工作台', '订单管理', '店铺', '设置', '即将上线']) {
+      expect(sidebarText).toContain(label)
     }
-    expect(wrapper.get('[data-testid="account-button"]').text()).toContain(adminAccount.name)
-    expect(wrapper.find('button[aria-label="通知"]').exists()).toBe(true)
+    for (const removed of ['新品开发', '产品管理', '服务连接', '业务配置', '销售', 'FBA']) {
+      expect(sidebarText).not.toContain(removed)
+    }
   })
 
-  it('Given 普通用户 When 打开导航和账户菜单 Then 保留日常业务与本人资料入口并隐藏管理入口', async () => {
-    const account = { ...adminAccount, role: 'User' as const }
+  it('Given 普通用户 When 打开导航和账户菜单 Then 隐藏管理入口且保留业务入口', async () => {
+    const account = { ...adminAccount, role: 'User' as const, username: 'employee' }
     const mounted = await mountAt('/', account)
     wrapper = mounted.wrapper
     await wrapper.get('[data-testid="account-button"]').trigger('click')
 
     expect(wrapper.find('[data-nav-page="orders"]').exists()).toBe(true)
-    expect(wrapper.find('[data-nav-page="shops"]').exists()).toBe(true)
-    expect(wrapper.find('[data-account-action="profile"]').exists()).toBe(true)
-    expect(wrapper.find('[data-account-action="password"]').exists()).toBe(true)
+    expect(wrapper.find('[data-nav-page="order-report"]').exists()).toBe(true)
+    expect(wrapper.find('[data-nav-page="shops"]').exists()).toBe(false)
     expect(wrapper.find('[data-nav-page="users"]').exists()).toBe(false)
     expect(wrapper.find('[data-nav-page="business"]').exists()).toBe(false)
+    expect(wrapper.find('[data-account-action="profile"]').exists()).toBe(true)
+    expect(wrapper.find('[data-account-action="password"]').exists()).toBe(true)
     expect(wrapper.find('[data-account-action="settings"]').exists()).toBe(false)
+    expect(wrapper.find('button[aria-label="通知"]').exists()).toBe(false)
   })
 
-  it('Given 顶部管理员入口 When 点击账户按钮 Then 展示账户菜单', async () => {
+  it('Given 管理员账户菜单 When 点击账户按钮 Then 菜单展示关于与版本行', async () => {
     const mounted = await mountAt('/')
     wrapper = mounted.wrapper
 
@@ -100,9 +85,11 @@ describe('原型应用公共框架', () => {
     expect(wrapper.get('#accountMenu').isVisible()).toBe(true)
     expect(wrapper.get('#accountMenu').text()).toContain('修改个人信息')
     expect(wrapper.get('#accountMenu').text()).toContain('修改密码')
+    expect(wrapper.get('#accountMenu').text()).toContain('关于')
+    expect(wrapper.get('[data-testid="account-version"]').text()).toBe('dev')
   })
 
-  it('Given 完整侧边导航 When 点击收起按钮 Then 切换原型折叠轨道', async () => {
+  it('Given 完整侧边导航 When 点击收起按钮 Then 切换折叠轨道', async () => {
     const mounted = await mountAt('/')
     wrapper = mounted.wrapper
 
@@ -112,27 +99,60 @@ describe('原型应用公共框架', () => {
     expect(wrapper.get('[data-testid="collapse-nav"]').attributes('aria-label')).toBe('展开导航')
   })
 
-  it('Given 用户页签是当前页 When 关闭用户页签 Then 返回前一个产品管理页签', async () => {
+  it('Given 即将上线分组 When 默认渲染然后展开 Then 占位项灰色且不可导航', async () => {
+    const mounted = await mountAt('/')
+    wrapper = mounted.wrapper
+
+    const group = wrapper.get('[data-group="upcoming"]')
+    expect(group.text()).toContain('即将上线')
+    expect(group.find('[data-nav-page="商品管理"]').exists()).toBe(false)
+
+    await group.get('button[aria-expanded]').trigger('click')
+    const items = group
+      .findAll('button')
+      .filter((button) => button.attributes('disabled') !== undefined)
+    expect(items.map((item) => item.text())).toEqual(['商品管理', '物流', '仓库'])
+  })
+
+  it('Given 用户页签是当前页 When 关闭用户页签 Then 返回工作台', async () => {
     const mounted = await mountAt('/users')
     wrapper = mounted.wrapper
 
     await wrapper.get('[data-close-tab="users"]').trigger('click')
     await flushPromises()
 
-    expect(mounted.router.currentRoute.value.path).toBe('/products')
-    expect(wrapper.get('[data-testid="page-tab"] [aria-current="page"]').text()).toBe('产品管理')
+    expect(mounted.router.currentRoute.value.path).toBe('/')
+    expect(wrapper.get('[data-testid="page-tab"] [aria-current="page"]').text()).toBe('工作台')
   })
 
-  it('Given 当前位于首页 When 通过设置分组进入用户管理 Then 路由和当前页签同步更新', async () => {
+  it('Given 当前位于工作台 When 通过侧栏进入订单列表 Then 路由、页签与高亮同步', async () => {
     const mounted = await mountAt('/')
     wrapper = mounted.wrapper
 
-    const usersLink = wrapper.findAll('[data-nav-page="users"]').at(0)
-    expect(usersLink).toBeDefined()
-    await usersLink!.trigger('click')
+    await wrapper.findAll('[data-nav-page="orders"]').at(0)!.trigger('click')
     await flushPromises()
 
-    expect(mounted.router.currentRoute.value.path).toBe('/users')
-    expect(wrapper.get('[data-testid="page-tab"] [aria-current="page"]').text()).toBe('用户管理')
+    expect(mounted.router.currentRoute.value.path).toBe('/orders')
+    expect(wrapper.get('[data-testid="page-tab"] [aria-current="page"]').text()).toBe('订单列表')
+    expect(wrapper.findAll('[data-testid="page-tab"]').map((tab) => tab.text())).toEqual([
+      '工作台',
+      '订单列表',
+    ])
+  })
+
+  it('Given 非工作区路由 When 打开授权店铺 Then 不误高亮工作台', async () => {
+    const mounted = await mountAt('/shops')
+    wrapper = mounted.wrapper
+
+    expect(wrapper.find('[data-nav-page="dashboard"][aria-current="page"]').exists()).toBe(false)
+    expect(wrapper.get('[data-nav-page="shops"]').attributes('aria-current')).toBe('page')
+  })
+
+  it('Given 键盘用户 When 进入页面 Then 可通过跳转链接聚焦主内容', async () => {
+    const mounted = await mountAt('/')
+    wrapper = mounted.wrapper
+
+    expect(wrapper.get('a[href="#main"]').attributes('href')).toBe('#main')
+    expect(wrapper.get('#main').attributes('tabindex')).toBe('-1')
   })
 })

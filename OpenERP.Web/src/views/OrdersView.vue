@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { apiRequest } from '../account/session'
-import OrderNoticeDialog from '../forms/OrderNoticeDialog.vue'
 import OrderSyncDialog from '../forms/OrderSyncDialog.vue'
 import { useErpHub } from '../composables/useErpHub'
 import { platformLabel } from '../reports/orderSnapshot'
@@ -36,7 +35,6 @@ type OrderPage = {
   }
 }
 
-const noticeOpen = ref(false)
 const syncOpen = ref(false)
 const hub = useErpHub({
   shopSync: false,
@@ -156,10 +154,6 @@ const pager =
             @click="syncOpen = true"
           >
             同步历史订单
-          </AppButton>
-          <AppButton id="openNotice" :class="focusRing" type="button" @click="noticeOpen = true">
-            <AppIcon name="i-bell" :size="13" />
-            订单公告
           </AppButton>
         </div>
       </header>
@@ -364,5 +358,4 @@ const pager =
     </div>
   </section>
   <OrderSyncDialog :open="syncOpen" :hub="hub" @close="syncOpen = false" />
-  <OrderNoticeDialog :open="noticeOpen" @close="noticeOpen = false" />
 </template>

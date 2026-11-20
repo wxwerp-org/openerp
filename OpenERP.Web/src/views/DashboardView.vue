@@ -1,0 +1,555 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { account } from '../account/session'
+import OrderSyncDialog from '../forms/OrderSyncDialog.vue'
+import { useErpHub } from '../composables/useErpHub'
+import AppButton from '../ui/AppButton.vue'
+import AppCard from '../ui/AppCard.vue'
+import OnboardingRibbon from '../components/workspace/OnboardingRibbon.vue'
+import WorkspaceHealthCard from '../components/workspace/WorkspaceHealthCard.vue'
+import WorkspaceMetricCard from '../components/workspace/WorkspaceMetricCard.vue'
+import WorkspacePlatformCard from '../components/workspace/WorkspacePlatformCard.vue'
+import WorkspaceShopRankCard from '../components/workspace/WorkspaceShopRankCard.vue'
+import WorkspaceStatusBar from '../components/workspace/WorkspaceStatusBar.vue'
+import WorkspaceSyncCard from '../components/workspace/WorkspaceSyncCard.vue'
+import WorkspaceSystemCard from '../components/workspace/WorkspaceSystemCard.vue'
+import { useWorkspaceDashboard } from '../workspace/useWorkspaceDashboard'
+import { onboardingSummaryDismissed } from '../workspace/onboardingState'
+import {
+  formatCount,
+  formatDateTime,
+  platformTotals,
+  shopNameBySid,
+  shopNameMap,
+} from '../workspace/workspaceData'
+import {
+  buildOnboardingSteps,
+  type DashboardState,
+  nextOnboardingLabel,
+  platformDrillQuery,
+  rankTopShops,
+  resolveDashboardState,
+  shopDrillQuery,
+  type OnboardingStep,
+} from '../workspace/workspaceDerivation'
+
+const authorizeUrl = 'https://v3.wxwerp.com/system/authorize'
+
+const router = useRouter()
+const administrator = computed(() => account.value?.role === 'Administrator')
+
+const {
+  report,
+  reportStatus,
+  reportError,
+  reportRefreshing,
+  reportStale,
+  directory,
+  directoryStatus,
+  directoryError,
+  config,
+  configStatus,
+  configError,
+  availability,
+  availabilityStatus,
+  availabilityError,
+  validTemuShopCount,
+  loadReport,
+  loadDirectory,
+  loadValidTemuShopCount,
+  loadConfig,
+  loadAvailability,
+  refresh,
+} = useWorkspaceDashboard({ administrator: administrator.value })
+
+const hub = useErpHub({
+  shopSync: administrator.value,
+  orderSync: true,
+  onOrdersChanged: () => {
+    void loadReport()
+    if (administrator.value) void loadDirectory()
+  },
+})
+
+const {
+  state: hubState,
+  status: shopSyncStatus,
+  orderSyncTasks,
+  connect,
+  disconnect,
+  reconnect,
+  startShopSync,
+  startAllOrderSync,
+} = hub
+
+const syncOpen = ref(false)
+const startingAll = ref(false)
+const batchMessage = ref('')
+const batchError = ref('')
+const syncMessage = ref('')
+const shopSyncStarting = ref(false)
+let disposed = false
+
+const orderCount = computed(() => report.value?.summary.orderCount ?? null)
+const directorySummary = computed(() => directory.value?.summary ?? null)
+const shopNames = computed(() => shopNameMap(directory.value))
+const shopNamesSid = computed(() => shopNameBySid(directory.value))
+const orderTasks = computed(() => Object.values(orderSyncTasks.value))
+
+const runningTasks = computed(() => orderTasks.value.filter((task) => task.status === 'running'))
+const shopSyncRunning = computed(
+  () => administrator.value && (shopSyncStatus.value?.running ?? false),
+)
+
+const platformRows = computed(() => platformTotals(report.value?.groups ?? []))
+
+const topShops = computed(() => rankTopShops(report.value?.groups ?? [], shopNames.value))
+
+const distinctShopCount = computed(
+  () => new Set((report.value?.groups ?? []).map((group) => group.shop.key)).size,
+)
+
+const state = computed<DashboardState>(() =>
+  resolveDashboardState({
+    hasSnapshot: report.value !== null,
+    reportStatus:
+      reportStatus.value === 'success' || reportStatus.value === 'error'
+        ? reportStatus.value
+        : 'loading',
+    orderCount: report.value?.summary.orderCount ?? 0,
+    runningOrderTasks: runningTasks.value.length,
+    administrator: administrator.value,
+    shopSyncRunning: shopSyncRunning.value,
+    shopSyncStarting: shopSyncStarting.value,
+  }),
+)
+
+type MetricCard = { label: string; value: string; testid: string; to: { path: string } }
+
+const metricCards = computed<MetricCard[]>(() => {
+  const cards: MetricCard[] = [
+    {
+      label: '订单数',
+      value: formatCount(orderCount.value),
+      testid: 'metric-orders',
+      to: { path: '/reports/orders' },
+    },
+    {
+      label: '商品件数',
+      value: formatCount(report.value?.summary.itemQuantity ?? null),
+      testid: 'metric-items',
+      to: { path: '/reports/orders' },
+    },
+    {
+      label: '有订单店铺',
+      value: formatCount(report.value ? distinctShopCount.value : null),
+      testid: 'metric-shops',
+      to: { path: '/reports/orders' },
+    },
+  ]
+  if (administrator.value) {
+    cards.push({
+      label: '目录最近同步时间',
+      value:
+        directoryStatus.value === 'success'
+          ? formatDateTime(directorySummary.value?.lastSyncedAt ?? null)
+          : directoryStatus.value === 'error'
+            ? '读取失败'
+            : '—',
+      testid: 'metric-last-sync',
+      to: { path: '/shops' },
+    })
+  } else {
+    cards.push({
+      label: '有订单平台',
+      value: formatCount(report.value ? report.value.platforms.length : null),
+      testid: 'metric-platforms',
+      to: { path: '/reports/orders' },
+    })
+  }
+  return cards
+})
+
+const validTemuCount = computed(() => validTemuShopCount.value ?? 0)
+
+const onboardingSteps = computed<OnboardingStep[]>(() =>
+  buildOnboardingSteps({
+    configured: config.value?.configured ?? null,
+    directoryItems: directory.value?.items.length ?? 0,
+    directoryLoaded: directoryStatus.value === 'success',
+    validTemuShopCount: validTemuCount.value,
+    orderSyncEnabled: availability.value?.orderSyncEnabled === true,
+    lastSyncedAt: directorySummary.value?.lastSyncedAt ?? null,
+    orderCount: orderCount.value ?? 0,
+  }),
+)
+
+const onboardingDoneCount = computed(() => onboardingSteps.value.filter((step) => step.done).length)
+const onboardingCompleted = computed(
+  () => onboardingDoneCount.value === onboardingSteps.value.length,
+)
+/** 完成摘要同一次会话只默认出现一次；离开页面后不再自动出现。 */
+const completionDisplayed = ref(false)
+watch(onboardingCompleted, (completed) => {
+  if (completed) completionDisplayed.value = true
+})
+const onboardingNextLabel = computed(() => nextOnboardingLabel(onboardingSteps.value))
+
+const systemStatus = computed<'idle' | 'loading' | 'success' | 'error'>(() => {
+  const statuses = [configStatus.value, availabilityStatus.value]
+  if (statuses.includes('error')) return 'error'
+  if (statuses.includes('loading')) return 'loading'
+  return 'success'
+})
+const systemError = computed(() => configError.value || availabilityError.value)
+
+function drillPlatform(platform: string): void {
+  void router.push({ path: '/reports/orders', query: platformDrillQuery(platform) })
+}
+
+function drillShop(key: string): void {
+  void router.push({ path: '/reports/orders', query: shopDrillQuery(key) })
+}
+
+/** 手动刷新同时重建实时连接：在线漏送终态时靠服务端快照恢复。 */
+async function refreshAll(): Promise<void> {
+  await reconnect()
+  if (disposed) return
+  await refresh()
+}
+
+async function syncDirectory(): Promise<void> {
+  if (shopSyncStarting.value) return
+  shopSyncStarting.value = true
+  syncMessage.value = ''
+  try {
+    const result = await startShopSync()
+    if (!result.accepted) {
+      syncMessage.value = result.error ?? '无法启动目录同步，请稍后重试。'
+      return
+    }
+    void loadDirectory()
+    void loadValidTemuShopCount()
+  } finally {
+    shopSyncStarting.value = false
+  }
+}
+
+async function startAllSync(): Promise<void> {
+  if (startingAll.value) return
+  startingAll.value = true
+  batchMessage.value = ''
+  batchError.value = ''
+  try {
+    const result = await startAllOrderSync()
+    if (!result.accepted) {
+      batchError.value = result.error ?? '无法启动全部同步。'
+      return
+    }
+    batchMessage.value =
+      result.busyCount > 0
+        ? `已开始 ${result.startedCount} 家；${result.busyCount} 家已有店铺正在同步。`
+        : `已开始同步 ${result.startedCount} 家店铺。`
+  } finally {
+    startingAll.value = false
+  }
+}
+
+function runOnboardingAction(stepId: string): void {
+  if (stepId === 'configure') {
+    void router.push('/settings?section=erp')
+    return
+  }
+  if (stepId === 'authorize') {
+    window.open(authorizeUrl, '_blank', 'noopener')
+    return
+  }
+  if (stepId === 'sync-directory') {
+    void syncDirectory()
+    return
+  }
+  syncOpen.value = true
+}
+
+/**
+ * 任务开始与失败时刷新报表；进度更新不触发。
+ * 成功/部分成功由 Hub 的 onOrdersChanged 统一触发，避免同一终态重复取数。
+ */
+const taskStatuses = new Map<number, string>()
+watch(
+  () => orderSyncTasks.value,
+  (tasks) => {
+    let changed = false
+    for (const task of Object.values(tasks)) {
+      const previous = taskStatuses.get(task.sid)
+      if (previous !== task.status) {
+        taskStatuses.set(task.sid, task.status)
+        if (task.status === 'running' || task.status === 'failed') changed = true
+      }
+    }
+    if (changed) void loadReport()
+  },
+)
+
+/** 目录同步结束（终态或失败）后刷新目录汇总。 */
+watch(
+  () => shopSyncStatus.value?.version,
+  () => {
+    const status = shopSyncStatus.value
+    if (status && !status.running) {
+      void loadDirectory()
+      void loadValidTemuShopCount()
+    }
+  },
+)
+
+function handleVisibilityChange(): void {
+  if (document.visibilityState !== 'visible') return
+  void loadReport()
+  if (administrator.value) void loadDirectory()
+}
+
+function retrySystem(): void {
+  void loadConfig()
+  void loadAvailability()
+}
+
+onMounted(() => {
+  void connect()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  if (completionDisplayed.value) onboardingSummaryDismissed.value = true
+  disposed = true
+  void disconnect()
+})
+</script>
+
+<template>
+  <section
+    id="page-dashboard"
+    data-testid="page-dashboard"
+    class="flex h-full min-h-0 w-full flex-col bg-page"
+  >
+    <h1 class="sr-only">工作台</h1>
+
+    <WorkspaceStatusBar
+      v-if="state !== 'loading' && state !== 'error'"
+      :generated-at="report?.generatedAtUtc ?? null"
+      :last-synced-at="directorySummary?.lastSyncedAt ?? null"
+      :show-directory="administrator"
+      :refreshing="reportRefreshing"
+      :stale="reportStale"
+      @refresh="refreshAll()"
+    />
+
+    <div class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+      <div
+        v-if="state === 'loading'"
+        class="grid grid-cols-12 gap-12 p-16"
+        data-testid="dashboard-skeleton"
+      >
+        <div
+          v-for="index in 4"
+          :key="index"
+          class="col-span-12 h-104 animate-pulse rounded-6 bg-white lg:col-span-6 xl:col-span-3"
+        ></div>
+        <div class="col-span-12 h-296 animate-pulse rounded-6 bg-white lg:col-span-6"></div>
+        <div class="col-span-12 h-296 animate-pulse rounded-6 bg-white lg:col-span-6"></div>
+        <div
+          class="col-span-12 h-140 animate-pulse rounded-6 bg-white lg:col-span-6 xl:col-span-4"
+        ></div>
+        <div
+          class="col-span-12 h-140 animate-pulse rounded-6 bg-white lg:col-span-6 xl:col-span-4"
+        ></div>
+        <div
+          class="col-span-12 h-140 animate-pulse rounded-6 bg-white lg:col-span-12 xl:col-span-4"
+        ></div>
+      </div>
+
+      <div
+        v-else-if="state === 'error'"
+        class="flex h-full flex-col items-center justify-center gap-12 p-24"
+      >
+        <AppCard class="flex max-w-420 flex-col items-center gap-10 p-28 text-center">
+          <strong class="text-14 font-semibold text-ink">工作台数据加载失败</strong>
+          <span class="text-12 text-muted">{{ reportError }}</span>
+          <AppButton variant="primary" @click="loadReport()">重试</AppButton>
+        </AppCard>
+      </div>
+
+      <div v-else class="p-16">
+        <div class="grid grid-cols-12 gap-12">
+          <OnboardingRibbon
+            v-if="state === 'empty' && administrator"
+            :steps="onboardingSteps"
+            :next-label="onboardingNextLabel"
+            :done-count="onboardingDoneCount"
+            @action="runOnboardingAction"
+          />
+          <AppCard
+            v-if="state === 'empty' && !administrator"
+            class="col-span-12 px-16 py-14"
+            data-testid="employee-empty-hint"
+          >
+            <p class="m-0 text-12 text-body">
+              订单数据仍为空，系统可能尚未初始化完成，请联系管理员。
+            </p>
+          </AppCard>
+
+          <AppCard
+            v-if="
+              state === 'data' &&
+              administrator &&
+              onboardingCompleted &&
+              !onboardingSummaryDismissed
+            "
+            class="col-span-12 flex h-36 items-center gap-8 px-16"
+            data-testid="onboarding-completed"
+          >
+            <span class="text-12 font-semibold text-ink">初始化已完成</span>
+            <span class="text-12 text-body"
+              >四步引导已全部完成，可随时在「授权店铺」「ERP 接入」调整。</span
+            >
+            <button
+              type="button"
+              class="ml-auto text-12 text-body hover:text-primary"
+              data-testid="onboarding-completed-dismiss"
+              @click="onboardingSummaryDismissed = true"
+            >
+              收起
+            </button>
+          </AppCard>
+
+          <WorkspaceMetricCard
+            v-for="card in metricCards"
+            :key="card.testid"
+            class="col-span-12 lg:col-span-6 xl:col-span-3"
+            :label="card.label"
+            :value="card.value"
+            :testid="card.testid"
+            :to="card.to"
+          />
+
+          <template v-if="state === 'data'">
+            <WorkspacePlatformCard
+              class="col-span-12 lg:col-span-6"
+              :totals="platformRows"
+              :total-orders="orderCount ?? 0"
+              @select="drillPlatform"
+            />
+            <WorkspaceShopRankCard
+              class="col-span-12 lg:col-span-6"
+              :rows="topShops"
+              @select="drillShop"
+            />
+          </template>
+
+          <template v-else-if="state === 'syncing'">
+            <AppCard class="col-span-12 px-16 py-14" data-testid="dashboard-syncing">
+              <div class="flex items-center gap-10">
+                <span class="text-13 font-semibold text-ink">正在同步数据</span>
+                <span class="text-11 text-muted">可离开页面，任务在后台继续</span>
+                <button
+                  type="button"
+                  class="ml-auto text-11 text-primary hover:underline"
+                  @click="syncOpen = true"
+                >
+                  查看同步详情
+                </button>
+              </div>
+              <div class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3">
+                <div v-if="administrator" class="rounded-4 bg-page px-10 py-8 text-12">
+                  <div class="font-medium text-body-strong">店铺目录</div>
+                  <div class="mt-2 text-muted">
+                    <template v-if="shopSyncStatus?.running">
+                      已检查 {{ formatCount(shopSyncStatus.checked) }} /
+                      {{ shopSyncStatus.total > 0 ? formatCount(shopSyncStatus.total) : '—' }}，有效
+                      {{ formatCount(shopSyncStatus.valid) }}，无效
+                      {{ formatCount(shopSyncStatus.invalid) }}
+                    </template>
+                    <template v-else>目录同步未在运行</template>
+                  </div>
+                </div>
+                <div class="rounded-4 bg-page px-10 py-8 text-12">
+                  <div class="font-medium text-body-strong">订单同步</div>
+                  <div class="mt-2 text-muted">
+                    进行中 {{ runningTasks.length }} 家，排队
+                    {{
+                      orderTasks.filter(
+                        (task) => task.status === 'running' && task.stage === 'queued',
+                      ).length
+                    }}
+                    家
+                  </div>
+                </div>
+                <div class="rounded-4 bg-page px-10 py-8 text-12">
+                  <div class="font-medium text-body-strong">本地订单</div>
+                  <div class="mt-2 text-muted">当前为 0 单</div>
+                </div>
+              </div>
+            </AppCard>
+          </template>
+
+          <template v-else>
+            <WorkspacePlatformCard
+              class="col-span-12 lg:col-span-6"
+              :totals="[]"
+              :total-orders="0"
+              @select="drillPlatform"
+            />
+            <WorkspaceShopRankCard
+              class="col-span-12 lg:col-span-6"
+              :rows="[]"
+              @select="drillShop"
+            />
+          </template>
+
+          <WorkspaceHealthCard
+            v-if="administrator"
+            class="col-span-12 lg:col-span-6 xl:col-span-4"
+            :summary="directorySummary"
+            :status="directoryStatus"
+            :error="directoryError"
+            :running="shopSyncRunning"
+            @sync="syncDirectory"
+            @retry="loadDirectory()"
+            @open="router.push('/shops')"
+          />
+          <WorkspaceSyncCard
+            class="col-span-12"
+            :class="administrator ? 'lg:col-span-6 xl:col-span-4' : ''"
+            :administrator="administrator"
+            :hub-state="hubState"
+            :shop-sync="shopSyncStatus"
+            :order-tasks="orderTasks"
+            :shop-names="shopNamesSid"
+            :shop-sync-starting="shopSyncStarting"
+            :sync-message="syncMessage"
+            :starting-all="startingAll"
+            :batch-message="batchMessage"
+            :batch-error="batchError"
+            @sync-shops="syncDirectory"
+            @start-all="startAllSync"
+            @open="syncOpen = true"
+          />
+          <WorkspaceSystemCard
+            v-if="administrator"
+            class="col-span-12 lg:col-span-12 xl:col-span-4"
+            :configured="config?.configured ?? null"
+            :order-sync-enabled="availability?.orderSyncEnabled ?? null"
+            :status="systemStatus"
+            :error="systemError"
+            @open="router.push('/settings?section=erp')"
+            @retry="retrySystem"
+          />
+        </div>
+      </div>
+    </div>
+
+    <OrderSyncDialog :open="syncOpen" :hub="hub" @close="syncOpen = false" />
+  </section>
+</template>

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { logout, type Account } from '../../account/session'
 import AccountMenu from '../navigation/AccountMenu.vue'
+import AboutDialog from '../../account/AboutDialog.vue'
 import ProfileDialog from '../../account/ProfileDialog.vue'
 import PasswordDialog from '../../account/PasswordDialog.vue'
 import AppSidebar from '../navigation/AppSidebar.vue'
@@ -18,7 +19,7 @@ const route = useRoute()
 const router = useRouter()
 const sidebarCollapsed = ref(false)
 const administrator = computed(() => props.account.role === 'Administrator')
-const openTabs = ref<WorkspacePage[]>(workspacePages.slice(0, 3))
+const openTabs = ref<WorkspacePage[]>(workspacePages.slice(0, 1))
 const visibleTabs = computed(() =>
   openTabs.value.filter((tab) => !tab.administratorOnly || administrator.value),
 )
@@ -27,6 +28,19 @@ const profileOpen = ref(false)
 const passwordOpen = ref(false)
 const logoutPending = ref(false)
 const accountMenu = ref<InstanceType<typeof AccountMenu> | null>(null)
+const aboutOpen = ref(false)
+
+watch(
+  () => route.query.denied,
+  (denied) => {
+    if (denied !== '1') return
+    showToast('该页面仅管理员可访问。')
+    const query = { ...route.query }
+    delete query.denied
+    void router.replace({ query })
+  },
+  { immediate: true },
+)
 
 const activePage = computed<string | null>(() => {
   return navigationPages.find((page) => page.path === route.path)?.id ?? null
@@ -44,7 +58,8 @@ function syncViewportTraits(): void {
 
 onMounted(() => {
   if (typeof window.matchMedia !== 'function') return
-  narrowQuery = window.matchMedia('(max-width: 768px)')
+  // 工作台/报表在 <1024 时统一为单列 + 轨道侧栏（断点验收 1023/1024）。
+  narrowQuery = window.matchMedia('(max-width: 1023px)')
   coarseQuery = window.matchMedia('(pointer: coarse)')
   syncViewportTraits()
   narrowQuery.addEventListener('change', syncViewportTraits)
@@ -56,11 +71,13 @@ onUnmounted(() => {
   coarseQuery?.removeEventListener('change', syncViewportTraits)
 })
 
-/** 商品量报表在窄屏下需要解除桌面最小宽度，并让侧栏收敛为导航轨道。 */
-const reportShell = computed(() => activePage.value === 'order-report')
-const reportRail = computed(() => reportShell.value && narrowViewport.value)
+/** 工作台与商品量报表共用窄屏轨道：解除桌面最小宽度，并让侧栏收敛为导航轨道。 */
+const fluidShell = computed(
+  () => activePage.value === 'dashboard' || activePage.value === 'order-report',
+)
+const reportRail = computed(() => fluidShell.value && narrowViewport.value)
 const touchRail = computed(() => reportRail.value && coarsePointer.value)
-const shellMinWidthClass = computed(() => (reportShell.value ? 'min-w-0' : 'min-w-1440'))
+const shellMinWidthClass = computed(() => (fluidShell.value ? 'min-w-0' : 'min-w-1440'))
 
 watch(
   activePage,
@@ -90,10 +107,14 @@ function closeTab(page: string): void {
 }
 
 async function handleAccountAction(
-  action: 'profile' | 'password' | 'settings' | 'logout',
+  action: 'profile' | 'password' | 'settings' | 'logout' | 'about',
 ): Promise<void> {
   if (action === 'settings') {
     navigate('business')
+    return
+  }
+  if (action === 'about') {
+    aboutOpen.value = true
     return
   }
   if (action === 'profile') profileOpen.value = true
@@ -126,7 +147,7 @@ async function handleAccountAction(
   <div
     class="flex h-[100dvh] w-screen overflow-hidden bg-page"
     :class="shellMinWidthClass"
-    :data-fluid-shell="reportShell ? '' : undefined"
+    :data-fluid-shell="fluidShell ? '' : undefined"
     :style="{ '--sidebar-width': sidebarCollapsed || reportRail ? '56px' : '200px' }"
   >
     <AppSidebar
@@ -137,18 +158,17 @@ async function handleAccountAction(
       :administrator="administrator"
       @update:collapsed="sidebarCollapsed = $event"
       @navigate="navigate"
-      @preview="showToast(`原型演示：${$event}`)"
     />
 
     <div class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
       <header class="relative z-50 flex h-38 flex-none items-stretch bg-topnav">
-        <WorkspaceTabs :items="visibleTabs" :active-page="activePage ?? ''" @close="closeTab" />
-        <AccountMenu
-          ref="accountMenu"
-          :account="account"
-          @action="handleAccountAction"
-          @notice="showToast('原型演示：通知')"
+        <WorkspaceTabs
+          :items="visibleTabs"
+          :active-page="activePage ?? ''"
+          :administrator="administrator"
+          @close="closeTab"
         />
+        <AccountMenu ref="accountMenu" :account="account" @action="handleAccountAction" />
       </header>
       <main id="main" class="relative min-h-0 flex-1 overflow-hidden bg-page" tabindex="-1">
         <RouterView />
@@ -164,6 +184,7 @@ async function handleAccountAction(
           @close="passwordOpen = false"
           @closed="accountMenu?.focusTrigger()"
         />
+        <AboutDialog :open="aboutOpen" @close="aboutOpen = false" />
       </main>
     </div>
   </div>

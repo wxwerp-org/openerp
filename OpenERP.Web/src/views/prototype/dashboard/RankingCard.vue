@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import AppButton from '../../ui/AppButton.vue'
-import AppCard from '../../ui/AppCard.vue'
-import AppIcon from '../../ui/AppIcon.vue'
-import AppSegmented from '../../ui/AppSegmented.vue'
+import AppButton from '../../../ui/AppButton.vue'
+import AppCard from '../../../ui/AppCard.vue'
+import AppIcon from '../../../ui/AppIcon.vue'
+import AppSegmented from '../../../ui/AppSegmented.vue'
 import { rankingDimensions, rankingPeriods, rankingRows, type RankRow } from './dashboardMocks'
 
 const props = withDefaults(

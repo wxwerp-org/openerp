@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, provide, ref, watch } from 'vue'
+import { computed, onMounted, provide, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import OrderSnapshotPlatformDistribution from '../components/reports/OrderSnapshotPlatformDistribution.vue'
 import OrderSnapshotShopRanking from '../components/reports/OrderSnapshotShopRanking.vue'
-import { platformLabel, type ReportOrder } from '../reports/orderSnapshot'
+import { apiRequest } from '../account/session'
+import { platformLabel, type ReportOrder, type ReportShop } from '../reports/orderSnapshot'
+import { parseShopDirectory, shopNameMap } from '../workspace/workspaceData'
 import {
   averageItemsPerOrder,
   formatAverageItems,
@@ -45,6 +48,121 @@ const {
 provide(
   tableWrapKey,
   computed(() => true),
+)
+
+const route = useRoute()
+const router = useRouter()
+const shopNames = ref(new Map<string, string>())
+
+function shopName(shop: ReportShop): string {
+  return shopNames.value.get(`${shop.platform}/${shop.shopId}`) ?? shop.label
+}
+
+async function loadShopNames(): Promise<void> {
+  try {
+    const response = await apiRequest('/api/erp/shops?page=1&pageSize=100', { cache: 'no-store' })
+    if (!response.ok) return
+    shopNames.value = shopNameMap(parseShopDirectory(await response.json()))
+  } catch {
+    // 目录读取失败时回退后端标签，不影响报表主数据。
+  }
+}
+
+onMounted(loadShopNames)
+
+function queryText(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function queryList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string')
+  return typeof value === 'string' ? [value] : []
+}
+
+/** 请求前剔除格式非法值：后端对空白/超长键返回 400，重复键也会放大筛选状态。 */
+function normalizePlatform(value: string): string {
+  const trimmed = value.trim()
+  return trimmed.length > 0 && trimmed.length <= 100 ? trimmed : ''
+}
+
+function normalizeShopKeys(values: string[]): string[] {
+  const seen = new Set<string>()
+  const keys: string[] = []
+  for (const raw of values) {
+    const key = raw.trim()
+    if (!key || key.length > 1000 || seen.has(key)) continue
+    seen.add(key)
+    keys.push(key)
+    if (keys.length >= 100) break
+  }
+  return keys
+}
+
+/** 工作台下钻通过 URL 带入筛选；非法值在选项到达后丢弃，不报错。 */
+platform.value = normalizePlatform(queryText(route.query.platform))
+// URL 里的店铺键先不直接发请求：等全量选项返回后过滤未知值，避免非法键挤占 100 家上限或撑爆请求行。
+const pendingUrlShops = ref(normalizeShopKeys(queryList(route.query.shops)))
+const initialFiltersValidated = ref(false)
+
+function syncFiltersToUrl(): void {
+  const query = { ...route.query }
+  delete query.platform
+  delete query.shops
+  if (platform.value) query.platform = platform.value
+  if (selectedShopKeys.value.length) query.shops = [...selectedShopKeys.value]
+  if (JSON.stringify(query) === JSON.stringify(route.query)) return
+  void router.replace({ query })
+}
+
+function applyFilters(): void {
+  updateFilters()
+  syncFiltersToUrl()
+}
+
+function clearFilters(): void {
+  resetFilters()
+  syncFiltersToUrl()
+}
+
+function completeUrlFilters(): void {
+  if (initialFiltersValidated.value || status.value !== 'success' || !report.value) return
+  initialFiltersValidated.value = true
+  const platformValid = !platform.value || availablePlatforms.value.includes(platform.value)
+  if (!platformValid) platform.value = ''
+  const allowed = new Set(availableShops.value.map((shop) => shop.key))
+  const shops = pendingUrlShops.value.filter((key) => allowed.has(key)).slice(0, 100)
+  const shopsChanged =
+    shops.length !== selectedShopKeys.value.length ||
+    shops.some((key, index) => key !== selectedShopKeys.value[index])
+  pendingUrlShops.value = []
+  if (!platformValid || shopsChanged) {
+    selectedShopKeys.value = shops
+    syncFiltersToUrl()
+    void load(1)
+    return
+  }
+  syncFiltersToUrl()
+}
+
+watch([report, status], completeUrlFilters, { immediate: true })
+
+watch(
+  () => route.query,
+  (query) => {
+    const nextPlatform = queryText(query.platform)
+    const nextShops = queryList(query.shops)
+    if (
+      nextPlatform === platform.value &&
+      nextShops.join('\u0000') === selectedShopKeys.value.join('\u0000')
+    )
+      return
+    platform.value = normalizePlatform(nextPlatform)
+    pendingUrlShops.value = normalizeShopKeys(nextShops)
+    selectedShopKeys.value = []
+    initialFiltersValidated.value = false
+    void load(1)
+  },
+  { deep: true },
 )
 
 const pageSizeOptions = [20, 50, 100]
@@ -99,7 +217,7 @@ function orderIdentity(order: ReportOrder): string {
 
 function onShopToggle(value: boolean | Array<string | number>): void {
   selectedShopKeys.value = Array.isArray(value) ? value.map(String) : []
-  updateFilters()
+  applyFilters()
 }
 
 function changePageSize(event: Event): void {
@@ -147,7 +265,7 @@ function submitJumpPage(): void {
           v-model="platform"
           aria-label="平台筛选"
           class="h-28 min-w-0 flex-1 cursor-pointer appearance-none border-0 border-current bg-transparent px-10 text-12 text-ink outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary pointer-coarse:min-h-44"
-          @change="updateFilters"
+          @change="applyFilters"
         >
           <option value="">全部平台</option>
           <option v-for="item in availablePlatforms" :key="item" :value="item">
@@ -184,7 +302,7 @@ function submitJumpPage(): void {
               class="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               @update:model-value="onShopToggle"
             />
-            <span>{{ platformLabel(shop.platform) }} · {{ shop.label }}</span>
+            <span>{{ platformLabel(shop.platform) }} · {{ shopName(shop) }}</span>
           </label>
           <p v-if="availableShops.length === 0" class="m-0 p-6 text-muted">暂无可选店铺</p>
         </div>
@@ -194,7 +312,7 @@ function submitJumpPage(): void {
         type="button"
         :disabled="status === 'loading'"
         class="inline-flex h-32 min-h-30 flex-none items-center justify-center gap-5 rounded-4 border border-transparent bg-soft-bg px-10 text-12/30 whitespace-nowrap text-ink hover:bg-soft-bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default pointer-coarse:min-h-44"
-        @click="resetFilters"
+        @click="clearFilters"
       >
         清除筛选
       </button>
@@ -374,7 +492,7 @@ function submitJumpPage(): void {
                 <tbody v-if="report?.groups.length">
                   <tr v-for="group in report.groups" :key="group.shop.key" class="group">
                     <td :class="groupCellClass">{{ platformLabel(group.shop.platform) }}</td>
-                    <td :class="groupCellClass">{{ group.shop.label }}</td>
+                    <td :class="groupCellClass">{{ shopName(group.shop) }}</td>
                     <td :class="groupNumericCellClass">{{ formatQuantity(group.orderCount) }}</td>
                     <td :class="groupNumericCellClass">
                       {{ formatQuantity(group.itemQuantity) }}
@@ -448,7 +566,7 @@ function submitJumpPage(): void {
                       <AppTd class="group-hover:bg-row-hover">{{
                         platformLabel(order.shop.platform)
                       }}</AppTd>
-                      <AppTd class="group-hover:bg-row-hover">{{ order.shop.label }}</AppTd>
+                      <AppTd class="group-hover:bg-row-hover">{{ shopName(order.shop) }}</AppTd>
                       <AppTd class="group-hover:bg-row-hover">{{ order.number }}</AppTd>
                       <AppTd class="group-hover:bg-row-hover">
                         <span v-if="order.platformOrders.length">

@@ -1,15 +1,199 @@
 import { expect, test, type Page } from '@playwright/test'
-import { enterWorkspace } from './authentication'
+import { enterWorkspace, type WorkspaceRole } from './authentication'
 
 const shopsTable = (page: Page) => page.getByRole('table', { name: '授权店铺列表' })
 const shopRows = (page: Page) => shopsTable(page).locator('tbody tr')
 const shopPagerCurrent = (page: Page) =>
   page.getByRole('navigation', { name: '授权店铺分页' }).locator('[aria-current="page"]')
+const hasPageOverflow = (page: Page) =>
+  page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
 
-test.beforeEach(async ({ page }) => {
-  await enterWorkspace(page)
-  await mockHub(page)
-})
+/** 登录会话 + Hub 断连：工作台与列表页在无后端时按离线态渲染。 */
+async function prepare(page: Page, role: WorkspaceRole = 'Administrator'): Promise<void> {
+  await enterWorkspace(page, role)
+  await page.route('**/api/hubs/erp/**', (route) => route.abort())
+}
+
+// ---------- 工作台 mock ----------
+
+const reportShops = [
+  {
+    source: 'wxw-erp',
+    platform: 'TemuPop',
+    shopId: '30',
+    key: 'wxw-erp/TemuPop/30',
+    label: '店铺 30',
+  },
+  {
+    source: 'wxw-erp',
+    platform: 'AliExpress',
+    shopId: '31',
+    key: 'wxw-erp/AliExpress/31',
+    label: '店铺 31',
+  },
+]
+
+function workspaceReport() {
+  return {
+    generatedAtUtc: '2026-11-20T02:03:04Z',
+    summary: { orderCount: 6, itemQuantity: 15 },
+    platforms: ['TemuPop', 'AliExpress'],
+    shops: reportShops,
+    groups: [
+      { shop: reportShops[0], orderCount: 4, itemQuantity: 12 },
+      { shop: reportShops[1], orderCount: 2, itemQuantity: 3 },
+    ],
+    orders: [],
+    page: 1,
+    pageSize: 20,
+    pageCount: 1,
+  }
+}
+
+function emptyReport() {
+  return {
+    ...workspaceReport(),
+    summary: { orderCount: 0, itemQuantity: 0 },
+    groups: [],
+  }
+}
+
+type DirectoryShopMock = {
+  sid: string
+  name: string
+  platform: string
+  region: string | null
+  memberId: string | null
+  isTokenOk: boolean | null
+  tokenError: string | null
+  syncedAt: string | null
+}
+
+const directoryItems: DirectoryShopMock[] = [
+  {
+    sid: '30',
+    name: 'Temu 测试店铺 30',
+    platform: 'TemuPop',
+    region: 'US',
+    memberId: 'member-30',
+    isTokenOk: true,
+    tokenError: null,
+    syncedAt: '2026-11-20T01:50:00.000Z',
+  },
+  {
+    sid: '31',
+    name: 'AE 测试店铺 31',
+    platform: 'AliExpress',
+    region: 'GB',
+    memberId: 'member-31',
+    isTokenOk: true,
+    tokenError: null,
+    syncedAt: '2026-11-20T01:50:00.000Z',
+  },
+]
+
+/** 工作台真实数据态所需的报表、目录、配置与可用性接口。 */
+async function mockWorkspaceApis(
+  page: Page,
+  options: { report?: unknown; directoryItems?: unknown[]; employee?: boolean } = {},
+): Promise<void> {
+  const report = options.report ?? workspaceReport()
+  const items = options.directoryItems ?? directoryItems
+  // 员工拿最小投影：只有 sid/name/platform/region，没有授权健康字段与 summary。
+  const minimal = options.employee === true
+  await page.route('**/api/reports/order-snapshot?**', (route) => route.fulfill({ json: report }))
+  await page.route('**/api/about', (route) =>
+    route.fulfill({
+      json: { version: '1.0.0', commit: '3abfbcc', buildTime: '2026-11-20T00:00:00Z' },
+    }),
+  )
+  await page.route('**/api/erp/order-sync-availability', (route) =>
+    route.fulfill({ json: { configured: true, orderSyncEnabled: true } }),
+  )
+  await page.route('**/api/erp/config', (route) =>
+    route.fulfill({
+      json: { configured: true, baseUrl: 'https://erp.test', orderSyncEnabled: true },
+    }),
+  )
+  await page.route('**/api/erp/platforms', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            name: 'TemuPop',
+            displayName: 'Temu半托管',
+            icon: 'icon-temupop',
+            isProduction: true,
+            shopCount: items.length,
+          },
+        ],
+      },
+    }),
+  )
+  await page.route('**/api/erp/shop-sync', (route) =>
+    route.fulfill({
+      json: {
+        running: false,
+        startedAt: null,
+        completedAt: '2026-11-20T01:50:00.000Z',
+        total: items.length,
+        checked: items.length,
+        valid: items.length,
+        invalid: 0,
+        unknown: 0,
+        error: null,
+        version: 2,
+      },
+    }),
+  )
+  await page.route('**/api/erp/shops?**', (route) => {
+    const url = new URL(route.request().url())
+    const platform = url.searchParams.get('platform')
+    const status = url.searchParams.get('status')
+    const currentPage = Number(url.searchParams.get('page') ?? 1)
+    const pageSize = Number(url.searchParams.get('pageSize') ?? 20)
+    const filtered = (items as DirectoryShopMock[]).filter(
+      (shop) =>
+        (!platform || shop.platform === platform) &&
+        (!status ||
+          (status === 'valid' && shop.isTokenOk === true) ||
+          (status === 'invalid' && shop.isTokenOk === false) ||
+          (status === 'unknown' && shop.isTokenOk === null)),
+    )
+    const pageCount = filtered.length === 0 ? 0 : Math.ceil(filtered.length / pageSize)
+    const start = (Math.min(currentPage, Math.max(pageCount, 1)) - 1) * pageSize
+    const pageItems = filtered
+      .slice(start, start + pageSize)
+      .map((shop) =>
+        minimal
+          ? { sid: shop.sid, name: shop.name, platform: shop.platform, region: shop.region }
+          : shop,
+      )
+    return route.fulfill({
+      json: {
+        items: pageItems,
+        page: Math.min(currentPage, Math.max(pageCount, 1)),
+        pageSize,
+        totalCount: filtered.length,
+        pageCount,
+        // 员工最小投影没有授权汇总。
+        ...(minimal
+          ? {}
+          : {
+              summary: {
+                valid: items.length,
+                invalid: 0,
+                unknown: 0,
+                lastSyncedAt: items.length > 0 ? '2026-11-20T01:50:00.000Z' : null,
+                syncVersion: 2,
+              },
+            }),
+      },
+    })
+  })
+}
+
+// ---------- 授权店铺 mock ----------
 
 async function mockShops(page: Page, count = 1): Promise<void> {
   await page.route('**/api/erp/order-sync-availability', (route) =>
@@ -149,49 +333,186 @@ async function mockPagedShops(page: Page, totalCount = 45): Promise<void> {
   })
 }
 
-async function mockHub(page: Page): Promise<void> {
-  await page.route('**/api/hubs/erp/**', (route) => route.abort())
+// ---------- 订单列表 mock ----------
+
+async function mockOrders(page: Page): Promise<void> {
+  await page.route('**/api/erp/order-sync-availability', (route) =>
+    route.fulfill({ json: { configured: true, orderSyncEnabled: true } }),
+  )
+  await page.route(/\/api\/orders(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: 'browser-local-order',
+            sid: 30,
+            shopName: null,
+            platform: 'TemuPop',
+            platformOrders: [{ number: 'TM-72801-A', status: '已发货', matched: false }],
+            created: '2026-11-17T08:30:00',
+            dispatched: null,
+            lineCount: 1,
+            itemQuantity: 5,
+          },
+        ],
+        options: {
+          shops: [{ sid: 30, name: null }],
+          platforms: ['TemuPop'],
+          statuses: ['已发货'],
+        },
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      },
+    }),
+  )
 }
 
-test('Given 原型工作台 When 打开首页并进入用户管理 Then 首页卡片和管理员账号可见', async ({
+// ---------- 工作台 ----------
+
+test('Given 工作台有数据 When 打开 Then 状态条数字卡图表卡与状态卡展示真实口径且下钻带 URL 筛选', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1920, height: 1080 })
+  await prepare(page)
+  await mockWorkspaceApis(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
 
   await expect(page.locator('[data-testid="page-dashboard"]')).toBeVisible()
-  await expect(page.locator('[data-testid="ranking-table"] tbody tr')).toHaveCount(5)
-  await expect(page.locator('[data-testid="trend-chart"]')).toBeVisible()
-  await expect(page.locator('[data-testid="order-distribution-chart"]')).toBeVisible()
 
-  await page.locator('[data-group="settings"] button[aria-expanded]').click()
-  await page.locator('[data-nav-page="users"]').click()
-  await expect(page).toHaveURL(/\/users$/)
-  await expect(page.getByRole('rowheader', { name: 'admin', exact: true })).toBeVisible()
-  await expect(page.locator('[data-testid="page-tab"] [aria-current="page"]')).toHaveText(
-    '用户管理',
-  )
+  // 数据状态条：查询时间与目录同步摘要均来自真实接口。
+  const statusBar = page.locator('[data-testid="workspace-status-bar"]')
+  await expect(statusBar).toContainText('查询时间')
+  await expect(page.locator('[data-testid="report-generated-at"]')).not.toHaveText('—')
+  await expect(page.locator('[data-testid="directory-synced-at"]')).not.toHaveText('—')
+  await expect(page.locator('[data-testid="workspace-refresh"]')).toBeVisible()
+
+  // 数字卡：订单数 / 商品件数 / 有订单店铺 / 目录最近同步时间。
+  await expect(page.locator('[data-testid="metric-orders"]')).toContainText('6')
+  await expect(page.locator('[data-testid="metric-items"]')).toContainText('15')
+  await expect(page.locator('[data-testid="metric-shops"]')).toContainText('2')
+  await expect(page.locator('[data-testid="metric-last-sync"]')).toBeVisible()
+  await expect(page.locator('[data-testid="metric-platforms"]')).toHaveCount(0)
+
+  // 图卡：平台分布与店铺商品量 Top5，店名按目录映射。
+  const platformCard = page.locator('[data-testid="workspace-platform-card"]')
+  await expect(platformCard.locator('[data-platform="TemuPop"]')).toContainText('4')
+  await expect(platformCard.locator('[data-platform="AliExpress"]')).toContainText('2')
+  const rankCard = page.locator('[data-testid="workspace-shop-rank-card"]')
+  await expect(rankCard.locator('[data-shop-key]')).toHaveCount(2)
+  const firstRank = rankCard.locator('[data-shop-key]').first()
+  await expect(firstRank).toHaveAttribute('data-shop-key', 'wxw-erp/TemuPop/30')
+  await expect(firstRank).toContainText('Temu 测试店铺 30')
+
+  // 状态卡：管理员 3 张，且概览区不出现空态引导。
+  await expect(
+    page.locator(
+      '[data-testid="workspace-health-card"], [data-testid="workspace-sync-card"], [data-testid="workspace-system-card"]',
+    ),
+  ).toHaveCount(3)
+  await expect(page.locator('[data-testid="workspace-health-card"]')).toContainText('有效')
+  await expect(page.locator('[data-testid="workspace-system-card"]')).toContainText('已配置')
+  await expect(page.locator('[data-testid="workspace-onboarding"]')).toHaveCount(0)
+  expect(await hasPageOverflow(page)).toBe(false)
+
+  // 平台下钻：URL 使用平台标识。
+  await platformCard.locator('[data-platform="TemuPop"]').click()
+  await expect(page).toHaveURL(/\/reports\/orders\?platform=TemuPop$/)
+  await page.goBack()
+  await expect(rankCard.locator('[data-shop-key]')).toHaveCount(2)
+
+  // 店铺下钻：URL 使用报表返回的完整店铺键并编码。
+  await rankCard.locator('[data-shop-key="wxw-erp/TemuPop/30"]').click()
+  await expect(page).toHaveURL(/\/reports\/orders\?shops=wxw-erp\/TemuPop\/30$/)
 })
 
-test('Given 多平台配置 When 选择店铺设置并打开账户弹窗 Then 配置内容和焦点行为与原型一致', async ({
+test('Given 工作台空态 When 管理员打开 Then 引导带按真实状态展示完成标记并可收起', async ({
   page,
 }) => {
-  await page.goto('/settings')
-  await page.locator('[data-settings-group="multiplatform"]').click()
-  await page.locator('[data-settings-item="店铺设置"]').click()
+  await prepare(page)
+  await mockWorkspaceApis(page, { report: emptyReport() })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
 
-  await expect(page.locator('#settingsSecondTitle')).toHaveText('多平台')
-  await expect(page.locator('#settingsContent')).toContainText('配置多平台模块下的店铺设置能力')
+  const ribbon = page.locator('[data-testid="workspace-onboarding"]')
+  await expect(ribbon).toBeVisible()
+  await expect(ribbon.locator('[data-step]')).toHaveCount(4)
+  await expect(ribbon.locator('[data-step="configure"]')).toHaveAttribute('data-step-done', 'true')
+  await expect(ribbon.locator('[data-step="authorize"]')).toHaveAttribute('data-step-done', 'true')
+  await expect(ribbon.locator('[data-step="sync-directory"]')).toHaveAttribute(
+    'data-step-done',
+    'true',
+  )
+  await expect(ribbon.locator('[data-step="sync-orders"]')).toHaveAttribute(
+    'data-step-done',
+    'false',
+  )
+  await expect(ribbon.locator('[data-step="sync-orders"]')).toHaveAttribute(
+    'data-step-executable',
+    'true',
+  )
+  await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText('3/4')
 
-  await page.locator('[data-testid="account-button"]').click()
+  // 空态数字卡用真实 0，而不是骨架或假数字。
+  await expect(page.locator('[data-testid="metric-orders"]')).toContainText('0')
+  await expect(page.locator('[data-testid="workspace-platform-card"]')).toContainText(
+    '暂无订单数据',
+  )
+
+  // 收起后保留一行进度与下一步提示。
+  await page.locator('[data-testid="onboarding-toggle"]').click()
+  await expect(page.locator('[data-testid="onboarding-progress"]')).toHaveText(
+    '初始化进度 3/4 · 下一步：同步历史订单',
+  )
+  await page.locator('[data-testid="onboarding-toggle"]').click()
+  await expect(ribbon.locator('[data-step="sync-orders"]')).toHaveAttribute(
+    'data-step-executable',
+    'true',
+  )
+
+  // 第 4 步执行入口打开真实同步弹窗。
+  await ribbon.locator('[data-step="sync-orders"]').click()
+  await expect(page.locator('#order-sync-panel')).toBeVisible()
+})
+
+test('Given 报表快照后刷新失败 When 手动刷新 Then 保留上次数据并标注刷新失败', async ({ page }) => {
+  await prepare(page)
+  await mockWorkspaceApis(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
+  await expect(page.locator('[data-testid="metric-orders"]')).toContainText('6')
+  const generatedAt = await page.locator('[data-testid="report-generated-at"]').innerText()
+
+  await page.route('**/api/reports/order-snapshot?**', (route) =>
+    route.fulfill({ status: 503, json: { title: '报表数据暂不可用' } }),
+  )
+  await page.locator('[data-testid="workspace-refresh"]').click()
+
+  await expect(page.locator('[data-testid="report-stale"]')).toHaveText('刷新失败，显示上次结果')
+  await expect(page.locator('[data-testid="metric-orders"]')).toContainText('6')
+  await expect(page.locator('[data-testid="report-generated-at"]')).toHaveText(generatedAt)
+  await expect(page.locator('[data-testid="page-dashboard"]')).toBeVisible()
+})
+
+test('Given 账户菜单 When 打开个人信息、修改密码与关于 Then 焦点行为与版本信息保持一致', async ({
+  page,
+}) => {
+  await prepare(page)
+  await mockWorkspaceApis(page)
+  await page.goto('/')
+
+  const trigger = page.locator('[data-testid="account-button"]')
+  await expect(page.locator('[data-testid="account-version"]')).toHaveText('v1.0.0 · 3abfbcc')
+
+  await trigger.click()
   await page.locator('[data-account-action="profile"]').click()
   await expect(page.locator('#profileLayer')).toBeVisible()
   await expect(page.locator('#profileName')).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(page.locator('#profileLayer')).toBeHidden()
-  await expect(page.locator('[data-testid="account-button"]')).toBeFocused()
+  await expect(trigger).toBeFocused()
 
-  await page.locator('[data-testid="account-button"]').click()
+  await trigger.click()
   await page.locator('[data-account-action="password"]').click()
   await expect(page.locator('#oldPassword')).toBeFocused()
   await page.locator('#oldPassword').fill('old-password')
@@ -201,39 +522,141 @@ test('Given 多平台配置 When 选择店铺设置并打开账户弹窗 Then �
   await expect(page.getByText('两次输入的密码不一致')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('#passwordLayer')).toBeHidden()
-  await expect(page.locator('[data-testid="account-button"]')).toBeFocused()
+  await expect(trigger).toBeFocused()
+
+  // 「关于」展示匿名 /api/about 返回的版本与提交，不出现假版本。
+  await trigger.click()
+  await page.locator('[data-account-action="about"]').click()
+  await expect(page.locator('#aboutLayer')).toBeVisible()
+  await expect(page.locator('#aboutLayer')).toContainText('v1.0.0')
+  await expect(page.locator('#aboutLayer')).toContainText('3abfbcc')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#aboutLayer')).toBeHidden()
 })
 
-test('Given 产品和订单原型 When 打开表单与公告 Then 弹窗可见且桌面页面无横向溢出', async ({
+// ---------- 权限与导航 ----------
+
+test('Given 管理员侧栏 When 查看导航 Then 只出现收敛后的条目且即将上线默认收起不可导航', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1920, height: 1080 })
-  await page.goto('/products')
-  await page.locator('#openProductForm').click()
-  await expect(page.locator('#productFormLayer')).toBeVisible()
-  await expect(page.locator('[aria-label="产品表单分区"] button')).toHaveCount(7)
-  await page.locator('#saveProductForm').click()
-  await expect(page.getByText('请输入产品名称')).toBeVisible()
-  await page.locator('#closeProductForm').click()
+  await prepare(page)
+  await mockWorkspaceApis(page)
+  await page.goto('/')
 
-  await page.goto('/orders')
-  await page.locator('#openNotice').click()
-  await expect(page.locator('#noticeLayer')).toBeVisible()
-  await expect(page.locator('#noticeTitle')).toHaveText('【订单列表】优化公告')
-  await expect(page.locator('#noticeLayer a')).toBeVisible()
-  await page.locator('#closeNotice').click()
+  const sidebar = page.locator('[data-testid="sidebar"]')
+  await expect(sidebar.locator('[data-group="orders"]')).toBeVisible()
+  await expect(sidebar.locator('[data-group="orders"] [data-nav-page="orders"]')).toBeVisible()
+  await expect(
+    sidebar.locator('[data-group="orders"] [data-nav-page="order-report"]'),
+  ).toBeVisible()
+  await expect(sidebar.locator('[data-nav-page="shops"]')).toBeVisible()
+  await expect(sidebar.locator('[data-nav-page="users"]')).toBeVisible()
+  await expect(sidebar.locator('[data-nav-page="business"]')).toBeVisible()
+  for (const removed of ['newdev', 'products', 'service-connection', 'orders-sync']) {
+    await expect(sidebar.locator(`[data-nav-page="${removed}"]`)).toHaveCount(0)
+  }
 
-  await page.setViewportSize({ width: 1440, height: 900 })
-  const hasPageOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
+  // 「即将上线」默认收起，展开后三项置灰并标注即将上线，不产生导航。
+  const upcoming = sidebar.locator('[data-group="upcoming"]')
+  const upcomingHead = upcoming.locator('button[aria-expanded]')
+  await expect(upcomingHead).toHaveAttribute('aria-expanded', 'false')
+  await expect(upcoming.getByRole('button', { name: '商品管理' })).toBeHidden()
+  await upcomingHead.click()
+  await expect(upcomingHead).toHaveAttribute('aria-expanded', 'true')
+  for (const label of ['商品管理', '物流', '仓库']) {
+    const item = upcoming.getByRole('button', { name: label, exact: true })
+    await expect(item).toBeVisible()
+    await expect(item).toBeDisabled()
+    await expect(item).toHaveAttribute('title', '即将上线')
+    await expect(item).toHaveAttribute('data-nav-page', '')
+  }
+  await expect(page).toHaveURL(/\/$/)
+
+  // 「+」菜单按角色过滤且不含原型页面。
+  await page.locator('[data-testid="tab-add"]').click()
+  const menuLinks = page.locator('#tabMenu a')
+  await expect(menuLinks).toHaveCount(5)
+  await expect(menuLinks).toHaveText(['工作台', '订单列表', '商品量报表', 'ERP 接入', '用户管理'])
+})
+
+test('Given 普通员工 When 打开工作台 Then 侧栏无管理条目且空态显示联系管理员提示', async ({
+  page,
+}) => {
+  await prepare(page, 'User')
+  await mockWorkspaceApis(page, { report: emptyReport(), employee: true })
+  await page.goto('/')
+
+  const sidebar = page.locator('[data-testid="sidebar"]')
+  await expect(sidebar.locator('[data-group="orders"] [data-nav-page="orders"]')).toBeVisible()
+  await expect(
+    sidebar.locator('[data-group="orders"] [data-nav-page="order-report"]'),
+  ).toBeVisible()
+  for (const hidden of ['shops', 'users', 'business']) {
+    await expect(sidebar.locator(`[data-nav-page="${hidden}"]`)).toHaveCount(0)
+  }
+
+  // 「+」菜单同样按角色过滤。
+  await page.locator('[data-testid="tab-add"]').click()
+  await expect(page.locator('#tabMenu a')).toHaveCount(3)
+
+  // 员工空态：不给引导带与假数字，只给通用说明。
+  const hint = page.locator('[data-testid="employee-empty-hint"]')
+  await expect(hint).toBeVisible()
+  await expect(hint).toContainText('订单数据仍为空，系统可能尚未初始化完成，请联系管理员')
+  await expect(page.locator('[data-testid="workspace-onboarding"]')).toHaveCount(0)
+  await expect(page.locator('[data-testid="workspace-health-card"]')).toHaveCount(0)
+  await expect(page.locator('[data-testid="workspace-system-card"]')).toHaveCount(0)
+  await expect(page.locator('[data-testid="workspace-sync-card"]')).toHaveCount(1)
+  await expect(page.locator('[data-testid="metric-orders"]')).toContainText('0')
+  await expect(page.locator('[data-testid="metric-last-sync"]')).toHaveCount(0)
+  await expect(page.locator('[data-testid="metric-platforms"]')).toBeVisible()
+})
+
+test('Given 普通员工 When 直达管理路由 Then 重定向工作台并提示仅管理员可访问', async ({ page }) => {
+  await prepare(page, 'User')
+  await mockWorkspaceApis(page, { report: emptyReport(), employee: true })
+
+  const managedPages = [
+    { path: '/shops', selector: '#page-shops' },
+    { path: '/users', selector: '#page-users' },
+    { path: '/settings', selector: '#page-business' },
+    { path: '/visual-prototype', selector: '[data-testid="visual-prototype"]' },
+    { path: '/visual-prototype/products', selector: '#page-product' },
+  ]
+  for (const { path, selector } of managedPages) {
+    await page.goto(path)
+    await expect(page).toHaveURL(/\/$/)
+    await expect(page.locator('[data-testid="page-dashboard"]')).toBeVisible()
+    await expect(page.locator(selector)).toHaveCount(0)
+    await expect(page.locator('[data-testid="toast"]')).toHaveText('该页面仅管理员可访问。')
+  }
+})
+
+// ---------- 授权店铺 ----------
+
+test('Given 独立页面路由 When 从侧栏导航 Then 授权店铺可达且已删条目无入口', async ({ page }) => {
+  await prepare(page)
+  await mockShops(page)
+  await page.goto('/')
+
+  await page.locator('[data-testid="side-nav"] [data-nav-page="shops"]').click()
+  await expect(page).toHaveURL(/\/shops$/)
+  await expect(shopsTable(page)).toBeVisible()
+  await expect(page.locator('[data-testid="side-nav"] [data-nav-page="shops"]')).toHaveAttribute(
+    'aria-current',
+    'page',
   )
-  expect(hasPageOverflow).toBe(false)
+
+  for (const removed of ['newdev', 'products', 'service-connection', 'orders-sync']) {
+    await expect(page.locator(`[data-nav-page="${removed}"]`)).toHaveCount(0)
+  }
 })
 
-test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标题清晰且卡片字阶统一', async ({
+test('Given 桌面端授权店铺 When 打开 Then 沿用 Dashboard 卡片语言且无横向溢出', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
+  await prepare(page)
   await mockShops(page)
   await page.goto('/shops')
 
@@ -260,88 +683,19 @@ test('Given 桌面端服务页面 When 沿用 Dashboard 卡片语言 Then 页标
   await expect(page.getByRole('button', { name: '刷新本地数据' })).toBeVisible()
   await expect(page.locator('[data-testid="shop-summary-card"]')).toHaveCount(4)
   await expect(page.locator('[class^="el-"], [class*=" el-"]')).toHaveCount(0)
-
-  await page.route('**/api/ping', (route) => route.fulfill({ json: { message: '连接正常' } }))
-  await page.goto('/service-connection')
-
-  const serviceHeader = page.locator('[data-testid="service-head"]')
-  await expect(serviceHeader).toHaveCSS('display', 'block')
-  await expect(serviceHeader).toHaveCSS('height', '62px')
-  await expect(serviceHeader).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
-  await expect(serviceHeader).toHaveCSS('box-shadow', 'none')
-
-  const panel = page.locator('[data-testid="service-panel"]')
-  await expect(panel).toBeVisible()
-  await expect(panel).toHaveCSS('border-top-width', '0px')
-  await expect(panel).toHaveCSS('border-top-left-radius', '6px')
-  await expect(page.locator('[data-testid="service-label"]')).toHaveCSS('font-size', '14px')
-  await expect(page.locator('[data-testid="service-label"]')).toHaveCSS('font-weight', '700')
-  await expect(page.locator('[data-testid="service-panel-head"]')).toHaveCSS(
-    'border-bottom-width',
-    '0px',
-  )
-  await expect(page.locator('[data-testid="service-panel-head"]')).toHaveCSS('min-height', '54px')
-  await expect(page.locator('[data-testid="service-panel-body"]')).toHaveCSS(
-    'background-color',
-    'rgb(255, 255, 255)',
-  )
-  await expect(page.locator('[data-testid="service-head"] h1')).toHaveCSS('font-size', '20px')
-  await expect(page.locator('[data-testid="service-retry"]')).toHaveCSS('height', '30px')
-  await expect(page.locator('[data-testid="service-tag"]')).toHaveCSS('height', '18px')
-  await expect(page.locator('[class^="el-"], [class*=" el-"]')).toHaveCount(0)
-
-  const hasPageOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
-  )
-  expect(hasPageOverflow).toBe(false)
+  expect(await hasPageOverflow(page)).toBe(false)
 
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.reload()
-  await expect(page.locator('[data-testid="service-panel"]')).toBeVisible()
-  const hasWideOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
-  )
-  expect(hasWideOverflow).toBe(false)
-
-  await page.goto('/shops')
   await expect(shopsTable(page)).toBeVisible()
-  const hasWideShopsOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
-  )
-  expect(hasWideShopsOverflow).toBe(false)
-})
-
-test('Given 独立服务路由 When 从设置侧栏导航 Then 授权店铺和服务连接均可达并已渲染', async ({
-  page,
-}) => {
-  await mockShops(page)
-  await page.route('**/api/ping', (route) => route.fulfill({ json: { message: '连接正常' } }))
-  await page.goto('/')
-  await page.locator('[data-group="settings"] button[aria-expanded]').click()
-
-  await page.locator('[data-nav-page="shops"]').click()
-  await expect(page).toHaveURL(/\/shops$/)
-  await expect(shopsTable(page)).toBeVisible()
-  await expect(page.locator('[data-nav-page="shops"]').first()).toHaveAttribute(
-    'aria-current',
-    'page',
-  )
-
-  await expect(page.locator('[data-nav-page="orders-sync"]')).toHaveCount(0)
-
-  await page.locator('[data-nav-page="service-connection"]').click()
-  await expect(page).toHaveURL(/\/service-connection$/)
-  await expect(page.locator('[data-testid="service-panel"]')).toBeVisible()
-  await expect(page.locator('[data-nav-page="service-connection"]').first()).toHaveAttribute(
-    'aria-current',
-    'page',
-  )
+  expect(await hasPageOverflow(page)).toBe(false)
 })
 
 test('Given 一页 20 家店铺 When 视口高度不足 Then 分页栏固定可见且表格体可滚动到最后一行', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 700 })
+  await prepare(page)
   await mockShops(page, 20)
   await page.goto('/shops')
 
@@ -366,6 +720,7 @@ test('Given 多页店铺 When 使用完整分页器 Then 页码、每页条数�
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
+  await prepare(page)
   await mockPagedShops(page, 45)
   await page.goto('/shops')
 
@@ -404,6 +759,7 @@ test('Given 店铺列表返回长错误详情 When 加载失败 Then 提示条�
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
+  await prepare(page)
   await page.route('**/api/erp/order-sync-availability', (route) =>
     route.fulfill({
       json: { configured: true, orderSyncEnabled: false },
@@ -428,29 +784,20 @@ test('Given 店铺列表返回长错误详情 When 加载失败 Then 提示条�
     clientWidth: element.clientWidth,
   }))
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth)
-  const hasPageOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
-  )
-  expect(hasPageOverflow).toBe(false)
+  expect(await hasPageOverflow(page)).toBe(false)
 })
 
-test('Given 服务连接 When 检测成功或失败 Then 显示对应状态与既有文案', async ({ page }) => {
-  let fail = false
-  await page.route('**/api/ping', (route) =>
-    fail
-      ? route.fulfill({ status: 500, body: 'boom' })
-      : route.fulfill({ json: { message: 'pong' } }),
-  )
+// ---------- 订单列表 ----------
 
-  await page.goto('/service-connection')
-  await expect(page.locator('[data-testid="service-tag"]')).toHaveText('连接成功')
-  await expect(page.locator('[data-testid="service-message"]')).toHaveText('后端响应：pong')
+test('Given 订单列表 When 打开 Then 订单公告入口已移除且桌面无横向溢出', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await prepare(page)
+  await mockOrders(page)
+  await page.goto('/orders')
 
-  fail = true
-  await page.getByRole('button', { name: '重试' }).click()
-  await expect(page.locator('[data-testid="service-tag"]')).toHaveText('连接失败')
-  await expect(page.locator('[data-testid="service-message"][data-tone="error"]')).toContainText(
-    '服务器返回 HTTP 500',
-  )
-  await expect(page.getByRole('button', { name: '重试' })).toBeEnabled()
+  const region = page.getByRole('region', { name: '订单列表' })
+  await expect(region.locator('tbody tr').first()).toBeVisible()
+  await expect(page.locator('#openNotice, #noticeLayer')).toHaveCount(0)
+  await expect(page.getByText('订单公告')).toHaveCount(0)
+  expect(await hasPageOverflow(page)).toBe(false)
 })

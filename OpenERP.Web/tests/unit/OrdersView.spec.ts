@@ -158,7 +158,7 @@ describe('订单列表', () => {
     expect(wrapper.get('tbody tr').text()).toContain('东南亚店铺')
   })
 
-  it('Given 尚未同步订单 When 从空态同步 Then 打开具名面板并保留订单公告', async () => {
+  it('Given 尚未同步订单 When 从空态同步 Then 打开具名面板且订单公告入口已移除', async () => {
     stubOrders(() => Response.json(orderPage({ items: [], total: 0 })))
     installNativeDialogShim()
     wrapper = mount(OrdersView, { global: { stubs: ['RouterLink'] } })
@@ -170,7 +170,7 @@ describe('订单列表', () => {
 
     const dialog = wrapper.get('dialog[open][aria-labelledby]')
     expect(dialog.text()).toContain('同步历史订单')
-    expect(wrapper.get('#openNotice').text()).toContain('订单公告')
+    expect(wrapper.find('#openNotice').exists()).toBe(false)
   })
 
   it('Given 有已同步订单 When 筛选无结果并重置 Then 区分无结果状态且恢复全历史订单', async () => {

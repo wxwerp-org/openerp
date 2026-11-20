@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { initializationCompleted, login } from '../account/session'
+import { useAboutInfo } from '../account/aboutInfo'
 import AuthLayout from '../components/layout/AuthLayout.vue'
 
 const route = useRoute()
@@ -9,6 +10,10 @@ const username = ref('')
 const password = ref('')
 const error = ref('')
 const submitting = ref(false)
+const { versionLabel, commitLabel } = useAboutInfo()
+const versionText = computed(() =>
+  commitLabel.value ? `${versionLabel.value} · ${commitLabel.value}` : versionLabel.value,
+)
 
 const labelClass = 'text-13/20 font-semibold text-ink'
 const inputClass =
@@ -77,5 +82,8 @@ async function submit(): Promise<void> {
         {{ submitting ? '正在登录…' : '登录' }}
       </button>
     </form>
+    <template #footer>
+      <span data-testid="login-version">{{ versionText }}</span>
+    </template>
   </AuthLayout>
 </template>

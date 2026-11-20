@@ -23,7 +23,8 @@ export type ShopSyncStatus = {
 
 export type ShopSyncStartResult = {
   accepted: boolean
-  status: ShopSyncStatus
+  /** 被拒绝（例如非管理员）时服务端不返回状态。 */
+  status: ShopSyncStatus | null
   error: string | null
 }
 
@@ -41,7 +42,10 @@ type OrderSyncBatchStartResult = {
 }
 
 type ErpHubOptions = {
+  /** 订阅目录同步状态与事件（仅管理员可用）。 */
   shopSync?: boolean
+  /** 订阅订单同步任务与事件；默认与 shopSync 相反，二者可同时开启。 */
+  orderSync?: boolean
   onOrdersChanged?: () => void
 }
 
@@ -89,7 +93,9 @@ function isShopSyncStatus(value: unknown): value is ShopSyncStatus {
   )
 }
 
-export function useErpHub({ shopSync = true, onOrdersChanged }: ErpHubOptions = {}) {
+export function useErpHub({ shopSync = true, orderSync, onOrdersChanged }: ErpHubOptions = {}) {
+  const wantsShop = shopSync
+  const wantsOrder = orderSync ?? !shopSync
   const state = ref<ErpHubState>('idle')
   const status = ref<ShopSyncStatus | null>(null)
   const orderSyncTasks = ref<Record<number, OrderSyncTask>>({})
@@ -107,19 +113,26 @@ export function useErpHub({ shopSync = true, onOrdersChanged }: ErpHubOptions = 
   function updateOrders(nextEpoch: string, updates: OrderSyncTask[]): void {
     if (retiredEpochs.has(nextEpoch)) return
     let ordersChanged = false
+    let tasks = orderSyncTasks.value
     if (epoch !== undefined && epoch !== nextEpoch) {
       retiredEpochs.add(epoch)
       ordersChanged = true
-      orderSyncTasks.value = {}
+      tasks = {}
     }
     epoch = nextEpoch
 
+    // 整体替换对象：调用方的浅层 watch 才能看到任务新增与状态变化。
+    // 服务端快照与事件都按 version 合并，晚到的旧快照不会覆盖更新的状态。
+    const merged = { ...tasks }
+    let changed = tasks !== orderSyncTasks.value
     for (const task of updates) {
-      const previous = orderSyncTasks.value[task.sid]
+      const previous = merged[task.sid]
       if (previous && task.version <= previous.version) continue
-      orderSyncTasks.value[task.sid] = task
+      merged[task.sid] = task
+      changed = true
       if (task.status === 'succeeded' || task.status === 'partial') ordersChanged = true
     }
+    if (changed) orderSyncTasks.value = merged
 
     if (ordersChanged) onOrdersChanged?.()
   }
@@ -149,15 +162,15 @@ export function useErpHub({ shopSync = true, onOrdersChanged }: ErpHubOptions = 
           .build()
 
         hub.on(syncUpdatedEvent, (next: unknown) => {
-          if (shopSync && connection === hub && isShopSyncStatus(next)) apply(next)
+          if (wantsShop && connection === hub && isShopSyncStatus(next)) apply(next)
         })
         hub.on('OrderSyncUpdated', (next: unknown) => {
-          if (!shopSync && connection === hub && isOrderSyncTask(next)) {
+          if (wantsOrder && connection === hub && isOrderSyncTask(next)) {
             updateOrders(next.epoch, [next])
           }
         })
         hub.on('OrderSyncSnapshot', (payload: unknown) => {
-          if (shopSync || connection !== hub || !payload || typeof payload !== 'object') return
+          if (!wantsOrder || connection !== hub || !payload || typeof payload !== 'object') return
           const { epoch, statuses } = payload as { epoch?: unknown; statuses?: unknown }
           if (typeof epoch !== 'string' || !Array.isArray(statuses)) return
           updateOrders(
@@ -173,8 +186,8 @@ export function useErpHub({ shopSync = true, onOrdersChanged }: ErpHubOptions = 
         hub.onreconnected(() => {
           if (connection !== hub) return
           state.value = 'connected'
-          if (shopSync) void refreshStatus()
-          else onOrdersChanged?.()
+          if (wantsShop) void refreshStatus()
+          onOrdersChanged?.()
         })
         hub.onclose(() => {
           if (connection === hub) state.value = 'disconnected'
@@ -183,10 +196,14 @@ export function useErpHub({ shopSync = true, onOrdersChanged }: ErpHubOptions = 
         connection = hub
         state.value = 'connecting'
         await hub.start()
-        if (connection !== hub) return
+        if (connection !== hub) {
+          // 连接建立期间已被卸载/重连：停掉这条迟到的连接，避免泄漏。
+          void hub.stop().catch(() => undefined)
+          return
+        }
         state.value = 'connected'
-        if (shopSync) await refreshStatus()
-        else if (retrying) onOrdersChanged?.()
+        if (wantsShop) await refreshStatus()
+        if (wantsOrder && retrying) onOrdersChanged?.()
       } catch {
         state.value = 'disconnected'
       } finally {
@@ -267,12 +284,19 @@ export function useErpHub({ shopSync = true, onOrdersChanged }: ErpHubOptions = 
     }
   }
 
+  /** 手动刷新重建连接：在线漏送终态时靠服务端快照恢复（本轮唯一恢复入口）。 */
+  async function reconnect(): Promise<void> {
+    await disconnect()
+    await connect()
+  }
+
   return {
     state,
     status,
     orderSyncTasks,
     connect,
     disconnect,
+    reconnect,
     refreshStatus,
     startShopSync,
     startOrderSync,

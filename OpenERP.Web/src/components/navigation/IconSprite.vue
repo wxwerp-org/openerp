@@ -64,10 +64,6 @@
       />
       <path d="M13.8 15.8c-.8.9-2.1 1.4-3.8 1.4" />
     </symbol>
-    <symbol id="i-bell" viewBox="0 0 20 20">
-      <path d="M4.5 14.5h11l-1.4-2.1V9a4.1 4.1 0 0 0-8.2 0v3.4l-1.4 2.1z" />
-      <path d="M8.4 16.5h3.2" />
-    </symbol>
     <symbol id="i-user" viewBox="0 0 20 20">
       <circle cx="10" cy="7.3" r="3.1" />
       <path d="M4.3 17c.5-3 2.6-4.6 5.7-4.6s5.2 1.6 5.7 4.6" />
