@@ -614,6 +614,24 @@ test('Given 报表已加载 When 用键盘遍历 Then 焦点按筛选图表表�
     tail.push((await readStep()).label)
   }
   expect(tail).toEqual(['第 3 页', '第 7 页', '下一页', '每页条数', '前往页码'])
+
+  // 描边必须真实绘制：`outline-none` 会写入 --tw-outline-style，只有补 outline-solid 才能画出焦点环。
+  const focusRing = async (label: string) => {
+    await page.getByLabel(label).focus()
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Shift+Tab')
+    return page.getByLabel(label).evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { style: style.outlineStyle, width: style.outlineWidth, color: style.outlineColor }
+    })
+  }
+  for (const label of ['平台筛选', '每页条数', '前往页码']) {
+    expect(await focusRing(label)).toEqual({
+      style: 'solid',
+      width: '2px',
+      color: 'rgb(0, 91, 245)',
+    })
+  }
 })
 
 test('Given 真实宿主本地订单 When 打开商品量报表 Then 页面与接口的订单数件数一致且覆盖平台店铺图', async ({

@@ -357,7 +357,7 @@ function subItemState(active: boolean): string[] {
       <div
         v-for="group in groups"
         :key="group.id"
-        :class="isRail ? 'mt-4' : ''"
+        :class="collapsed ? 'mt-4' : ''"
         :data-group="group.id"
         @mouseenter="usesRail() && openFlyoutOnHover(group, $event)"
         @mouseleave="closeFlyoutSoon"
