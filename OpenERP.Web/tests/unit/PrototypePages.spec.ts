@@ -5,6 +5,7 @@ import OrdersView from '../../src/views/OrdersView.vue'
 import ProductListView from '../../src/views/ProductListView.vue'
 import UsersView from '../../src/views/UsersView.vue'
 import { installNativeDialogShim } from './installNativeDialogShim'
+import { createSettingsRouter } from './settingsRouter'
 
 beforeAll(installNativeDialogShim)
 
@@ -42,7 +43,7 @@ describe('原型列表与配置组件', () => {
   })
 
   it('Given 默认基础配置 When 渲染设置页 Then 关键配置与信息图标正确显示且无模板残留', () => {
-    const wrapper = mount(BusinessConfigView)
+    const wrapper = mount(BusinessConfigView, { global: { plugins: [createSettingsRouter()] } })
 
     expect(wrapper.get('#settingsContent').text()).toContain('数据权限管理')
     expect(wrapper.get('#settingsContent').text()).toContain('周起始日')
@@ -52,7 +53,7 @@ describe('原型列表与配置组件', () => {
   })
 
   it('Given 业务配置多平台分组 When 选择店铺设置 Then 三栏配置结构显示对应内容', async () => {
-    const wrapper = mount(BusinessConfigView)
+    const wrapper = mount(BusinessConfigView, { global: { plugins: [createSettingsRouter()] } })
 
     await wrapper.get('[data-settings-group="multiplatform"]').trigger('click')
     const shopButton = wrapper

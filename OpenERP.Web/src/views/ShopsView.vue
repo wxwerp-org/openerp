@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ErpAccessNotice from '../components/ErpAccessNotice.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { apiRequest } from '../account/session'
 import AppButton from '../ui/AppButton.vue'
@@ -505,17 +506,7 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
     </div>
 
     <div v-else-if="configStatus === 'ready' && !configured" class="shrink-0 pb-12">
-      <AppNotice
-        tone="amber"
-        icon="i-warning"
-        title="尚未配置私有 ERP AccessToken"
-        description="请前往系统设置 → 基础 → ERP 接入填写 Token 后重试。"
-        role="alert"
-      >
-        <template #trailing>
-          <AppButton href="/service-connection" class="ml-auto">去服务连接</AppButton>
-        </template>
-      </AppNotice>
+      <ErpAccessNotice />
     </div>
 
     <div v-if="listError" class="shrink-0 pb-12">
