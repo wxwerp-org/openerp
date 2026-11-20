@@ -1,5 +1,8 @@
 {
   "appHost": {
     "path": "OpenERP.AppHost.csproj"
+  },
+  "sdk": {
+    "version": "17.0.0"
   }
 }

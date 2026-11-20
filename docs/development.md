@@ -9,7 +9,7 @@
 - 正式版 .NET **10** SDK，[global.json](../global.json) 选择已安装的最高 .NET 10 SDK。
 - Node.js **26**，见 [.node-version](../.node-version)。
 - pnpm **11.16.0**，见 [package.json](../OpenERP.Web/package.json)。
-- PATH 中可直接调用的 Aspire CLI，版本与项目的 **13.6.5** 对齐；安装方式见 [Aspire 官方安装说明](https://aspire.dev/get-started/install-cli/)。
+- PATH 中可直接调用的 Aspire CLI，版本与项目的 **17.0.0** 对齐；安装方式见 [Aspire 官方安装说明](https://aspire.dev/get-started/install-cli/)。
 - 已启动的 Docker Desktop 或 Aspire 支持的兼容容器运行环境。
 
 在仓库根目录安装依赖并信任开发证书：
@@ -71,7 +71,7 @@ pnpm --dir OpenERP.Web test
 
 ### 后端集成测试资源与失败诊断
 
-集成测试使用项目的 AppHost 模型，由 `AspireIntegrationFixture` 管理测试会话。fixture 初始化只启动 PostgreSQL 并等待 `openerp` 数据库健康；数据库与 CLI 测试可直接使用它，无须启动 API、Redis 或对象存储。需要存储的测试调用 `EnsureStorageStartedAsync`（获取存储连接时也会确保就绪）；HTTP 测试在异步初始化中调用 `EnsureApiStartedAsync`，并行准备存储和 Redis，待依赖就绪后启动 API。`StartWebAsync` 先准备 API，再启动前端安装器和前端。同步创建 HTTP 客户端不会隐式启动服务。
+集成测试使用项目的 AppHost 模型，由 `AspireIntegrationFixture` 管理测试会话。fixture 初始化时启动 PostgreSQL 并等待 `openerp` 数据库健康。Aspire 17 同时准备 API 项目的构建产物。数据库与 CLI 测试可直接使用数据库，API 进程、Redis 和对象存储仍按需启动。需要存储的测试调用 `EnsureStorageStartedAsync`（获取存储连接时也会确保就绪）；HTTP 测试在异步初始化中调用 `EnsureApiStartedAsync`，并行准备存储和 Redis，待依赖就绪后启动 API。`StartWebAsync` 先准备 API，再启动前端安装器和前端。同步创建 HTTP 客户端不会隐式启动服务。
 
 兼容的测试在同一 xUnit collection 内复用 PostgreSQL 服务器，数据库专用用例仍各自创建和删除独立数据库；共享 API 的用例保持串行。首次初始化与浏览器验收继续使用独立 fixture，避免共享账号、迁移和初始化状态。资源启动任务只执行一次，失败不会自动重试；已经启动的资源保留至 fixture 结束，因此全量运行中后续数据库用例可能与已启动的 API 共存。容器、密钥目录和存储卷属于本次测试会话，存储卷在测试内跨重启保留数据，最终随 fixture 清理。
 
