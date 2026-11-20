@@ -51,7 +51,7 @@ aspire start --isolated
 | [OpenERP.ServiceDefaults](../OpenERP.ServiceDefaults/) | 健康检查、遥测与服务发现          |
 | [OpenERP.Api.Tests](../OpenERP.Api.Tests/)             | 后端单元测试和集成测试            |
 
-[router/index.ts](../OpenERP.Web/src/router/index.ts) 定义工作台、授权店铺、产品、订单、业务配置、用户与新品开发路由，[views](../OpenERP.Web/src/views/) 存放页面，[components](../OpenERP.Web/src/components/) 提供可复用工作台卡片、导航和控件，[ui](../OpenERP.Web/src/ui/) 提供 Tailwind 主题 token 与 `App*` 通用组件。前端无按页面拆分的全局样式目录，样式由工具类与 [theme.css](../OpenERP.Web/src/ui/theme.css) 统一承载，约定见[前端样式架构](#前端样式架构)。
+[router/index.ts](../OpenERP.Web/src/router/index.ts) 定义工作台、订单、商品量报表、授权店铺、用户管理与 ERP 接入路由，并为管理员保留仅内部比对用的视觉原型路由（`/visual-prototype`，不写入口与文档）。[views](../OpenERP.Web/src/views/) 存放页面，[components](../OpenERP.Web/src/components/) 提供可复用工作台区块、导航和控件，[workspace](../OpenERP.Web/src/workspace/) 承载工作台取数与状态推导，[ui](../OpenERP.Web/src/ui/) 提供 Tailwind 主题 token 与 `App*` 通用组件。前端无按页面拆分的全局样式目录，样式由工具类与 [theme.css](../OpenERP.Web/src/ui/theme.css) 统一承载，约定见[前端样式架构](#前端样式架构)。
 
 ## 构建与测试
 
@@ -68,6 +68,8 @@ pnpm --dir OpenERP.Web typecheck
 pnpm --dir OpenERP.Web build
 pnpm --dir OpenERP.Web test
 ```
+
+API 的版本信息在构建时注入：`OPENERP_BUILD_VERSION`、`OPENERP_BUILD_COMMIT`、`OPENERP_BUILD_TIME` 三个环境变量由[发布工作流](../.github/workflows/release.yml)在构建 API 前导出，分别写入 `AssemblyInformationalVersion` 与程序集元数据；本地未设置时兜底 `0.1.0-dev`。只读接口 `GET /api/about` 匿名返回 `version`、`commit`（7 位）和 `buildTime`（UTC ISO 8601），前端缺失时显示 `dev`。
 
 ### 后端集成测试资源与失败诊断
 
@@ -183,7 +185,7 @@ python3 deploy/tests/smoke.py --compose ./aspire-output/docker-compose.yaml
 
 ## 用户、权限与会话
 
-系统的唯一管理员 `admin` 可以管理用户和系统设置。管理员创建的账号具有 `User` 角色，可查询业务数据、发起手动同步和维护本人资料。管理员用户名固定。姓名必填（最多 20 个字符），手机号可选（最多 20 个字符），邮箱可选并校验格式；手机号、邮箱仅作为个人资料。菜单中的资料与最近登录时间来自数据库，保存资料不会改变最近登录时间。
+系统的唯一管理员 `admin` 可以管理用户和系统设置，并可访问授权店铺与 ERP 接入。管理员创建的账号具有 `User` 角色，可查询业务数据、发起手动同步和维护本人资料；店铺授权状态、目录同步状态与授权/同步管理接口仅对管理员开放，员工直接访问会被重定向或返回 403。管理员用户名固定。姓名必填（最多 20 个字符），手机号可选（最多 20 个字符），邮箱可选并校验格式；手机号、邮箱仅作为个人资料。菜单中的资料与最近登录时间来自数据库，保存资料不会改变最近登录时间。
 
 ### 本地初始化与密码重置
 
@@ -222,7 +224,7 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 | `POST /api/users` | 管理员创建普通用户 |
 | `PUT /api/users/{id}`、`DELETE /api/users/{id}` | 管理员编辑或软删除员工账号 |
 
-前端通过应用同源的 HTTPS `/api` 地址访问后端。初始化、登录、刷新和退出要求 `X-CSRF-TOKEN` 请求头及对应 CSRF Cookie，先请求 `/api/auth/csrf` 取得令牌。防伪校验继续使用存放于 PostgreSQL 的 Data Protection 密钥。Bearer 认证的业务写请求，包括密码修改、资料保存和文件上传，无需附带 CSRF 令牌。业务 API（包括 `/api/ping`、ERP 和文件）默认需要登录，健康检查保持匿名。
+前端通过应用同源的 HTTPS `/api` 地址访问后端。初始化、登录、刷新和退出要求 `X-CSRF-TOKEN` 请求头及对应 CSRF Cookie，先请求 `/api/auth/csrf` 取得令牌。防伪校验继续使用存放于 PostgreSQL 的 Data Protection 密钥。Bearer 认证的业务写请求，包括密码修改、资料保存和文件上传，无需附带 CSRF 令牌。业务 API（包括 `/api/orders`、ERP 与文件）默认需要登录，`/api/about` 与健康检查保持匿名。
 
 `account`、`GET /api/auth/me` 和资料保存响应包含 `id`、`role`、`username`、`name`、`phone`、`email`、`lastLoginAt`、`expiresAt`，时间使用 ISO 8601。这里的 `expiresAt` 表示 24 小时刷新期限；access token 的到期时间单独由 `accessTokenExpiresAt` 返回。未初始化时登录及受保护接口返回 `409`，ProblemDetails 顶层 `code` 为 `initialization_required`；初始化重复请求或并发败者返回 `409`、`already_initialized`。前端保留安全的原目标地址，完成初始化和登录后回到有权访问的页面。普通用户访问用户管理、ERP 配置或定时同步设置接口返回 `403`。
 
@@ -232,7 +234,7 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 
 ## ERP 接入与接口
 
-上游地址固定为 `https://v3-api.wxwerp.com`。管理员在「系统设置 → 基础 → ERP 接入」填写或更换 Token。API 使用 ASP.NET Core Data Protection 保护 Token，并保存在 PostgreSQL 中。备份数据库时一并保留 Data Protection 密钥表。页面只显示保存状态。验证凭证与店铺权限时，以实际 ERP 请求的结果为准。
+上游地址固定为 `https://v3-api.wxwerp.com`。管理员在账户菜单「系统设置」打开的 ERP 接入页填写或更换 Token。API 使用 ASP.NET Core Data Protection 保护 Token，并保存在 PostgreSQL 中。备份数据库时一并保留 Data Protection 密钥表。页面只显示保存状态。验证凭证与店铺权限时，以实际 ERP 请求的结果为准。
 
 | 接口 | 行为 |
 | --- | --- |
