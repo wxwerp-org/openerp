@@ -6,6 +6,7 @@ on:
     paths:
       - 'OpenERP.Web/**'
       - '.github/workflows/ci-web.yml'
+      - '.github/workflows/release.yml'
       - '.node-version'
       - '.editorconfig'
       - '.gitattributes'
@@ -90,6 +91,9 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v7
+
+      - name: 验证 houqin 实例升级与失败恢复
+        run: python3 deploy/tests/test_houqin_update.py
 
       - name: 安装 .NET
         uses: actions/setup-dotnet@v6
