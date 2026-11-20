@@ -6,7 +6,7 @@
 
 - 遇到警告（含 ESLint），按该诊断的官方指导修正成因，不得忽略、屏蔽或降级。
 - .NET `restore`、`build` 直接在沙箱外执行。`run`、`test` 涉及显式或隐式还原时同样适用。
-- 涉及 Aspire 时，先读并遵循[项目内 Aspire Skill](.agents/skills/aspire/SKILL.md)，按路由名称读取仓库内对应的子 Skill。直接调用 PATH 中的 `aspire`，沿用[官方 MCP 集成方式](docs/development.md#使用-ai-开发工具)。
+- 涉及 Aspire 时，先读并遵循[项目内 Aspire Skill](.agents/skills/aspire/SKILL.md)，按路由名称读取仓库内对应的子 Skill。直接调用 PATH 中的 `aspire`。
 - 用户明确指令优先于 Skill。若 Skill 导致请求确认、暂停、未完成或偏离任务，链接实际读取的 Skill，引用原文并区分其要求与自己的判断。
 
 ## 验收与 PR

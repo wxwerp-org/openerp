@@ -369,6 +369,4 @@ PostgreSQL `18-alpine` 和 Redis `8-alpine` 使用浮动大版本标签，小版
 
 ## 使用 AI 开发工具
 
-仓库代理规则由 [AGENTS.md](../AGENTS.md) 提供，专项流程位于 `.agents/skills/`。
-
-仓库的 [.mcp.json](../.mcp.json) 与 [.vscode/mcp.json](../.vscode/mcp.json) 使用 `aspire agent init` 生成的 `aspire agent mcp` 配置。客户端与终端均直接使用 PATH 中的 `aspire` CLI，不额外套用 `dotnet tool run`。代理启动及其他生命周期操作遵循项目内 [Aspire Skill](../.agents/skills/aspire/SKILL.md) 及其路由的子 Skill。
+仓库代理规则见 [AGENTS.md](../AGENTS.md)。Codex、dsh 和 OpenCode 共用 `.agents/skills/` 中的 Aspire skills，由项目从[微软官方发布版](https://github.com/microsoft/aspire-skills/releases)同步。启动、停止或检查资源时，遵循项目内 [Aspire Skill](../.agents/skills/aspire/SKILL.md) 及其路由的子 Skill，直接调用 PATH 中的 `aspire` CLI。
