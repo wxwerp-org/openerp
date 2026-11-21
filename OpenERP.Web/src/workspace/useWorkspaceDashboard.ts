@@ -5,12 +5,16 @@ import {
   parseErpAvailability,
   parseErpConfig,
   parseShopDirectory,
+  localDateString,
   type ErpAvailability,
   type ErpConfigSummary,
   type ShopDirectory,
 } from './workspaceData'
 
 export type LoadStatus = 'idle' | 'loading' | 'success' | 'error'
+
+/** 走势周期只支持 7 / 30 天，与后端契约一致。 */
+export type TrendDays = 7 | 30
 
 export type WorkspaceDashboardOptions = {
   administrator: boolean
@@ -61,13 +65,20 @@ export function useWorkspaceDashboard({ administrator }: WorkspaceDashboardOptio
   let availabilityVersion = 0
   let temuShopVersion = 0
 
-  async function loadReport(): Promise<void> {
+  /** 报表是走势的主数据；周期变化时重新取数，日期结束点按浏览器本地时区给出。 */
+  async function loadReport(trendDays: TrendDays = 7): Promise<void> {
     const version = ++reportVersion
     if (!report.value) reportStatus.value = 'loading'
     reportRefreshing.value = true
     reportError.value = ''
     try {
-      const response = await apiRequest('/api/reports/order-snapshot?page=1&pageSize=1', {
+      const query = new URLSearchParams({
+        page: '1',
+        pageSize: '1',
+        trendDays: String(trendDays),
+        trendEnd: localDateString(),
+      })
+      const response = await apiRequest(`/api/reports/order-snapshot?${query.toString()}`, {
         cache: 'no-store',
       })
       if (version !== reportVersion) return
@@ -174,9 +185,9 @@ export function useWorkspaceDashboard({ administrator }: WorkspaceDashboardOptio
     }
   }
 
-  async function refresh(): Promise<void> {
+  async function refresh(trendDays: TrendDays = 7): Promise<void> {
     await Promise.allSettled([
-      loadReport(),
+      loadReport(trendDays),
       loadDirectory(),
       loadValidTemuShopCount(),
       loadConfig(),

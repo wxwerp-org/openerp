@@ -1,47 +1,79 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import AppCard from '../../ui/AppCard.vue'
+import AppIcon from '../../ui/AppIcon.vue'
 import { formatCount } from '../../workspace/workspaceData'
 
-defineProps<{
+const props = defineProps<{
   rows: { key: string; name: string; orderCount: number; itemQuantity: number }[]
 }>()
 
-const emit = defineEmits<{ select: [key: string] }>()
+const emit = defineEmits<{ select: [key: string]; open: [] }>()
+
+const maxQuantity = computed(() => Math.max(0, ...props.rows.map((row) => row.itemQuantity)))
+
+function barWidth(itemQuantity: number): number {
+  return maxQuantity.value > 0 ? (itemQuantity / maxQuantity.value) * 100 : 0
+}
 </script>
 
 <template>
-  <AppCard class="flex h-296 flex-col px-16 pb-12 pt-14" data-testid="workspace-shop-rank-card">
-    <div class="flex flex-none items-center justify-between">
-      <h2 class="text-13/20 font-semibold text-ink">店铺商品量 Top5</h2>
-      <span class="text-11 text-muted">按商品件数排序</span>
-    </div>
-    <ul v-if="rows.length > 0" class="m-0 flex min-h-0 flex-1 list-none flex-col p-0">
-      <li
-        v-for="(row, index) in rows"
-        :key="row.key"
-        class="min-w-0 border-b border-line-soft last:border-0"
+  <AppCard class="flex h-296 flex-col" data-testid="workspace-shop-rank-card">
+    <div class="flex h-54 flex-none items-start justify-between gap-12 px-16 pt-16">
+      <button
+        type="button"
+        class="flex items-center gap-4 text-14/22 font-bold whitespace-nowrap text-ink hover:text-primary"
+        @click="emit('open')"
       >
+        店铺商品量 Top5<AppIcon
+          name="i-chev-right"
+          :size="12"
+          class="text-title-caret [stroke-width:1.8]"
+        />
+      </button>
+      <span class="inline-flex items-center gap-3 text-12 whitespace-nowrap text-muted">
+        按商品件数排序<AppIcon name="i-info" :size="13" class="ml-2 text-placeholder" />
+      </span>
+    </div>
+    <ul
+      v-if="rows.length > 0"
+      role="list"
+      class="m-0 flex min-h-0 flex-1 list-none flex-col gap-8 overflow-y-auto px-16 pb-16"
+    >
+      <li v-for="(row, index) in rows" :key="row.key" class="min-w-0">
         <button
           type="button"
-          class="flex h-44 w-full items-center gap-10 rounded-4 px-4 text-left hover:bg-primary-faint"
+          class="flex w-full min-w-0 flex-col gap-5 rounded-4 text-left hover:bg-page-soft"
           :data-shop-key="row.key"
           @click="emit('select', row.key)"
         >
-          <span
-            class="flex size-20 flex-none items-center justify-center rounded-4 text-11 font-semibold"
-            :class="index === 0 ? 'bg-primary-soft text-primary' : 'bg-page text-body-strong'"
-            aria-hidden="true"
-            >{{ index + 1 }}</span
-          >
-          <span class="min-w-0 flex-1">
-            <span class="block truncate text-12 text-ink" :title="row.name">{{ row.name }}</span>
-            <span class="block text-11 text-muted">订单 {{ formatCount(row.orderCount) }}</span>
+          <span class="flex items-center justify-between gap-8 text-12 text-body">
+            <span class="flex min-w-0 items-center gap-6">
+              <span
+                class="flex size-20 flex-none items-center justify-center rounded-4 text-11 font-semibold"
+                :class="index === 0 ? 'bg-primary-soft text-primary' : 'bg-page text-body-strong'"
+                aria-hidden="true"
+                >{{ index + 1 }}</span
+              >
+              <span class="truncate text-ink" :title="row.name">{{ row.name }}</span>
+            </span>
+            <span class="whitespace-nowrap text-muted tabular-nums">
+              订单 {{ formatCount(row.orderCount) }}
+            </span>
           </span>
-          <span class="flex-none text-right">
-            <span class="block text-13 font-semibold tabular-nums text-ink">{{
-              formatCount(row.itemQuantity)
-            }}</span>
-            <span class="block text-11 text-muted">件</span>
+          <span class="flex items-center gap-8">
+            <span class="h-6 min-w-0 flex-1 overflow-hidden rounded-3 bg-progress-track">
+              <span
+                class="block h-full rounded-3"
+                :style="{
+                  width: `${barWidth(row.itemQuantity)}%`,
+                  background: index === 0 ? 'var(--color-chart-1)' : 'var(--color-chart-2)',
+                }"
+              ></span>
+            </span>
+            <b class="flex-none text-12 font-medium text-ink tabular-nums">
+              {{ formatCount(row.itemQuantity) }} 件
+            </b>
           </span>
         </button>
       </li>

@@ -2,6 +2,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import OrderSnapshotReportView from '../../src/views/OrderSnapshotReportView.vue'
+import { dataTrendFixture, salesFixture } from '../reportFixtures'
 
 type Shop = {
   source: string
@@ -84,6 +85,8 @@ function reportBody(overrides: Record<string, unknown> = {}) {
   return {
     generatedAtUtc: '2026-11-17T01:02:03Z',
     summary: { orderCount: 3, itemQuantity: 12 },
+    sales: salesFixture(371.12, 'USD', 3, 0),
+    trend: dataTrendFixture(),
     platforms: ['TemuPop', 'AliExpress'],
     shops: [shop(), secondTemuShop, otherPlatformShop],
     groups: [

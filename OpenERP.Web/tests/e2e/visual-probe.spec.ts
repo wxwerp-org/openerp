@@ -9,6 +9,7 @@ import {
   visualAccount,
   wide,
 } from './visual-probe'
+import { dataTrendFixture, emptyTrendFixture, salesFixture } from '../reportFixtures'
 
 test.skip(!process.env.VISUAL_PROBE, '仅 VISUAL_PROBE=1 时采集视觉探针。')
 
@@ -46,6 +47,8 @@ const reportShop = {
 const reportSample = {
   generatedAtUtc: '2026-11-17T01:02:03Z',
   summary: { orderCount: 1, itemQuantity: 5 },
+  sales: salesFixture(371.12, 'USD', 1, 0),
+  trend: dataTrendFixture(),
   platforms: ['TemuPop'],
   shops: [reportShop],
   groups: [{ shop: reportShop, orderCount: 1, itemQuantity: 5 }],
@@ -233,6 +236,8 @@ async function mockOrderSync(page: Page): Promise<void> {
 const emptyReport = {
   ...reportSample,
   summary: { orderCount: 0, itemQuantity: 0 },
+  sales: salesFixture(0, 'USD', 0, 0),
+  trend: emptyTrendFixture(),
   groups: [],
   orders: [],
   page: 1,
