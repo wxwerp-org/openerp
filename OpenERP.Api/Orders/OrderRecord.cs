@@ -8,6 +8,8 @@ internal sealed class OrderRecord : Entity
     public required string Platform { get; set; }
     public required string Status { get; set; }
     public Guid SyncRevision { get; set; }
+    public decimal? IncomeCost { get; set; }
+    public string? IncomeCurrency { get; set; }
     public string? CreatedRaw { get; set; }
     public string? CreatedSource { get; set; }
     public string? PaidRaw { get; set; }

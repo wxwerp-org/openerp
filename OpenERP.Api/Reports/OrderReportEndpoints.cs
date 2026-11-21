@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,10 +14,23 @@ public static class OrderReportEndpoints
     {
         app.MapGet("/api/reports/order-snapshot", async Task<Results<Ok<OrderSnapshotReport>, ProblemHttpResult>>
             (IOrderSnapshotReportQuery query, AppDbContext db, HttpContext context, string? platform,
-                [FromQuery] string[]? shops, int? page, int? pageSize, CancellationToken cancellationToken) =>
+                [FromQuery] string[]? shops, int? page, int? pageSize, string? trendDays, string? trendEnd,
+                CancellationToken cancellationToken) =>
         {
             context.Response.Headers.CacheControl = "no-store";
-            var request = new OrderSnapshotReportRequest(platform, shops ?? [], page ?? 1, pageSize ?? 20);
+            var days = 7;
+            if (trendDays is not null && !int.TryParse(trendDays, NumberStyles.Integer, CultureInfo.InvariantCulture, out days))
+                return TypedResults.Problem(statusCode: 400, title: OrderSnapshotReportRequest.InvalidTrendDays);
+
+            DateOnly? end = null;
+            if (trendEnd is not null)
+            {
+                if (!DateOnly.TryParseExact(trendEnd, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+                    return TypedResults.Problem(statusCode: 400, title: "趋势结束日期必须使用 yyyy-MM-dd 格式。");
+                end = date;
+            }
+
+            var request = new OrderSnapshotReportRequest(platform, shops ?? [], page ?? 1, pageSize ?? 20, days, end);
             if (request.ValidationError is { } error)
                 return TypedResults.Problem(statusCode: 400, title: error);
 

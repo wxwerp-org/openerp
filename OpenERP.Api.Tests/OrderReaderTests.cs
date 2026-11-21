@@ -431,6 +431,104 @@ public sealed partial class OrderReaderTests
         handler.AssertCompleted();
     }
 
+    [Theory]
+    [InlineData("""[{"currency":"CNY","amount":"100"},{"currency":"USD","amount":"13.91"}]""", "USD", "13.91")]
+    [InlineData("""[{"currency":"CNY","amount":"100"},{"currency":"CNY","amount":"99"},{"currency":"USD","amount":"13"},{"currency":"EUR","amount":"12"}]""", "USD", "13")]
+    [InlineData("""[{"currency":"CNY","amount":"100"},{"currency":"CNY","amount":"99"}]""", "CNY", "100")]
+    [InlineData("""[{"currency":"CNY","amount":"100"},{"currency":42},{"currency":" "},{"currency":"USD","amount":"-1"},{"currency":"EUR","amount":"12"}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":"0"}]""", "USD", "0")]
+    [InlineData("""[{"currency":"USD","amount":" \t13.91\r\n "}]""", "USD", "13.91")]
+    [InlineData("""[{"currency":"USD","amount":"9999999999999999.99"}]""", "USD", "9999999999999999.99")]
+    [InlineData("""[{"currency":"USD","amount":".5"}]""", "USD", "0.5")]
+    [InlineData("""[{"currency":"USD","amount":"12."}]""", "USD", "12")]
+    [InlineData("""[{"currency":"USD","amount":"-1"}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":"1,234.50"}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":"+13.91"}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":"13.910"}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":"10000000000000000"}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":"13.91\u0000"}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":"1.2.3"}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":"."}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":"-"}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":""}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":"  "}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":null}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":10}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD","amount":"1e2"}]""", "USD", null)]
+    [InlineData("""[{"currency":"USD"}]""", "USD", null)]
+    [InlineData("""[{"amount":"14"}]""", null, "14")]
+    [InlineData("""[{"currency":40,"amount":"14"}]""", null, "14")]
+    [InlineData("""[{"currency":"","amount":"14"}]""", null, "14")]
+    [InlineData("""[null, 42, []]""", null, null)]
+    [InlineData("[]", null, null)]
+    [InlineData("{}", null, null)]
+    [InlineData(null, null, null)]
+    public async Task Reads_cost_currency_from_the_list_without_rejecting_invalid_amounts(
+        string? amounts, string? currency, string? amount)
+    {
+        // Given 订单列表已提供创建时间和可选金额，详情没有金额。
+        var page = ListWithCreatedTime(FirstId);
+        if (amounts is not null)
+            page = WithAmounts(page, amounts);
+        var ct = TestContext.Current.CancellationToken;
+        using var handler = new ErpHandler(
+            ("/open-api/order/get_list_page_count", OneOrder),
+            ("/open-api/order/get_list", page),
+            ("/open-api/order/get_list_page_count", OneOrder),
+            ("/open-api/shop/get_shops", Shops),
+            ("/open-api/order/get_list_page_count", OneOrder),
+            ("/open-api/order/get_list", page),
+            ("/open-api/order/get_list_page_count", OneOrder),
+            ("/open-api/order_detail/get_base", Detail));
+        using var http = new HttpClient(handler);
+        var client = new WxwErpClient(http);
+
+        // When 分别读取列表索引和完整订单。
+        var index = await client.ReadOrderIndexAsync(30, 20, null, Token, ct);
+        var batch = await client.ReadOrdersAsync(30, null, Token, ct);
+
+        // Then 两条读取路径都成功，金额和币种独立保留，且没有额外请求。
+        if (index.IsErr) throw new XunitException(index.Error.Message);
+        if (batch.IsErr) throw new XunitException(batch.Error.Message);
+        var header = Assert.Single(index.Value.Orders);
+        var order = Assert.Single(batch.Value.Orders);
+        decimal? cost = amount is null ? null : decimal.Parse(amount, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal((cost, currency), (header.IncomeCost, header.IncomeCurrency));
+        Assert.Equal((cost, currency), (order.IncomeCost, order.IncomeCurrency));
+        handler.AssertCompleted();
+    }
+
+    [Fact]
+    public async Task ReadsEveryOrderOnPageWithAnOutOfRangeAmount()
+    {
+        // Given 同页三单，第二单的金额超过数据库上限。
+        const string firstId = "000000000000000000000003";
+        const string count = """{"data_count":3,"page_count":1}""";
+        var rows = new[]
+        {
+            WithAmounts(Row(firstId, 30), """[{"currency":"USD","amount":"13.91"}]"""),
+            WithAmounts(Row(FirstId, 30), """[{"currency":"USD","amount":"10000000000000000"}]"""),
+            WithAmounts(Row(SecondId, 30), """[{"currency":"USD","amount":"0"}]"""),
+        };
+        using var handler = new ErpHandler(
+            ("/open-api/order/get_list_page_count", count),
+            ("/open-api/order/get_list", "{\"orders\":[" + string.Join(',', rows) + "]}"),
+            ("/open-api/order/get_list_page_count", count));
+        using var http = new HttpClient(handler);
+
+        // When 读取订单列表。
+        var result = await new WxwErpClient(http).ReadOrderIndexAsync(
+            30, 20, null, Token, TestContext.Current.CancellationToken);
+
+        // Then 索引成功返回三单，只有第二单的金额未知。
+        if (result.IsErr)
+            throw new XunitException(result.Error.Message);
+        (string Id, decimal? Cost, string? Currency)[] expected =
+            [(firstId, 13.91m, "USD"), (FirstId, null, "USD"), (SecondId, 0m, "USD")];
+        Assert.Equal(expected, result.Value.Orders.Select(order => (order.ErpId, order.IncomeCost, order.IncomeCurrency)));
+        handler.AssertCompleted();
+    }
+
     private const string OneOrder = """{"data_count":1,"page_count":1}""";
     private const string TimeNotFound = """!{"success":false,"message":"_暂未找到信息"}""";
     private const string Shops = """!{"success":true,"data_count":1,"page_count":1,"data":{"items":[{"sid":"30","platform":"TemuPop"}]}}""";
@@ -451,6 +549,9 @@ public sealed partial class OrderReaderTests
         List(id, 30, secondId).Replace(
             """{"name":"_付款","time":"2025-08-12 13:01"}""",
             """{"name":"_创建","time":"2025-08-12 13:00"}""", StringComparison.Ordinal);
+
+    private static string WithAmounts(string json, string amounts) =>
+        json.Replace("\"times\":", "\"amounts\":" + amounts + ",\"times\":", StringComparison.Ordinal);
 
     private static string Row(string id, int sid) => $$"""
         {"id":"{{id}}","orderid":"ERP-1","sub_orders":[{"id":"PO-1","sid":30,"status":"已发货"}{{(sid == 30 ? "" : ",{\"id\":\"PO-2\",\"sid\":" + sid + "}")}}],

@@ -11,6 +11,7 @@ internal sealed class OrderConfiguration : EntityConfiguration<OrderRecord>
         base.Configure(builder);
         builder.ToTable("Orders");
         builder.HasAlternateKey(order => order.ErpId);
+        builder.Property(order => order.IncomeCost).HasPrecision(18, 2);
         builder.Property(order => order.SyncRevision).IsConcurrencyToken().HasDefaultValueSql("gen_random_uuid()");
         builder.HasMany(order => order.PlatformOrders).WithOne()
             .HasForeignKey(platformOrder => platformOrder.ErpId).HasPrincipalKey(order => order.ErpId);

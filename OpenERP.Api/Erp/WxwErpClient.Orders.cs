@@ -143,7 +143,8 @@ public sealed partial class WxwErpClient
                 if (!TryReadTimes(row, "time", "list", out var times))
                     return OpResults.Err("ERP 订单列表的时间格式不正确。");
 
-                orders.Add(new(id, number, times, pos));
+                var (incomeCost, incomeCurrency) = ReadIncome(row);
+                orders.Add(new(id, number, times, pos, incomeCost, incomeCurrency));
             }
 
             report?.Invoke(new("pages", total, ids.Count, 0));
@@ -261,7 +262,55 @@ public sealed partial class WxwErpClient
         }
 
         var pos = header.PlatformOrders.Select(po => po with { StatusCode = poCodes[po.PoNumber] }).ToArray();
-        return new OrderReadItem(new(header.ErpId, header.OrderNumber, sid, TemuPop, statusCode, header.Times, pos, lines), null);
+        return new OrderReadItem(new(header.ErpId, header.OrderNumber, sid, TemuPop, statusCode,
+            header.Times, pos, lines, header.IncomeCost, header.IncomeCurrency), null);
+    }
+
+    private static (decimal? Cost, string? Currency) ReadIncome(JsonElement row)
+    {
+        try
+        {
+            if (!TryField(row, "amounts", JsonValueKind.Array, out var amounts) || amounts.GetArrayLength() == 0)
+                return default;
+
+            var selected = amounts[0];
+            var currency = Text(selected, "currency");
+            for (var index = 1; index < amounts.GetArrayLength(); index++)
+            {
+                // 首条为订单原币，之后首个有效的不同币种为 ERP 成本币种。
+                var candidate = amounts[index];
+                var candidateCurrency = Text(candidate, "currency");
+                if (string.IsNullOrWhiteSpace(candidateCurrency) || candidateCurrency == currency)
+                    continue;
+
+                selected = candidate;
+                currency = candidateCurrency;
+                break;
+            }
+
+            var cost = ParseIncomeAmount(Text(selected, "amount"));
+            return (cost, string.IsNullOrWhiteSpace(currency) ? null : currency);
+        }
+        catch (InvalidOperationException)
+        {
+            // 可选金额的 JSON 文本无法解码时，仍保留订单其余字段。
+            return default;
+        }
+    }
+
+    private static decimal? ParseIncomeAmount(string? amount)
+    {
+        const decimal maxIncomeAmount = 9999999999999999.99m;
+        var text = amount.AsSpan().Trim();
+        var decimalPoint = text.IndexOf('.');
+        var integer = decimalPoint < 0 ? text : text[..decimalPoint];
+        var fraction = decimalPoint < 0 ? ReadOnlySpan<char>.Empty : text[(decimalPoint + 1)..];
+        if (fraction.Length > 2 || integer.IndexOfAnyExceptInRange('0', '9') >= 0 ||
+            fraction.IndexOfAnyExceptInRange('0', '9') >= 0)
+            return null;
+
+        return decimal.TryParse(text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value) &&
+            value <= maxIncomeAmount ? value : null;
     }
 
     private static bool TryReadPlatformOrders(JsonElement row, int sid,

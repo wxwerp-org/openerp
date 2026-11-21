@@ -15,6 +15,15 @@ namespace OpenERP.Api.Reports;
 public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock,
     ILogger<OrderSnapshotReportQuery>? logger = null) : IOrderSnapshotReportQuery
 {
+    private static readonly string CreatedDaysSql = $$"""
+        SELECT o."ErpId", parsed.created_at::date - DATE '0001-01-01' AS "DayNumber"
+        FROM "Orders" AS o
+        CROSS JOIN LATERAL (VALUES (btrim(o."CreatedRaw"))) AS source(created)
+        CROSS JOIN LATERAL (VALUES ({{OrderCreatedTimeSql.Normalize("source.created")}})) AS normalized(created)
+        CROSS JOIN LATERAL (SELECT {{OrderCreatedTimeSql.Parse("source.created", "normalized.created")}} AS created_at) AS parsed
+        WHERE o."DeletedAt" IS NULL
+        """;
+
     public async Task<OpResult<OrderSnapshotReport>> QueryAsync(OrderSnapshotReportRequest request, CancellationToken cancellationToken)
     {
         if (request.ValidationError is { } error)
@@ -41,6 +50,8 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
 
     private async Task<OrderSnapshotReport> ReadAsync(OrderSnapshotReportRequest request, CancellationToken ct)
     {
+        var generatedAt = clock.GetUtcNow().UtcDateTime;
+        var trendEnd = request.TrendEnd ?? DateOnly.FromDateTime(generatedAt);
         var all = db.Orders.AsNoTracking();
         if (request.AllowedShops is { } allowed)
             all = FilterByShops(all, allowed);
@@ -77,9 +88,94 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
             .Include(order => order.PlatformOrders).Include(order => order.Lines)
             .AsSplitQuery().ToArrayAsync(ct);
 
-        return new(clock.GetUtcNow().UtcDateTime, summary, shops.Select(shop => shop.Platform).Distinct().ToArray(),
-            shops, groups, rows.Select(StoredOrderMapping.Snapshot).ToArray(), page, request.PageSize, pageCount);
+        var (sales, trend) = await ReadAmountsAsync(selected, trendEnd, request.TrendDays, ct);
+        return new(generatedAt, summary, shops.Select(shop => shop.Platform).Distinct().ToArray(),
+            shops, groups, rows.Select(StoredOrderMapping.Snapshot).ToArray(), page, request.PageSize, pageCount, sales, trend);
     }
+
+    private async Task<(OrderSnapshotSales Sales, OrderSnapshotTrend Trend)> ReadAmountsAsync(
+        IQueryable<OrderRecord> selected, DateOnly end, int days, CancellationToken ct)
+    {
+        var lastDay = end.DayNumber;
+        var firstDay = lastDay - days + 1;
+        var previousFirst = firstDay - days;
+        var buckets = await QueryAmountBuckets(selected, previousFirst, lastDay).ToArrayAsync(ct);
+
+        var known = buckets.Sum(bucket => bucket.KnownCount);
+        var sales = new OrderSnapshotSales(known == 0 ? null : buckets.Sum(bucket => bucket.Amount),
+            CurrencyOf(buckets), known, buckets.Sum(bucket => bucket.OrderCount) - known);
+
+        var current = buckets.Where(bucket => bucket.Day >= firstDay && bucket.Day <= lastDay).ToLookup(bucket => bucket.Day);
+        var currentKnown = current.SelectMany(group => group).Sum(bucket => bucket.KnownCount);
+        var points = Enumerable.Range(firstDay, days).Select(day =>
+        {
+            var totals = SumWindow(current[day]);
+            return new OrderTrendPoint(FormatDay(day), totals.OrderCount, totals.ItemQuantity, totals.SalesAmount);
+        }).ToArray();
+
+        var previous = buckets.Any(bucket => bucket.Day < firstDay)
+            ? SumWindow(buckets.Where(bucket => bucket.Day >= previousFirst && bucket.Day < firstDay))
+            : null;
+        var trend = new OrderSnapshotTrend(days, end, CurrencyOf(current.SelectMany(group => group)), points, previous,
+            buckets.Where(bucket => bucket.Day == null).Sum(bucket => bucket.OrderCount),
+            currentKnown, points.Sum(point => point.OrderCount) - currentKnown);
+        return (sales, trend);
+    }
+
+    private IQueryable<AmountBucket> QueryAmountBuckets(IQueryable<OrderRecord> selected, int previousFirst, int lastDay)
+    {
+        var createdDays = db.Database.SqlQueryRaw<OrderCreatedDay>(CreatedDaysSql, OrderCreatedTimeSql.Parameters());
+        return (from order in selected
+                    join created in createdDays on order.ErpId equals created.ErpId
+                    select new
+                    {
+                        // 窗口外按前后汇总，供销售额和历史判定使用。
+                        Day = created.DayNumber < previousFirst ? previousFirst - 1
+                            : created.DayNumber > lastDay ? lastDay + 1 : created.DayNumber,
+                        Currency = order.IncomeCost != null ? order.IncomeCurrency : null,
+                        order.IncomeCost,
+                        Quantity = created.DayNumber >= previousFirst && created.DayNumber <= lastDay
+                            ? order.Lines.Sum(line => (long)line.Quantity) : 0L
+                    })
+            .GroupBy(row => new { row.Day, row.Currency })
+            .Select(group => new AmountBucket(group.Key.Day, group.Key.Currency, group.LongCount(),
+                group.LongCount(row => row.IncomeCost != null), group.Sum(row => row.Quantity),
+                group.Sum(row => row.IncomeCost) ?? 0m));
+    }
+
+    private static OrderTrendPrevious SumWindow(IEnumerable<AmountBucket> buckets)
+    {
+        long orders = 0;
+        long quantity = 0;
+        long known = 0;
+        decimal amount = 0;
+        foreach (var bucket in buckets)
+        {
+            orders += bucket.OrderCount;
+            quantity += bucket.ItemQuantity;
+            known += bucket.KnownCount;
+            amount += bucket.Amount;
+        }
+
+        return new(orders, quantity, orders > 0 && known == 0 ? null : amount);
+    }
+
+    private static string? CurrencyOf(IEnumerable<AmountBucket> buckets)
+    {
+        var currencies = buckets.Where(bucket => bucket.KnownCount > 0)
+            .Select(bucket => bucket.Currency).Distinct(StringComparer.Ordinal).Take(2).ToArray();
+        return currencies.Length == 1 ? currencies[0] : null;
+    }
+
+    // 合法结束日期可早于公元 1 年 1 月 30 日，此时窗口前部落在 ISO 8601 的 0000 年 12 月。
+    private static string FormatDay(int day) => day < 0
+        ? FormattableString.Invariant($"0000-12-{32 + day:00}")
+        : DateOnly.FromDayNumber(day).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private sealed record OrderCreatedDay(string ErpId, int? DayNumber);
+
+    private sealed record AmountBucket(int? Day, string? Currency, long OrderCount, long KnownCount,
+        long ItemQuantity, decimal Amount);
 
     private static IQueryable<OrderRecord> FilterByShops(IQueryable<OrderRecord> orders, IEnumerable<OrderShop> shops)
     {

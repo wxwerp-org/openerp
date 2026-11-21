@@ -4,7 +4,7 @@
 
 ## 页面展示
 
-页面与首页工作台使用同一视觉体系：`#005bf5` 主蓝、白色 6px 卡片、12px 卡片间距和紧凑表格。信息顺序为筛选区 → 快照概览 → 店铺/平台分析 → 完整分店汇总 → 订单明细 → 统计口径。所有数字来自同一次 `GET /api/reports/order-snapshot` 响应，随筛选与翻页同步更新；本轮改版未改变后端契约、统计口径、筛选语义、分页钳制和错误映射。
+页面与首页工作台使用同一视觉体系：`#005bf5` 主蓝、白色 6px 卡片、12px 卡片间距和紧凑表格。信息顺序为筛选区 → 快照概览 → 店铺/平台分析 → 完整分店汇总 → 订单明细 → 统计口径。所有数字来自同一次 `GET /api/reports/order-snapshot` 响应，随筛选与翻页同步更新。
 
 - **快照概览**：四个指标——本地订单数、商品件数、有订单店铺数、平均每单件数。有订单店铺数是当前筛选结果中 `groups.length`，只统计有订单的店铺，不含可选但无订单的店铺；平均每单件数仅由 `summary.itemQuantity / summary.orderCount` 派生，筛选结果为空时显示 `—`，不产生除零结果。
 - **店铺排行**：按「商品件数 / 订单数」切换指标，降序展示 Top 5，数量并列按店铺键稳定排序；条形长度相对当前展示集合的最大值计算，最大值为 0 时全部为 0。排行卡附视觉隐藏但语义完整的等价数据表；图表只展示前 5 家，**不替代**下方保留所有 `groups` 的完整分店汇总表。
@@ -18,7 +18,17 @@
 - 件数为所有当前商品行 `Quantity` 的原值之和，包含禁用和人工追加行。零数量订单仍在明细中；未知标志保留未知，不转换成否。
 - 不根据付款、取消或退款状态再次调整数量，也不把这项指标称为付款销量或净销量。源端已经改变的数量会随同步更新，不做第二次扣减。
 - 数据反映本地当前快照。同步未返回或跳过的历史订单按既有同步规则保留，因此不能据此证明源端订单完整性或最新同步时间。
-- 来源日期暂为无偏移的原始字符串，不参与报表筛选或周期统计。接口的 `generatedAtUtc` 是查询时间，使用 UTC `Z`，前端按本地时区显示；它不是订单创建或同步时间。
+- 接口的 `generatedAtUtc` 是查询时间，使用 UTC `Z`，前端按本地时区显示。订单创建时间和同步时间各有独立口径。
+
+## 金额与日期口径
+
+- 销售额来自 ERP 订单列表 `get_list` 的 `amounts`。通常第二条为 ERP 成本币种，当原币与成本币种相同时取唯一一条。若存在多个条目，取首条之后第一个不同的有效币种，找不到时取首条。所选金额对应 ERP 工作台 `sellerReceived`。
+- 金额去掉首尾空白后，只接受非负、最多两位小数且不超过 `numeric(18,2)` 上限 `9999999999999999.99` 的十进制字符串。带正负号、千分位、指数形式及其它无效或缺失的金额均记为未知（`null`），订单同步继续处理。
+- 已知金额按原值相加，其中真实零金额计为已知。缺少 ERP 收入权限时所有订单的金额均未知。部分金额已知时只加已知部分。存在订单但金额全未知的日期返回 `null`，没有订单的日期返回 `0`。
+- 工作台数字卡的 `sales` 汇总匹配平台与店铺的全部本地订单，包括没有创建日期的订单。汇总范围内没有已知金额时，合计为 `null`。既有订单在重新同步取得金额后才计入已知金额。
+- 走势按订单创建原始墙钟日期分桶，原值含偏移时也保留原日期。历史 epoch 值沿用订单列表的 UTC 解析。创建日期无法解析的匹配订单在走势中只进入 `missingCreatedCount`，该计数覆盖全部日期范围。
+- 当前窗口包含结束日期及向前的 `days - 1` 天，环比取紧邻当前窗口之前的等长窗口。当前窗口起点之前无可解析的匹配订单时，`previous` 为 `null`，工作台显示「无对比」。若只有更早的历史订单，环比窗口返回全零。
+- 金额已知订单的币种一致且有值时返回该币种。混合币种或有金额但币种缺失时，`currency` 为 `null`，金额仍按原值相加，未做汇率换算。
 
 ## 查询接口
 
@@ -30,10 +40,22 @@
 | `shops` | 可重复提交的店铺键，取自响应 `shops[].key`；省略表示全部。最多100家，未知键不会退回查询全部 |
 | `page` | 从1开始，默认1；超出结果页数时返回最后一页 |
 | `pageSize` | 每页1至100条，默认20 |
+| `trendDays` | 走势天数，支持 7 或 30，默认 7 |
+| `trendEnd` | 走势结束日期，格式为 `yyyy-MM-dd`，默认查询时的 UTC 日期 |
 
-响应包含 `summary`、当前筛选下的 `groups`、分页 `orders`、可见订单生成的选项 `platforms` / `shops`、分页信息及 `generatedAtUtc`。管理员可读取全量；员工的明细、选项和工作台统计按分配的「平台 + SID」范围计算，包含仍有分配的历史店铺。店铺标签使用来源店铺编号。空结果仍返回第1页，`pageCount` 为1。
+响应包含 `summary`、当前筛选下的 `groups`、分页 `orders`、可见订单生成的选项 `platforms` / `shops`、分页信息、`generatedAtUtc`、`sales` 和 `trend`。管理员可读取全量；员工的明细、选项和工作台统计按分配的「平台 + SID」范围计算，包含仍有分配的历史店铺。店铺名称未保存在现有订单库中，标签使用来源店铺编号，不虚构店铺名。空结果仍返回第1页，`pageCount` 为1。
 
-`summary.orderCount` 为来源订单数，`summary.itemQuantity` 为商品件数。汇总、分组和当前页来自同一 PostgreSQL 一致读取事务；订单和商品分开聚合，不联接平台子单乘算。明细按平台、店铺编号、来源订单内部标识稳定排序；翻页不会改变汇总范围。
+`summary.orderCount` 为来源订单数，`summary.itemQuantity` 为商品件数。金额、走势、数量汇总、分组和当前页来自同一 PostgreSQL 可重复读事务；订单和商品分开聚合，不联接平台子单乘算。明细按平台、店铺编号、来源订单内部标识稳定排序；翻页不会改变汇总范围。
+
+| 响应字段 | 含义 |
+| --- | --- |
+| `sales.amount`、`sales.currency` | 全部匹配订单的已知金额合计及唯一币种，均可为 `null` |
+| `sales.knownOrderCount`、`sales.unknownOrderCount` | 全部匹配订单中金额已知和未知的订单数 |
+| `trend.days`、`trend.end`、`trend.currency` | 当前窗口天数、结束日期（`yyyy-MM-dd`）及其唯一币种（可为 `null`） |
+| `trend.points` | 与窗口天数等长，日期升序且缺日补零。每项含 `date`（`yyyy-MM-dd`）、`orderCount`、`itemQuantity`、`salesAmount`（可为 `null`） |
+| `trend.previous` | 上一个等长窗口的 `orderCount`、`itemQuantity`、`salesAmount`，无可对比历史时整个字段为 `null` |
+| `trend.missingCreatedCount` | 全部匹配订单中缺少可解析创建日期的订单数 |
+| `trend.amountKnownOrderCount`、`trend.amountUnknownOrderCount` | 当前窗口内金额已知和未知的订单数 |
 
 无效查询返回400。员工在 `shops` 中指定未分配的店铺时返回403。数据库读取失败返回503及 ProblemDetails。所有异步读取接收请求取消信号。
 
@@ -43,10 +65,10 @@
 
 API 工程的 `OrderSnapshotReportQuery` 使用现有本地存储，其中 `StoredOrderMapping` 将 ERP 专用记录转换为公共事实。HTTP 层根据当前账号确定请求的店铺范围，通过 DI 消费接口。其它本地数据来源可实现同一查询契约并在组合根注册，需保持上述数量含义及身份隔离，前端无需判断具体来源。
 
-没有新增报表副本表、同步作业、平台连接器或插件加载机制；现有订单同步与部署方式保持原有边界。需要付款销量、取消拆分或时间趋势时，应先取得相应的来源事实，避免将当前快照包装成未被数据证明的业务指标。
+没有新增报表副本表、同步作业、平台连接器或插件加载机制；现有订单同步与部署方式保持原有边界。需要付款销量或取消拆分时，应先取得相应的来源事实，避免将当前快照包装成未被数据证明的业务指标。
 
 ## 验证
 
-`OrderSnapshotContractTests` 验证公共数量及身份规则；`OrderSnapshotReportEndpointTests` 验证 HTTP 契约；`OrderSnapshotReportPostgresTests` 使用隔离数据库验证筛选、聚合、分页及重复同步；`OrderSnapshotReportAuthenticationTests` 验证实际应用注册和认证。
+`OrderSnapshotContractTests` 验证公共数量及身份规则；`OrderSnapshotReportEndpointTests` 验证 HTTP 契约；`OrderSnapshotReportPostgresTests` 使用隔离数据库验证筛选、聚合、分页、趋势窗口、未知金额及存量订单重同步；`OrderSnapshotReportAuthenticationTests` 验证实际应用注册和认证。
 
 设置既有 `OPENERP_TEST_ERP_TOKEN` 后，`Real_source_orders_match_report_totals_and_every_paged_detail` 只读获取 SID 30 的真实订单，写入测试专用数据库并重复同步、逐单核对报表。它不写上游或开发数据库；无凭证时明确跳过，不能计作真实数据验收通过。前端交互和浏览器用例分别位于 `OpenERP.Web/tests/unit` 与 `OpenERP.Web/tests/e2e`。

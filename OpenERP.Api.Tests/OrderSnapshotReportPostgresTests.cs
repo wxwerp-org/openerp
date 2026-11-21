@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using System.Data.Common;
+using System.Security.Claims;
 using Npgsql;
+using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using OpenERP.Api.Reports;
@@ -171,27 +173,42 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
     [Fact]
     public async Task Concurrent_sync_between_totals_and_details_does_not_mix_snapshots()
     {
-        // Given 查询开始时共16件，在数量聚合完成后另一连接更新其中一行。
-        await SeedAsync();
+        // Given 查询开始时共16件；聚合期间由另一连接更新当前日订单金额和件数。
+        var orders = Samples();
+        orders[0] = orders[0] with
+        {
+            Times = new(new("2026-11-17 13:00", "list"), null, null, null),
+            IncomeCost = 5m,
+            IncomeCurrency = "USD"
+        };
+        await SaveAsync(orders);
         var changed = false;
         var interceptor = new AfterQuantityRead(async ct =>
         {
             await using var writer = Context();
             await writer.Database.ExecuteSqlRawAsync(
-                "UPDATE \"OrderLines\" SET \"Quantity\" = 8 WHERE \"ErpId\" = 'a' AND \"Ordinal\" = 0", ct);
+                """
+                UPDATE "OrderLines" SET "Quantity" = 8 WHERE "ErpId" = 'a' AND "Ordinal" = 0;
+                UPDATE "Orders" SET "IncomeCost" = 10 WHERE "ErpId" = 'a';
+                """, ct);
             changed = true;
         });
         await using var reader = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(_connection, options => options.EnableRetryOnFailure()).AddInterceptors(interceptor).Options);
 
-        // When 明细在并发更新提交之后读取；Then 当前报表仍是16件，下一次查询才反映21件。
+        // When 并发更新后读取明细、销售额与走势；Then 当前报表保持旧快照，下次查询才反映新值。
         var result = await new OrderSnapshotReportQuery(reader, new FixedClock()).QueryAsync(new(null, []), TestContext.Current.CancellationToken);
         if (result.IsErr) throw new XunitException(result.Error.Message);
         Assert.True(changed, "必须实际触发并发更新，才能证明查询一致性。");
         Assert.Equal(16, result.Value.Summary.ItemQuantity);
         Assert.Equal(16, result.Value.Orders.Sum(order => order.ItemQuantity));
         Assert.Equal(5, result.Value.Orders.Single(order => order.Id == "a").ItemQuantity);
-        Assert.Equal(21, (await QueryAsync(new(null, []))).Summary.ItemQuantity);
+        Assert.Equal(5m, result.Value.Sales.Amount);
+        Assert.Equal(new OrderTrendPoint("2026-11-17", 1, 5, 5m), result.Value.Trend.Points[^1]);
+        var next = await QueryAsync(new(null, []));
+        Assert.Equal(21, next.Summary.ItemQuantity);
+        Assert.Equal(10m, next.Sales.Amount);
+        Assert.Equal(new OrderTrendPoint("2026-11-17", 1, 10, 10m), next.Trend.Points[^1]);
     }
 
     [Fact]
@@ -218,6 +235,148 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
         if (!result.IsErr) throw new XunitException("存储不可用时必须返回读取失败。");
         Assert.Equal("读取本地订单失败，请重试。", result.Error.Message);
     }
+
+    [Fact]
+    public async Task Trend_uses_wall_clock_dates_and_includes_both_window_boundaries()
+    {
+        // Given 两个窗口的起止边界、日期缺口和无效时间，含 ISO、年在后和 epoch。
+        await SaveAsync([
+            TrendOrder("previous-start", "2026-11-04 00:00", 2, 2m),
+            TrendOrder("previous-end", "2026-11-10 23", 3, null),
+            TrendOrder("start", "2026-11-11T00:10:00+08:00", 4, 10m),
+            TrendOrder("partial", "2026-11-11 13:00", 5, null),
+            TrendOrder("unknown", "15-11-2026 22:12", 6, null),
+            TrendOrder("end", new DateTimeOffset(2026, 11, 17, 23, 59, 0, TimeSpan.Zero)
+                .ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture), 7, 0m),
+            TrendOrder("too-old", "2026-11-03 23:59", 50, 100m),
+            TrendOrder("future", "2026-11-18 00:00", 50, 200m),
+            TrendOrder("bad-calendar", "2026-11-31 12:00", 9, 8m),
+            TrendOrder("missing", null, 10, 4m)
+        ]);
+
+        // When 省略结束日期查询 7 天走势，并用订单列表查询同一日期窗口。
+        var report = await QueryAsync(new(null, []));
+        var trend = report.Trend;
+        var end = new DateOnly(2026, 11, 17);
+        var start = end.AddDays(-6);
+        await using var db = Context();
+        var list = await new OrderListQuery(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<OrderListQuery>.Instance)
+            .ReadAsync(new(null, null, null, null, start, end, 1, 20), AdministratorAccess(),
+                TestContext.Current.CancellationToken);
+
+        // Then 墙钟日期与列表一致，缺日补零，未知金额独立记数。
+        if (list.Result.IsErr) throw new XunitException(list.Result.Error.Message);
+        var listed = list.Result.Value;
+        Assert.Equal(4, listed.Total);
+        Assert.Equal(22, listed.Items.Sum(item => item.ItemQuantity));
+        Assert.Equal(7, trend.Days);
+        Assert.Equal(end, trend.End);
+        Assert.Equal("USD", trend.Currency);
+        Assert.Equal(new OrderTrendPoint[]
+        {
+            new("2026-11-11", 2, 9, 10m),
+            new("2026-11-12", 0, 0, 0m),
+            new("2026-11-13", 0, 0, 0m),
+            new("2026-11-14", 0, 0, 0m),
+            new("2026-11-15", 1, 6, null),
+            new("2026-11-16", 0, 0, 0m),
+            new("2026-11-17", 1, 7, 0m)
+        }, trend.Points);
+        foreach (var point in trend.Points)
+        {
+            var listedOnDate = listed.Items.Where(item => item.Created?.StartsWith(point.Date, StringComparison.Ordinal) == true).ToArray();
+            Assert.Equal(point.OrderCount, listedOnDate.LongLength);
+            Assert.Equal(point.ItemQuantity, listedOnDate.Sum(item => item.ItemQuantity));
+        }
+        Assert.Equal(new OrderTrendPrevious(2, 5, 2m), trend.Previous);
+        Assert.Equal(2, trend.MissingCreatedCount);
+        Assert.Equal(2, trend.AmountKnownOrderCount);
+        Assert.Equal(2, trend.AmountUnknownOrderCount);
+        Assert.Equal(new OrderSnapshotSales(324m, "USD", 7, 3), report.Sales);
+    }
+
+    [Fact]
+    public async Task Sales_and_thirty_day_trend_share_platform_and_shop_filters()
+    {
+        // Given 多平台相同店铺编号、混合币种、无创建日期及已知金额为零的订单。
+        await SaveAsync([
+            TrendOrder("selected", "2026-10-19 12:00", 4, 10m),
+            TrendOrder("selected-missing", null, 1, 5m),
+            TrendOrder("other-shop", "2026-11-17 08:00", 2, 11m) with { Sid = 31 },
+            TrendOrder("other-platform", "2026-11-17 08:00", 3, 0m, "EUR") with { Platform = "OtherPlatform" }
+        ]);
+
+        // When 组合平台和店铺条件，并查询未筛选及条件无交集时的结果。
+        var request = new OrderSnapshotReportRequest("TemuPop",
+            [ShopKey("TemuPop", "30"), ShopKey("OtherPlatform", "30")], TrendDays: 30, TrendEnd: new(2026, 11, 17));
+        var filtered = await QueryAsync(request);
+        var all = await QueryAsync(request with { Platform = null, Shops = [] });
+        var none = await QueryAsync(request with { Shops = [ShopKey("OtherPlatform", "30")] });
+
+        // Then 总销售额包含无日期订单，走势只含窗口内订单，混合币种仍返回金额。
+        Assert.Equal(new OrderSnapshotSales(15m, "USD", 2, 0), filtered.Sales);
+        Assert.Equal(new OrderSnapshotTotals(2, 5), filtered.Summary);
+        Assert.Single(filtered.Groups);
+        Assert.Equal(2, filtered.Orders.Count);
+        Assert.Equal("USD", filtered.Trend.Currency);
+        Assert.Equal(1, filtered.Trend.MissingCreatedCount);
+        Assert.Null(filtered.Trend.Previous);
+        Assert.Equal(30, filtered.Trend.Points.Count);
+        Assert.Equal(new OrderTrendPoint("2026-10-19", 1, 4, 10m), filtered.Trend.Points[0]);
+        Assert.Equal(new OrderTrendPoint("2026-11-17", 0, 0, 0m), filtered.Trend.Points[^1]);
+        Assert.Equal(new OrderSnapshotSales(26m, null, 4, 0), all.Sales);
+        Assert.Null(all.Trend.Currency);
+        Assert.Equal(new OrderTrendPoint("2026-11-17", 2, 5, 11m), all.Trend.Points[^1]);
+        Assert.Equal(new OrderSnapshotSales(null, null, 0, 0), none.Sales);
+        Assert.Null(none.Trend.Previous);
+        Assert.Equal(0, none.Trend.MissingCreatedCount);
+    }
+
+    [Theory]
+    [InlineData("2026-11-03", 0, 0, 0)]
+    [InlineData("2026-11-10", 1, 2, null)]
+    public async Task Previous_window_distinguishes_empty_days_from_unknown_amount(
+        string historicalDate, long count, long quantity, int? amount)
+    {
+        // Given 已有窗口起点之前的历史订单，且这张订单金额未知。
+        await SaveAsync([TrendOrder("history", historicalDate, 2, null)]);
+
+        // When 查询当前趋势。
+        var report = await QueryAsync(new(null, []));
+
+        // Then 上期有历史可对比，空窗口为零，有订单但金额未知时为 null。
+        Assert.Equal(new OrderTrendPrevious(count, quantity, amount), report.Trend.Previous);
+        Assert.All(report.Trend.Points, point => Assert.Equal((0L, 0L, (decimal?)0m),
+            (point.OrderCount, point.ItemQuantity, point.SalesAmount)));
+        Assert.Equal(new OrderSnapshotSales(null, null, 0, 1), report.Sales);
+    }
+
+    [Fact]
+    public async Task Resync_updates_an_existing_order_with_amount_and_preserves_zero()
+    {
+        // Given 已经落库且没有金额的存量订单。
+        var order = TrendOrder("existing", "2026-11-17 22:12", 2, null, null);
+        await SaveAsync([order]);
+
+        // When 重同步时只补入零金额及币种。
+        await using var db = Context();
+        var result = await new OrderStore(db).SaveAsync([order with { IncomeCost = 0m, IncomeCurrency = "USD" }],
+            TestContext.Current.CancellationToken);
+
+        // Then 保存计为更新，零金额与币种随快照落库。
+        if (result.IsErr) throw new XunitException(result.Error.Message);
+        Assert.Equal(new OrderSaveCounts(0, 1, 0), result.Value);
+        Assert.Equal(new OrderSnapshotSales(0m, "USD", 1, 0), (await QueryAsync(new(null, []))).Sales);
+    }
+
+    private static ShopAccess AdministratorAccess() =>
+        ShopAccess.For(new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Role, UserAccount.AdministratorRole)], "Test")));
+
+    private static OrderSnapshot TrendOrder(string id, string? created, int quantity, decimal? amount, string? currency = "USD") =>
+        new(id, id, 30, "TemuPop", "正常", new(created is null ? null : new(created, "list"), null, null, null),
+            [new("PO-1", 30, null, null), new("PO-2", 30, null, null)],
+            [new(null, null, null, null, quantity, true, true)], amount, currency);
 
     private Task SeedAsync() => SaveAsync(Samples());
 
