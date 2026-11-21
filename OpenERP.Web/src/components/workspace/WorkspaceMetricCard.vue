@@ -9,12 +9,12 @@ const props = defineProps<{
   detail?: string
   testid: string
   to?: RouteLocationRaw
+  /** 整卡链接的无障碍文案；默认按报表下钻描述。 */
+  toLabel?: string
 }>()
 
-const isDateTime = computed(() => /^\d{4}-\d{2}-\d{2}/.test(props.value))
-
 const cardClass = computed(() => [
-  'flex h-104 flex-col justify-between rounded-6 bg-white px-16 py-14',
+  'group flex min-h-104 flex-col rounded-6 bg-white',
   props.to ? 'transition-colors hover:bg-page-soft' : '',
 ])
 </script>
@@ -25,21 +25,30 @@ const cardClass = computed(() => [
     :to="to"
     :class="cardClass"
     :data-testid="testid"
-    :aria-label="to ? `${label}：查看报表` : undefined"
+    :aria-label="to ? `${label}：${toLabel ?? '查看报表'}` : undefined"
   >
-    <div class="flex items-center gap-4 text-12 text-muted">
-      {{ label }}
-      <AppIcon v-if="to" name="i-chev-right" :size="10" class="text-caret-soft" />
+    <div class="flex h-54 flex-none items-start gap-4 px-16 pt-16">
+      <span
+        class="flex min-w-0 items-center gap-4 text-14/22 font-bold whitespace-nowrap text-ink"
+        :class="to ? 'group-hover:text-primary' : ''"
+      >
+        {{ label }}
+        <AppIcon
+          v-if="to"
+          name="i-chev-right"
+          :size="12"
+          class="flex-none text-title-caret [stroke-width:1.8]"
+        />
+      </span>
     </div>
-    <div>
+    <div class="flex min-h-0 flex-1 flex-col justify-end px-16 pb-14">
       <div
-        class="font-semibold tabular-nums text-ink"
-        :class="isDateTime ? 'text-18/26' : 'text-24/32'"
+        class="truncate text-20/26 font-medium tracking-[-0.2px] whitespace-nowrap text-ink tabular-nums"
         data-testid="metric-value"
       >
         {{ value }}
       </div>
-      <div v-if="detail" class="mt-2 text-11 text-muted">{{ detail }}</div>
+      <div v-if="detail" class="mt-2 truncate text-12/16 text-muted">{{ detail }}</div>
     </div>
   </component>
 </template>

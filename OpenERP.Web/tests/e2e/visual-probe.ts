@@ -187,11 +187,28 @@ export async function collectProbe(page: Page): Promise<Probe> {
       return el.tagName.toLowerCase()
     }
 
+    // 视觉探针只采集真实可见元素：1px 裁剪的 sr-only 文本与控件不算视觉差异，
+    // 否则图表的无障碍替代表格会被误判成新增排版项，淹没真正的样式回归。
+    function isClippedByAncestor(el: Element): boolean {
+      let node: Element | null = el
+      while (node && node !== document.body) {
+        const rect = node.getBoundingClientRect()
+        if (rect.width <= 1 || rect.height <= 1) return true
+        const style = getComputedStyle(node)
+        if (style.clipPath === 'inset(50%)' || style.clip === 'rect(0px, 0px, 0px, 0px)')
+          return true
+        node = node.parentElement
+      }
+      return false
+    }
+
     function isVisible(el: Element): boolean {
       const rect = el.getBoundingClientRect()
-      if (rect.width <= 0 || rect.height <= 0) return false
+      if (rect.width <= 1 || rect.height <= 1) return false
       const style = getComputedStyle(el)
-      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0
+      if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0)
+        return false
+      return !isClippedByAncestor(el)
     }
 
     function roundRect(el: Element): { x: number; y: number; width: number; height: number } {

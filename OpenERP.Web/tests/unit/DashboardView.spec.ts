@@ -8,6 +8,13 @@ import {
   onboardingSummaryDismissed,
 } from '../../src/workspace/onboardingState'
 import { adminAccount } from './adminAccount'
+import {
+  dataTrendFixture,
+  degradedTrendFixture,
+  emptyTrendFixture,
+  salesFixture,
+  trendFixture,
+} from '../reportFixtures'
 
 vi.mock('../../src/account/session', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/account/session')>()
@@ -80,6 +87,8 @@ function syncTask(status: string, overrides: Record<string, unknown> = {}) {
 const reportPayload = (orderCount = 10, itemQuantity = 42) => ({
   generatedAtUtc: '2026-11-20T07:47:00Z',
   summary: { orderCount, itemQuantity },
+  sales: orderCount > 0 ? salesFixture(371.12, 'USD', 4, 0) : salesFixture(0, 'USD', 0, 0),
+  trend: orderCount > 0 ? dataTrendFixture() : emptyTrendFixture(),
   platforms: ['TemuPop'],
   shops: [],
   groups:
@@ -134,7 +143,7 @@ const directoryPayload = (items = 2, lastSyncedAt: string | null = '2026-11-20T0
 })
 
 type ApiHandlers = {
-  report?: () => Response
+  report?: (url: URL) => Response
   directory?: () => Response
   config?: () => Response
   availability?: () => Response
@@ -144,7 +153,7 @@ function stubApi(handlers: ApiHandlers) {
   const stub = vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input), 'http://localhost')
     if (url.pathname === '/api/reports/order-snapshot')
-      return handlers.report?.() ?? Response.json(reportPayload())
+      return handlers.report?.(url) ?? Response.json(reportPayload())
     if (url.pathname === '/api/erp/shops')
       return handlers.directory?.() ?? Response.json(directoryPayload())
     if (url.pathname === '/api/erp/config')
@@ -212,7 +221,8 @@ describe('工作台', () => {
 
     expect(wrapper.get('[data-testid="metric-orders"]').text()).toContain('10')
     expect(wrapper.get('[data-testid="metric-items"]').text()).toContain('42')
-    expect(wrapper.get('[data-testid="metric-shops"]').text()).toContain('2')
+    expect(wrapper.get('[data-testid="metric-sales"]').text()).toContain('US$371.12')
+    expect(wrapper.find('[data-testid="workspace-trend-card"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="metric-last-sync"]').text()).toContain('2026-11-20')
 
     expect(wrapper.get('[data-testid="workspace-platform-card"]').text()).toContain('Temu 半托管')
@@ -417,5 +427,129 @@ describe('工作台', () => {
     hubMock().orderSyncTasks.value = { 30: syncTask('failed', { version: 3 }) }
     await flushPromises()
     expect(reportCalls()).toBe(before + 2)
+  })
+
+  it('Given 走势卡 When 切换近30天 Then 重新请求报表并把响应周期渲染为30天', async () => {
+    const stub = stubApi({
+      report: (url) =>
+        Response.json({
+          ...reportPayload(),
+          trend:
+            url.searchParams.get('trendDays') === '30'
+              ? trendFixture({ days: 30, end: '2026-11-20', orderCounts: [1] })
+              : dataTrendFixture(),
+        }),
+    })
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+
+    const trendCard = wrapper.get('[data-testid="workspace-trend-card"]')
+    expect(trendCard.text()).toContain('近 7 天')
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '近 30 天')!
+      .trigger('click')
+    await flushPromises()
+
+    const calls = stub.mock.calls
+      .filter(([input]) => String(input).startsWith('/api/reports/order-snapshot?'))
+      .map(([input]) => new URL(String(input), 'http://localhost'))
+    expect(calls.at(-1)?.searchParams.get('trendDays')).toBe('30')
+    expect(calls.at(-1)?.searchParams.get('trendEnd')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(wrapper.get('[data-testid="workspace-trend-card"]').text()).toContain('近 30 天')
+  })
+
+  it('Given 30 天请求失败 When 再次点击近 30 天 Then 允许重试并最终切换到 30 天', async () => {
+    let fail = false
+    stubApi({
+      report: (url) => {
+        const days = url.searchParams.get('trendDays') === '30' ? 30 : 7
+        if (days === 30 && fail)
+          return Response.json({ title: '报表数据暂不可用' }, { status: 503 })
+        return Response.json({
+          ...reportPayload(),
+          trend:
+            days === 30
+              ? trendFixture({ days: 30, end: '2026-11-20', orderCounts: [1] })
+              : dataTrendFixture(),
+        })
+      },
+    })
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+
+    fail = true
+    const thirty = () => wrapper!.findAll('button').find((button) => button.text() === '近 30 天')!
+    await thirty().trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="report-stale"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="workspace-trend-card"]').text()).toContain('近 7 天')
+
+    fail = false
+    await thirty().trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="workspace-trend-card"]').text()).toContain('近 30 天')
+  })
+
+  it('Given 走势图获得焦点 When 按方向键 Then 显示逐日 tooltip 且 Escape 关闭', async () => {
+    stubApi({})
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+
+    const chart = wrapper.get('[data-testid="workspace-trend-chart"]')
+    expect(chart.attributes('tabindex')).toBe('0')
+    await chart.trigger('focus')
+    expect(wrapper.find('[data-testid="trend-tooltip"]').exists()).toBe(true)
+    await chart.trigger('keydown', { key: 'ArrowLeft' })
+    expect(wrapper.find('[data-testid="trend-tooltip"]').exists()).toBe(true)
+    await chart.trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('[data-testid="trend-tooltip"]').exists()).toBe(false)
+  })
+
+  it('Given 金额权限缺失 When 打开工作台 Then 走势卡降级为订单数并提示无金额权限', async () => {
+    stubApi({
+      report: () =>
+        Response.json({
+          ...reportPayload(),
+          sales: salesFixture(null, null, 0, 10),
+          trend: degradedTrendFixture(),
+        }),
+    })
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+
+    expect(wrapper.get('[data-testid="metric-sales"]').text()).toContain('暂无可用金额')
+    expect(wrapper.get('[data-testid="trend-degraded"]').text()).toContain('暂无可用金额')
+    expect(wrapper.find('[data-testid="trend-sales-comparison"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="trend-footnote"]').text()).toContain('重新同步后可补齐')
+  })
+
+  it('Given 走势窗口内无订单 When 打开工作台 Then 走势卡显示空态而不是 0 折线', async () => {
+    stubApi({
+      report: () => Response.json(reportPayload(0, 0)),
+      directory: () => Response.json(directoryPayload(0, null)),
+      config: () => Response.json({ configured: true, baseUrl: null, orderSyncEnabled: true }),
+    })
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+
+    const trendCard = wrapper.get('[data-testid="workspace-trend-card"]')
+    expect(trendCard.text()).toContain('暂无订单数据')
+    expect(wrapper.find('[data-testid="workspace-trend-chart"]').exists()).toBe(false)
+  })
+
+  it('Given 报表未返回 trend 契约 When 解析 Then 抛出可展示错误而不是渲染半截图表', async () => {
+    stubApi({
+      report: () => {
+        const payload: Record<string, unknown> = { ...reportPayload() }
+        delete payload.trend
+        return Response.json(payload)
+      },
+    })
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+
+    expect(wrapper.text()).toContain('工作台数据加载失败')
   })
 })

@@ -120,6 +120,89 @@ export function formatCount(value: number | null | undefined): string {
   return typeof value === 'number' ? value.toLocaleString('zh-CN') : '—'
 }
 
+const plainAmountFormatters = new Map<number, Intl.NumberFormat>()
+const currencyFormatters = new Map<string, Intl.NumberFormat>()
+const compactCurrencyFormatters = new Map<string, Intl.NumberFormat>()
+
+function isCurrencyCode(value: string | null | undefined): value is string {
+  return typeof value === 'string' && /^[A-Z]{3}$/.test(value)
+}
+
+function plainAmountFormatter(digits: number): Intl.NumberFormat {
+  const cached = plainAmountFormatters.get(digits)
+  if (cached) return cached
+  const formatter = new Intl.NumberFormat('zh-CN', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })
+  plainAmountFormatters.set(digits, formatter)
+  return formatter
+}
+
+/** 金额按 ERP 成本币种展示；币种未知时只显示数字并保留币种代码。 */
+export function formatMoney(
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+  digits = 2,
+): string {
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) return '—'
+  const code = currency?.toUpperCase()
+  if (isCurrencyCode(code)) {
+    const key = `${code}:${digits}`
+    let formatter = currencyFormatters.get(key)
+    if (!formatter) {
+      try {
+        formatter = new Intl.NumberFormat('zh-CN', {
+          style: 'currency',
+          currency: code,
+          minimumFractionDigits: digits,
+          maximumFractionDigits: digits,
+        })
+        currencyFormatters.set(key, formatter)
+      } catch {
+        formatter = undefined
+      }
+    }
+    if (formatter) return formatter.format(amount)
+  }
+  const text = plainAmountFormatter(digits).format(amount)
+  return code ? `${text} ${code}` : text
+}
+
+/** 图表坐标轴用的紧凑金额；未知币种时退化为「万/亿」紧凑数字。 */
+export function formatCompactMoney(amount: number, currency: string | null | undefined): string {
+  const code = currency?.toUpperCase()
+  if (isCurrencyCode(code)) {
+    let formatter = compactCurrencyFormatters.get(code)
+    if (!formatter) {
+      try {
+        formatter = new Intl.NumberFormat('zh-CN', {
+          style: 'currency',
+          currency: code,
+          notation: 'compact',
+          maximumFractionDigits: 1,
+        })
+        compactCurrencyFormatters.set(code, formatter)
+      } catch {
+        formatter = undefined
+      }
+    }
+    if (formatter) return formatter.format(amount)
+  }
+  return amount.toLocaleString('zh-CN', { notation: 'compact', maximumFractionDigits: 1 })
+}
+
+/** 浏览器本地时区的 `YYYY-MM-DD`，用于走势窗口结束日期（接口不猜时区）。 */
+export function localDateString(date = new Date()): string {
+  const pad = (input: number) => String(input).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+/** 轴标签用 `MM-DD`。 */
+export function formatShortDate(value: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value.slice(5, 7)}-${value.slice(8, 10)}` : value
+}
+
 /** 完整店铺键 → 真实店名；目录缺失时回退「店铺 <SID>」。 */
 export function shopNameMap(directory: ShopDirectory | null): Map<string, string> {
   const map = new Map<string, string>()

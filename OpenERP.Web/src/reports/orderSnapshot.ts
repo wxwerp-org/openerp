@@ -32,12 +32,48 @@ export type ReportOrder = {
   itemQuantity: number
 }
 
+/** 全量已同步订单的销售额汇总；金额未知时不补 0。 */
+export type ReportSales = {
+  amount: number | null
+  currency: string | null
+  knownOrderCount: number
+  unknownOrderCount: number
+}
+
+/** 走势窗口内单日快照；缺日补零，未知金额保持 null。 */
+export type TrendPoint = {
+  date: string
+  orderCount: number
+  itemQuantity: number
+  salesAmount: number | null
+}
+
+/** 与上一个等长窗口的汇总；无更早历史时为 null。 */
+export type TrendPrevious = {
+  orderCount: number
+  itemQuantity: number
+  salesAmount: number | null
+}
+
+export type ReportTrend = {
+  days: number
+  end: string
+  currency: string | null
+  points: TrendPoint[]
+  previous: TrendPrevious | null
+  missingCreatedCount: number
+  amountKnownOrderCount: number
+  amountUnknownOrderCount: number
+}
+
 export type OrderSnapshotReport = {
   generatedAtUtc: string
   summary: {
     orderCount: number
     itemQuantity: number
   }
+  sales: ReportSales
+  trend: ReportTrend
   platforms: string[]
   shops: ReportShop[]
   groups: {
@@ -118,6 +154,88 @@ function isGroup(value: unknown): value is OrderSnapshotReport['groups'][number]
   )
 }
 
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+/** 商品件数是来源行数量原值之和，来源允许负数行，因此与订单数区分校验。 */
+function isSignedInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value)
+}
+
+function addDays(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+function isNullableAmount(value: unknown): value is number | null {
+  return value === null || isFiniteNumber(value)
+}
+
+function isDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const time = Date.parse(`${value}T00:00:00Z`)
+  return Number.isFinite(time) && new Date(time).toISOString().startsWith(value)
+}
+
+function isSales(value: unknown): value is ReportSales {
+  if (!isRecord(value)) return false
+  return (
+    isNullableAmount(value.amount) &&
+    isNullableString(value.currency) &&
+    isCount(value.knownOrderCount) &&
+    isCount(value.unknownOrderCount)
+  )
+}
+
+function isTrendPoint(value: unknown): value is TrendPoint {
+  if (!isRecord(value)) return false
+  return (
+    isDate(value.date) &&
+    isCount(value.orderCount) &&
+    isSignedInteger(value.itemQuantity) &&
+    isNullableAmount(value.salesAmount) &&
+    (value.orderCount === 0 ? value.salesAmount === 0 : true)
+  )
+}
+
+function isTrendPrevious(value: unknown): value is TrendPrevious {
+  if (!isRecord(value)) return false
+  return (
+    isCount(value.orderCount) && isCount(value.itemQuantity) && isNullableAmount(value.salesAmount)
+  )
+}
+
+/** 走势契约必须完整：窗口天数、逐日补零和环比汇总共同决定前端展示，不能容忍缺字段。 */
+function isTrend(value: unknown): value is ReportTrend {
+  if (!isRecord(value)) return false
+  if (!(
+    (value.days === 7 || value.days === 30) &&
+    isDate(value.end) &&
+    isNullableString(value.currency) &&
+    Array.isArray(value.points) &&
+    value.points.length === value.days &&
+    value.points.every(isTrendPoint) &&
+    (value.previous === null || isTrendPrevious(value.previous)) &&
+    isCount(value.missingCreatedCount) &&
+    isCount(value.amountKnownOrderCount) &&
+    isCount(value.amountUnknownOrderCount)
+  ))
+    return false
+
+  const points = value.points as TrendPoint[]
+  // 图表按数组顺序绘制，必须校验窗口连续、升序且恰好落在 end 上。
+  const firstDate = addDays(value.end as string, -(value.days - 1))
+  if (points[0]?.date !== firstDate) return false
+  for (let index = 1; index < points.length; index += 1) {
+    if (points[index]!.date !== addDays(points[index - 1]!.date, 1)) return false
+  }
+  // 金额计数与逐日订单数必须自洽，否则降级判断与环比会失真。
+  const totalOrders = points.reduce((total, point) => total + point.orderCount, 0)
+  return value.amountKnownOrderCount + value.amountUnknownOrderCount === totalOrders
+}
+
 export function parseOrderSnapshotReport(value: unknown): OrderSnapshotReport {
   if (
     !isRecord(value) ||
@@ -127,6 +245,8 @@ export function parseOrderSnapshotReport(value: unknown): OrderSnapshotReport {
     !Number.isFinite(Date.parse(value.generatedAtUtc)) ||
     !Number.isInteger(value.summary.orderCount) ||
     !isFiniteNumber(value.summary.itemQuantity) ||
+    !isSales(value.sales) ||
+    !isTrend(value.trend) ||
     !Array.isArray(value.platforms) ||
     !value.platforms.every((item) => typeof item === 'string') ||
     !Array.isArray(value.shops) ||

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatCompactMoney,
   formatCount,
   formatDateTime,
+  formatMoney,
+  formatShortDate,
+  localDateString,
   parseShopDirectory,
   platformTotals,
   shopNameBySid,
@@ -93,5 +97,32 @@ describe('工作台数据解析', () => {
       { platform: 'Amazon', orderCount: 5 },
       { platform: 'TemuPop', orderCount: 5 },
     ])
+  })
+})
+
+describe('金额与走势日期格式化', () => {
+  it('Given 已知金额 When 格式化 Then 使用成本币种并保留两位小数', () => {
+    expect(formatMoney(371.12, 'USD')).toContain('371.12')
+    expect(formatMoney(371.12, 'USD')).toContain('$')
+    expect(formatMoney(12.3, null)).toBe('12.30')
+    expect(formatMoney(12.3, 'US')).toBe('12.30 US')
+  })
+
+  it('Given 未知金额 When 格式化 Then 显示破折号而不是 0', () => {
+    expect(formatMoney(null, 'USD')).toBe('—')
+    expect(formatMoney(undefined, null)).toBe('—')
+    expect(formatMoney(Number.NaN, 'USD')).toBe('—')
+  })
+
+  it('Given 轴刻度金额 When 紧凑格式化 Then 使用千/万缩写', () => {
+    expect(formatCompactMoney(12000, 'USD')).toContain('万')
+    expect(formatCompactMoney(0, 'USD')).toContain('0')
+  })
+
+  it('Given 浏览器本地日期 When 生成接口日期与轴标签 Then 不经过 UTC 偏移', () => {
+    expect(localDateString(new Date(2026, 10, 21, 23, 30))).toBe('2026-11-21')
+    expect(localDateString(new Date(2026, 0, 1, 0, 5))).toBe('2026-01-01')
+    expect(formatShortDate('2026-11-21')).toBe('11-21')
+    expect(formatShortDate('bad')).toBe('bad')
   })
 })

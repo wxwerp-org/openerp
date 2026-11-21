@@ -19,25 +19,29 @@ function statusLabel(value: boolean | null, yes: string, no: string): string {
 </script>
 
 <template>
-  <AppCard
-    class="flex h-full min-h-120 flex-col px-16 pb-14 pt-14"
-    data-testid="workspace-system-card"
-  >
-    <div class="flex flex-none items-center justify-between">
-      <h2 class="text-13/20 font-semibold text-ink">系统状态</h2>
+  <AppCard class="flex h-full min-h-120 flex-col" data-testid="workspace-system-card">
+    <div class="flex h-54 flex-none items-start justify-between gap-12 px-16 pt-16">
       <button
         type="button"
-        class="flex items-center gap-2 text-11 text-primary hover:underline"
+        class="flex items-center gap-4 text-14/22 font-bold whitespace-nowrap text-ink hover:text-primary"
         @click="emit('open')"
       >
-        ERP 接入<AppIcon name="i-chev-right" :size="10" />
+        系统状态<AppIcon
+          name="i-chev-right"
+          :size="12"
+          class="text-title-caret [stroke-width:1.8]"
+        />
       </button>
+      <span class="text-12 whitespace-nowrap text-muted">ERP 接入</span>
     </div>
-    <div v-if="status === 'error'" class="mt-12 flex flex-1 flex-col items-start gap-8 text-12">
+    <div
+      v-if="status === 'error'"
+      class="flex flex-1 flex-col items-start gap-8 px-16 pb-16 text-12"
+    >
       <span class="text-danger">{{ error }}</span>
       <AppButton size="md" @click="emit('retry')">重试</AppButton>
     </div>
-    <dl v-else class="m-0 mt-12 flex flex-1 flex-col gap-10 text-12">
+    <dl v-else class="m-0 flex flex-1 flex-col gap-10 px-16 pt-6 pb-16 text-12/16">
       <div class="flex items-center justify-between gap-8">
         <dt class="m-0 text-muted">ERP 接入</dt>
         <dd class="m-0 flex items-center gap-4 font-medium text-body-strong">

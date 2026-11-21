@@ -3,14 +3,25 @@ import type { OrderSyncTask } from '../../src/composables/orderSyncTask'
 import type { OrderSnapshotReport } from '../../src/reports/orderSnapshot'
 import {
   buildOnboardingSteps,
+  buildTrendComparison,
+  buildTrendGeometry,
   groupSyncTasks,
   nextOnboardingLabel,
   rankTopShops,
   resolveDashboardState,
+  resolveTrendState,
+  trendOrderTotal,
+  trendSalesTotal,
   type DashboardStateInput,
   type OnboardingInput,
 } from '../../src/workspace/workspaceDerivation'
 import { platformTotals } from '../../src/workspace/workspaceData'
+import {
+  dataTrendFixture,
+  degradedTrendFixture,
+  emptyTrendFixture,
+  trendFixture,
+} from '../reportFixtures'
 
 function stateInput(overrides: Partial<DashboardStateInput> = {}): DashboardStateInput {
   return {
@@ -240,3 +251,141 @@ describe('工作台店铺排行与下钻', () => {
 // 类型守卫：确保 OrderSnapshotReport['groups'] 与测试构造一致
 const _typeCheck: OrderSnapshotReport['groups'] = []
 void _typeCheck
+
+describe('经营走势派生', () => {
+  it('Given 窗口无订单 When 判定 Then 空态优先于金额降级态', () => {
+    expect(resolveTrendState(emptyTrendFixture())).toBe('empty')
+    expect(resolveTrendState(degradedTrendFixture())).toBe('degraded')
+    expect(resolveTrendState(dataTrendFixture())).toBe('data')
+  })
+
+  it('Given 部分日期金额未知 When 汇总 Then 只加已知金额且不把未知当 0', () => {
+    const trend = trendFixture({
+      orderCounts: [2, 1, 0],
+      salesAmounts: [10.5, null, 0],
+    })
+    expect(trendSalesTotal(trend)).toBe(10.5)
+    expect(trendOrderTotal(trend)).toBe(3)
+    expect(
+      trendSalesTotal(
+        trendFixture({
+          orderCounts: [1],
+          salesAmounts: [null, null, null, null, null, null, null],
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  it('Given 上一等长窗口 When 计算环比 Then 输出带符号百分比与方向', () => {
+    const comparison = buildTrendComparison(dataTrendFixture())
+    expect(comparison.sales.text).toBe('+17.5%')
+    expect(comparison.sales.tone).toBe('up')
+    expect(comparison.orders.text).toBe('+40.0%')
+    expect(comparison.orders.tone).toBe('up')
+  })
+
+  it('Given 无更早历史或上一窗口为 0 When 计算环比 Then 显示无对比或破折号', () => {
+    expect(buildTrendComparison(emptyTrendFixture()).sales.text).toBe('无对比')
+    const zeroPrevious = buildTrendComparison(
+      trendFixture({
+        orderCounts: [1],
+        salesAmounts: [10],
+        previous: { orderCount: 0, itemQuantity: 0, salesAmount: 0 },
+      }),
+    )
+    expect(zeroPrevious.sales.text).toBe('—')
+    expect(zeroPrevious.orders.text).toBe('—')
+    expect(zeroPrevious.sales.tone).toBe('none')
+  })
+
+  it('Given 上一窗口基数极小 When 计算环比 Then 钳制展示避免失真百分比', () => {
+    const comparison = buildTrendComparison(
+      trendFixture({
+        orderCounts: [100],
+        salesAmounts: [500],
+        previous: { orderCount: 1, itemQuantity: 1, salesAmount: 0.01 },
+      }),
+    )
+    expect(comparison.sales.text).toBe('>999.9%')
+    expect(comparison.sales.tone).toBe('up')
+  })
+
+  it('Given 双轴走势数据 When 计算几何 Then 生成连续订单线与可断开的销售额线', () => {
+    const geometry = buildTrendGeometry(dataTrendFixture(), { width: 800, height: 240 })
+    expect(geometry.points).toHaveLength(7)
+    expect(geometry.showSales).toBe(true)
+    expect(geometry.sales.lineSegments).toHaveLength(1)
+    expect(geometry.orders.line.startsWith('M')).toBe(true)
+    expect(geometry.xTicks.map((tick) => tick.label)).toEqual([
+      '11-14',
+      '11-15',
+      '11-16',
+      '11-17',
+      '11-18',
+      '11-19',
+      '11-20',
+    ])
+    expect(geometry.sales.ticks).toHaveLength(6)
+    expect(geometry.orders.ticks).toHaveLength(6)
+    for (const point of geometry.points) {
+      expect(Number.isFinite(point.x)).toBe(true)
+      expect(Number.isFinite(point.yOrders)).toBe(true)
+    }
+  })
+
+  it('Given 金额未知日期 When 计算几何 Then 销售额线在缺口处分段且不画 0', () => {
+    const trend = trendFixture({
+      orderCounts: [1, 1, 1, 1],
+      salesAmounts: [10, null, null, 12],
+    })
+    const geometry = buildTrendGeometry(trend, { width: 600, height: 200 })
+    expect(geometry.sales.lineSegments).toHaveLength(2)
+    expect(geometry.sales.areaSegments).toHaveLength(2)
+    expect(geometry.points[1]?.ySales).toBeNull()
+  })
+
+  it('Given 金额全部未知 When 计算几何 Then 只保留订单数序列与右轴', () => {
+    const geometry = buildTrendGeometry(degradedTrendFixture(), { width: 600, height: 200 })
+    expect(geometry.showSales).toBe(false)
+    expect(geometry.sales.lineSegments).toHaveLength(0)
+    expect(geometry.sales.ticks).toHaveLength(0)
+    expect(geometry.orders.line).not.toBe('')
+  })
+
+  it('Given 低量程数据 When 计算几何 Then 双轴刻度可读且孤立金额点有标记', () => {
+    const trend = trendFixture({
+      orderCounts: [1, 1, 1, 0, 0, 0, 0],
+      salesAmounts: [null, 0.01, null, 0, 0, 0, 0],
+    })
+    const geometry = buildTrendGeometry(trend, { width: 720, height: 240 })
+    const salesLabels = geometry.sales.ticks.map((tick) => tick.label)
+    expect(new Set(salesLabels).size).toBe(salesLabels.length)
+    const orderLabels = geometry.orders.ticks.map((tick) => tick.label)
+    expect(new Set(orderLabels).size).toBeGreaterThan(1)
+    for (const label of orderLabels) expect(label).toMatch(/^\d+$/)
+    expect(geometry.sales.markers).toHaveLength(1)
+    expect(geometry.points[0]?.ySales).toBeNull()
+  })
+
+  it('Given 窗口含无订单补零日且金额全部未知 When 汇总 Then 返回 null 而不是 0', () => {
+    const trend = trendFixture({
+      orderCounts: [1, 0, 1],
+      salesAmounts: [null, 0, null],
+      amountKnownOrderCount: 0,
+      amountUnknownOrderCount: 2,
+    })
+    expect(trendSalesTotal(trend)).toBeNull()
+  })
+
+  it('Given 30 天窗口 When 计算几何 Then 轴标签抽稀但保留首尾', () => {
+    const geometry = buildTrendGeometry(trendFixture({ days: 30, orderCounts: [1] }), {
+      width: 900,
+      height: 240,
+    })
+    expect(geometry.points).toHaveLength(30)
+    const labels = geometry.xTicks.map((tick) => tick.label)
+    expect(labels.length).toBeLessThanOrEqual(8)
+    expect(labels.at(0)).toBe('10-22')
+    expect(labels.at(-1)).toBe('11-20')
+  })
+})

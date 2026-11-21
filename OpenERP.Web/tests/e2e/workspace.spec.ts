@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { enterWorkspace, type WorkspaceRole } from './authentication'
+import { dataTrendFixture, emptyTrendFixture, salesFixture } from '../reportFixtures'
 
 const shopsTable = (page: Page) => page.getByRole('table', { name: '授权店铺列表' })
 const shopRows = (page: Page) => shopsTable(page).locator('tbody tr')
@@ -37,6 +38,8 @@ function workspaceReport() {
   return {
     generatedAtUtc: '2026-11-20T02:03:04Z',
     summary: { orderCount: 6, itemQuantity: 15 },
+    sales: salesFixture(371.12, 'USD', 6, 0),
+    trend: dataTrendFixture(),
     platforms: ['TemuPop', 'AliExpress'],
     shops: reportShops,
     groups: [
@@ -54,6 +57,8 @@ function emptyReport() {
   return {
     ...workspaceReport(),
     summary: { orderCount: 0, itemQuantity: 0 },
+    sales: salesFixture(0, 'USD', 0, 0),
+    trend: emptyTrendFixture(),
     groups: [],
   }
 }
@@ -393,12 +398,28 @@ test('Given 工作台有数据 When 打开 Then 状态条数字卡图表卡与�
   await expect(page.locator('[data-testid="directory-synced-at"]')).not.toHaveText('—')
   await expect(page.locator('[data-testid="workspace-refresh"]')).toBeVisible()
 
-  // 数字卡：订单数 / 商品件数 / 有订单店铺 / 目录最近同步时间。
+  // 数字卡：销售额（已同步）/ 订单数 / 商品件数 / 目录最近同步时间。
+  await expect(page.locator('[data-testid="metric-sales"]')).toContainText('371.12')
   await expect(page.locator('[data-testid="metric-orders"]')).toContainText('6')
   await expect(page.locator('[data-testid="metric-items"]')).toContainText('15')
-  await expect(page.locator('[data-testid="metric-shops"]')).toContainText('2')
   await expect(page.locator('[data-testid="metric-last-sync"]')).toBeVisible()
   await expect(page.locator('[data-testid="metric-platforms"]')).toHaveCount(0)
+
+  // 走势卡：真实接口返回的销售额/订单数双序列、环比与口径脚注。
+  const trendCard = page.locator('[data-testid="workspace-trend-card"]')
+  await expect(trendCard).toContainText('经营走势')
+  await expect(page.locator('[data-testid="trend-sales-comparison"]')).toContainText('%')
+  await expect(page.locator('[data-testid="trend-orders-comparison"]')).toContainText('%')
+  await expect(page.locator('[data-testid="trend-footnote"]')).toContainText('成本币种（USD）')
+  await page.locator('[data-testid="workspace-trend-chart"]').hover({ position: { x: 220, y: 90 } })
+  await expect(page.locator('[data-testid="trend-tooltip"]')).toBeVisible()
+  const trendRequest = page.waitForRequest(
+    (request) =>
+      request.url().includes('/api/reports/order-snapshot') &&
+      request.url().includes('trendDays=30'),
+  )
+  await trendCard.getByRole('button', { name: '近 30 天' }).click()
+  await trendRequest
 
   // 图卡：平台分布与店铺商品量 Top5，店名按目录映射。
   const platformCard = page.locator('[data-testid="workspace-platform-card"]')
@@ -430,6 +451,21 @@ test('Given 工作台有数据 When 打开 Then 状态条数字卡图表卡与�
   // 店铺下钻：URL 使用报表返回的完整店铺键并编码。
   await rankCard.locator('[data-shop-key="wxw-erp/TemuPop/30"]').click()
   await expect(page).toHaveURL(/\/reports\/orders\?shops=wxw-erp\/TemuPop\/30$/)
+})
+
+test('Given 1023 与 390 窄屏 When 打开工作台 Then 轨道侧栏与单列卡片均无页面级横向溢出', async ({
+  page,
+}) => {
+  await prepare(page)
+  await mockWorkspaceApis(page)
+  for (const width of [1023, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/')
+    await expect(page.locator('[data-testid="page-dashboard"]')).toBeVisible()
+    await expect(page.locator('[data-testid="workspace-trend-card"]')).toBeVisible()
+    await expect(page.locator('[data-testid="sidebar"][data-rail="true"]')).toBeVisible()
+    expect(await hasPageOverflow(page)).toBe(false)
+  }
 })
 
 test('Given 工作台空态 When 管理员打开 Then 引导带按真实状态展示完成标记并可收起', async ({
@@ -464,6 +500,7 @@ test('Given 工作台空态 When 管理员打开 Then 引导带按真实状态�
   await expect(page.locator('[data-testid="workspace-platform-card"]')).toContainText(
     '暂无订单数据',
   )
+  await expect(page.locator('[data-testid="workspace-trend-card"]')).toContainText('暂无订单数据')
 
   // 收起后保留一行进度与下一步提示。
   await page.locator('[data-testid="onboarding-toggle"]').click()
@@ -616,8 +653,10 @@ test('Given 普通员工 When 打开工作台 Then 侧栏无管理条目且空�
   await expect(page.locator('[data-testid="workspace-system-card"]')).toHaveCount(0)
   await expect(page.locator('[data-testid="workspace-sync-card"]')).toHaveCount(1)
   await expect(page.locator('[data-testid="metric-orders"]')).toContainText('0')
+  await expect(page.locator('[data-testid="metric-sales"]')).toBeVisible()
   await expect(page.locator('[data-testid="metric-last-sync"]')).toHaveCount(0)
   await expect(page.locator('[data-testid="metric-platforms"]')).toBeVisible()
+  await expect(page.locator('[data-testid="workspace-trend-card"]')).toBeVisible()
 })
 
 test('Given 普通员工 When 直达管理路由 Then 重定向工作台并提示仅管理员可访问', async ({ page }) => {

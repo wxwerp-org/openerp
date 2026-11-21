@@ -14,11 +14,13 @@ import WorkspaceShopRankCard from '../components/workspace/WorkspaceShopRankCard
 import WorkspaceStatusBar from '../components/workspace/WorkspaceStatusBar.vue'
 import WorkspaceSyncCard from '../components/workspace/WorkspaceSyncCard.vue'
 import WorkspaceSystemCard from '../components/workspace/WorkspaceSystemCard.vue'
-import { useWorkspaceDashboard } from '../workspace/useWorkspaceDashboard'
+import WorkspaceTrendCard from '../components/workspace/WorkspaceTrendCard.vue'
+import { useWorkspaceDashboard, type TrendDays } from '../workspace/useWorkspaceDashboard'
 import { onboardingSummaryDismissed } from '../workspace/onboardingState'
 import {
   formatCount,
   formatDateTime,
+  formatMoney,
   platformTotals,
   shopNameBySid,
   shopNameMap,
@@ -67,7 +69,7 @@ const hub = useErpHub({
   shopSync: administrator.value,
   orderSync: true,
   onOrdersChanged: () => {
-    void loadReport()
+    void loadReport(trendDays.value)
     void loadDirectory()
   },
 })
@@ -83,6 +85,7 @@ const {
   startAllOrderSync,
 } = hub
 
+const trendDays = ref<TrendDays>(7)
 const syncOpen = ref(false)
 const startingAll = ref(false)
 const batchMessage = ref('')
@@ -112,9 +115,17 @@ const platformRows = computed(() => platformTotals(report.value?.groups ?? []))
 
 const topShops = computed(() => rankTopShops(report.value?.groups ?? [], shopNames.value))
 
-const distinctShopCount = computed(
-  () => new Set((report.value?.groups ?? []).map((group) => group.shop.key)).size,
-)
+const trend = computed(() => report.value?.trend ?? null)
+/** 服务端已返回并展示的周期；请求失败时仍保留旧周期，允许再次切换重试。 */
+const displayedTrendDays = computed<TrendDays>(() => (report.value?.trend.days === 30 ? 30 : 7))
+
+const salesAmount = computed(() => report.value?.sales.amount ?? null)
+const salesDetail = computed(() => {
+  const sales = report.value?.sales
+  if (!sales || sales.knownOrderCount > 0 || report.value?.summary.orderCount === 0)
+    return undefined
+  return '暂无可用金额，重新同步订单后可补齐'
+})
 
 const state = computed<DashboardState>(() =>
   resolveDashboardState({
@@ -131,10 +142,24 @@ const state = computed<DashboardState>(() =>
   }),
 )
 
-type MetricCard = { label: string; value: string; testid: string; to: { path: string } }
+type MetricCard = {
+  label: string
+  value: string
+  detail?: string
+  testid: string
+  to: { path: string }
+  toLabel?: string
+}
 
 const metricCards = computed<MetricCard[]>(() => {
   const cards: MetricCard[] = [
+    {
+      label: '销售额（已同步）',
+      value: formatMoney(salesAmount.value, report.value?.sales.currency ?? null),
+      detail: salesDetail.value,
+      testid: 'metric-sales',
+      to: { path: '/reports/orders' },
+    },
     {
       label: '订单数',
       value: formatCount(orderCount.value),
@@ -145,12 +170,6 @@ const metricCards = computed<MetricCard[]>(() => {
       label: '商品件数',
       value: formatCount(report.value?.summary.itemQuantity ?? null),
       testid: 'metric-items',
-      to: { path: '/reports/orders' },
-    },
-    {
-      label: '有订单店铺',
-      value: formatCount(report.value ? distinctShopCount.value : null),
-      testid: 'metric-shops',
       to: { path: '/reports/orders' },
     },
   ]
@@ -165,6 +184,7 @@ const metricCards = computed<MetricCard[]>(() => {
             : '—',
       testid: 'metric-last-sync',
       to: { path: '/shops' },
+      toLabel: '查看授权店铺',
     })
   } else {
     cards.push({
@@ -222,7 +242,7 @@ function drillShop(key: string): void {
 async function refreshAll(): Promise<void> {
   await reconnect()
   if (disposed) return
-  await refresh()
+  await refresh(trendDays.value)
 }
 
 async function syncDirectory(): Promise<void> {
@@ -294,7 +314,7 @@ watch(
         if (task.status === 'running' || task.status === 'failed') changed = true
       }
     }
-    if (changed) void loadReport()
+    if (changed) void loadReport(trendDays.value)
   },
 )
 
@@ -312,8 +332,15 @@ watch(
 
 function handleVisibilityChange(): void {
   if (document.visibilityState !== 'visible') return
-  void loadReport()
+  void loadReport(trendDays.value)
   void loadDirectory()
+}
+
+function selectTrendDays(days: TrendDays): void {
+  // 以「已展示周期」去重：请求失败后再次点击同一周期应能重试。
+  if (days === displayedTrendDays.value) return
+  trendDays.value = days
+  void loadReport(days)
 }
 
 function retrySystem(): void {
@@ -363,6 +390,7 @@ onUnmounted(() => {
           :key="index"
           class="col-span-12 h-104 animate-pulse rounded-6 bg-white lg:col-span-6 xl:col-span-3"
         ></div>
+        <div class="col-span-12 h-460 animate-pulse rounded-6 bg-white"></div>
         <div class="col-span-12 h-296 animate-pulse rounded-6 bg-white lg:col-span-6"></div>
         <div class="col-span-12 h-296 animate-pulse rounded-6 bg-white lg:col-span-6"></div>
         <div
@@ -383,7 +411,7 @@ onUnmounted(() => {
         <AppCard class="flex max-w-420 flex-col items-center gap-10 p-28 text-center">
           <strong class="text-14 font-semibold text-ink">工作台数据加载失败</strong>
           <span class="text-12 text-muted">{{ reportError }}</span>
-          <AppButton variant="primary" @click="loadReport()">重试</AppButton>
+          <AppButton variant="primary" @click="loadReport(trendDays)">重试</AppButton>
         </AppCard>
       </div>
 
@@ -440,8 +468,17 @@ onUnmounted(() => {
             class="col-span-12 lg:col-span-6 xl:col-span-3"
             :label="card.label"
             :value="card.value"
+            :detail="card.detail"
             :testid="card.testid"
             :to="card.to"
+            :to-label="card.toLabel"
+          />
+
+          <WorkspaceTrendCard
+            v-if="trend"
+            :trend="trend"
+            @period-change="selectTrendDays"
+            @open="router.push('/reports/orders')"
           />
 
           <template v-if="state === 'data'">
@@ -450,11 +487,13 @@ onUnmounted(() => {
               :totals="platformRows"
               :total-orders="orderCount ?? 0"
               @select="drillPlatform"
+              @open="router.push('/reports/orders')"
             />
             <WorkspaceShopRankCard
               class="col-span-12 lg:col-span-6"
               :rows="topShops"
               @select="drillShop"
+              @open="router.push('/reports/orders')"
             />
           </template>
 
@@ -510,11 +549,13 @@ onUnmounted(() => {
               :totals="[]"
               :total-orders="0"
               @select="drillPlatform"
+              @open="router.push('/reports/orders')"
             />
             <WorkspaceShopRankCard
               class="col-span-12 lg:col-span-6"
               :rows="[]"
               @select="drillShop"
+              @open="router.push('/reports/orders')"
             />
           </template>
 

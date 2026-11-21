@@ -1,5 +1,6 @@
 import { devices, expect, test, type Page } from '@playwright/test'
 import { bearerHeaders, enterWorkspace } from './authentication'
+import { dataTrendFixture, salesFixture } from '../reportFixtures'
 
 // 浏览器截图使用固定接口样本，真实业务数据由后端验收覆盖。
 const sampleShop = {
@@ -13,6 +14,8 @@ const sampleShop = {
 const reportSample = {
   generatedAtUtc: '2026-11-17T01:02:03Z',
   summary: { orderCount: 1, itemQuantity: 5 },
+  sales: salesFixture(371.12, 'USD', 1, 0),
+  trend: dataTrendFixture(),
   platforms: ['TemuPop'],
   shops: [sampleShop],
   groups: [{ shop: sampleShop, orderCount: 1, itemQuantity: 5 }],
