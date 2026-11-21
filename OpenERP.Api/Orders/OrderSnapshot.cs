@@ -1,7 +1,8 @@
 namespace OpenERP.Api.Orders;
 
 public sealed record OrderSnapshot(string ErpId, string OrderNumber, int Sid, string Platform, string Status,
-    OrderTimes Times, IReadOnlyList<PlatformOrderSnapshot> PlatformOrders, IReadOnlyList<OrderLineSnapshot> Lines);
+    OrderTimes Times, IReadOnlyList<PlatformOrderSnapshot> PlatformOrders, IReadOnlyList<OrderLineSnapshot> Lines,
+    decimal? IncomeCost = null, string? IncomeCurrency = null);
 
 public sealed record PlatformOrderSnapshot(string PoNumber, int Sid, string? StatusCode, string? StatusText);
 
@@ -22,4 +23,4 @@ public sealed record OrderIndex(int Total, IReadOnlyList<string> Ids, IReadOnlyL
     IReadOnlyDictionary<string, int> SkipReasons);
 
 public sealed record ErpOrderHeader(string ErpId, string OrderNumber, OrderTimes Times,
-    IReadOnlyList<PlatformOrderSnapshot> PlatformOrders);
+    IReadOnlyList<PlatformOrderSnapshot> PlatformOrders, decimal? IncomeCost = null, string? IncomeCurrency = null);

@@ -6,8 +6,6 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
-using Npgsql;
-
 using OpResult;
 using OpenERP.Api.Authentication;
 
@@ -15,11 +13,6 @@ namespace OpenERP.Api.Orders;
 
 internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> logger)
 {
-    private const string IsoTimePattern = @"^[0-9]{4}-[0-9]{2}-[0-9]{2}([ T]([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\.[0-9]{1,6})?)?(Z|[+-]([01][0-9]:[0-5][0-9]))?)?$";
-    private const string YearLastPattern = "^[0-9]{2}-[0-9]{2}-[0-9]{4}($|[ T])";
-    private const string HourOnlyPattern = "([ T][0-9]{2})$";
-    private const string EpochSecondsPattern = "^[0-9]{10}$";
-
     private static readonly string OrderHeadersSql = $$"""
         SELECT o."ErpId", o."Sid", o."Platform",
                parsed.created_at AS "CreatedAt", parsed.created_at::date AS "CreatedDate",
@@ -28,20 +21,12 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         FROM "Orders" AS o
         CROSS JOIN LATERAL (VALUES (btrim(o."CreatedRaw"), btrim(o."DispatchedRaw"))) AS source(created, dispatched)
         CROSS JOIN LATERAL (VALUES (
-            regexp_replace({{NormalizeYearLastSql("source.created")}}, @hour_only, @hour_with_minute),
-            regexp_replace({{NormalizeYearLastSql("source.dispatched")}}, @hour_only, @hour_with_minute)
+            {{OrderCreatedTimeSql.Normalize("source.created")}},
+            {{OrderCreatedTimeSql.Normalize("source.dispatched")}}
         )) AS normalized(created, dispatched)
         CROSS JOIN LATERAL (
-            SELECT CASE
-                WHEN normalized.created ~ @iso AND pg_input_is_valid(normalized.created, 'timestamp without time zone')
-                    THEN normalized.created::timestamp
-                WHEN source.created ~ @epoch THEN to_timestamp(source.created::bigint) AT TIME ZONE 'UTC'
-            END AS created_at,
-            CASE
-                WHEN normalized.dispatched ~ @iso AND pg_input_is_valid(normalized.dispatched, 'timestamp without time zone')
-                    THEN normalized.dispatched::timestamp
-                WHEN source.dispatched ~ @epoch THEN to_timestamp(source.dispatched::bigint) AT TIME ZONE 'UTC'
-            END AS dispatched_at
+            SELECT {{OrderCreatedTimeSql.Parse("source.created", "normalized.created")}} AS created_at,
+                   {{OrderCreatedTimeSql.Parse("source.dispatched", "normalized.dispatched")}} AS dispatched_at
         ) AS parsed
         WHERE o."DeletedAt" IS NULL
         """;
@@ -157,27 +142,7 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
     }
 
     private IQueryable<OrderListHeader> ReadHeaders() =>
-        // PostgreSQL 18 在强制转换前验证日历日期。无时区时间按来源原值排序，有偏移的值保留其偏移。
-        db.Database.SqlQueryRaw<OrderListHeader>(OrderHeadersSql,
-            new NpgsqlParameter("iso", IsoTimePattern), new NpgsqlParameter("year_last", YearLastPattern),
-            new NpgsqlParameter("hour_only", HourOnlyPattern), new NpgsqlParameter("hour_with_minute", @"\1:00"),
-            new NpgsqlParameter("epoch", EpochSecondsPattern));
-
-    // 仅接收上述 SQL 中的固定列引用。年在后时，两个不同的 01–12 分量会产生两个有效日期。
-    private static string NormalizeYearLastSql(string column) => $$"""
-        CASE WHEN {{column}} ~ @year_last THEN
-            CASE
-                WHEN substr({{column}}, 1, 2)::int BETWEEN 1 AND 12
-                     AND substr({{column}}, 4, 2)::int BETWEEN 1 AND 12
-                     AND substr({{column}}, 1, 2) <> substr({{column}}, 4, 2) THEN NULL
-                ELSE substr({{column}}, 7, 4) || '-' ||
-                     CASE WHEN substr({{column}}, 1, 2)::int > 12
-                          THEN substr({{column}}, 4, 2) || '-' || substr({{column}}, 1, 2)
-                          ELSE substr({{column}}, 1, 5)
-                     END || substr({{column}}, 11)
-            END
-        ELSE {{column}} END
-        """;
+        db.Database.SqlQueryRaw<OrderListHeader>(OrderHeadersSql, OrderCreatedTimeSql.Parameters());
 
     private static string? FormatTime(DateTime? value, string? source)
     {

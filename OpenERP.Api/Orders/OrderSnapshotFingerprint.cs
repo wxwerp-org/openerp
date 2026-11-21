@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 
 namespace OpenERP.Api.Orders;
@@ -48,6 +49,10 @@ internal static class OrderSnapshotFingerprint
             WriteNullableBoolean(writer, line.Disabled);
             WriteNullableBoolean(writer, line.Appended);
         }
+
+        // 以数值相等为准，忽略来源金额字符串的小数位数差异。
+        WriteString(writer, snapshot.IncomeCost?.ToString("G29", CultureInfo.InvariantCulture));
+        WriteString(writer, snapshot.IncomeCurrency);
 
         stream.Position = 0;
         return Convert.ToHexString(SHA256.HashData(stream));

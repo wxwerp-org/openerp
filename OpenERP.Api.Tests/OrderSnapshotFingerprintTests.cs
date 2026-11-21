@@ -24,6 +24,8 @@ public sealed class OrderSnapshotFingerprintTests
             snapshot with { Sid = 21 },
             snapshot with { Platform = "Platform" },
             snapshot with { Status = "closed" },
+            snapshot with { IncomeCost = 0m },
+            snapshot with { IncomeCurrency = "USD" },
             snapshot with { Times = snapshot.Times with { Created = Time with { Raw = "other" } } },
             snapshot with { Times = snapshot.Times with { Created = Time with { Source = "other" } } },
             snapshot with { Times = snapshot.Times with { Paid = Time with { Raw = "other" } } },

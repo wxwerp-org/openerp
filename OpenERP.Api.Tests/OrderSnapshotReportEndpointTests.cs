@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpenERP.Api.Authentication;
@@ -63,6 +65,86 @@ public sealed class OrderSnapshotReportEndpointTests
         Assert.Equal("读取本地订单失败，请重试。", json.GetProperty("title").GetString());
     }
 
+    [Theory]
+    [InlineData("", 7, null)]
+    [InlineData("?trendDays=7", 7, null)]
+    [InlineData("?trendDays=30&trendEnd=2026-11-17", 30, "2026-11-17")]
+    public async Task Passes_trend_parameters_and_writes_the_report_contract(string query, int days, string? end)
+    {
+        // Given 可控的报表结果和应用注册的真实路由委托。
+        // When 请求默认或显式趋势窗口。
+        var (response, json, provider) = await InvokeRouteAsync(query);
+
+        // Then 参数、缓存头和所有趋势与金额字段符合 JSON 契约。
+        Assert.Equal(StatusCodes.Status200OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl.ToString());
+        Assert.Equal(days, provider.Request!.TrendDays);
+        Assert.Equal(end, provider.Request.TrendEnd?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+        var sales = json.GetProperty("sales");
+        Assert.Equal(12.34m, sales.GetProperty("amount").GetDecimal());
+        Assert.Equal("USD", sales.GetProperty("currency").GetString());
+        Assert.Equal(1, sales.GetProperty("knownOrderCount").GetInt64());
+        Assert.Equal(1, sales.GetProperty("unknownOrderCount").GetInt64());
+        var trend = json.GetProperty("trend");
+        Assert.Equal(days, trend.GetProperty("days").GetInt32());
+        Assert.Equal("2026-11-17", trend.GetProperty("end").GetString());
+        Assert.Equal("USD", trend.GetProperty("currency").GetString());
+        Assert.Equal(2, trend.GetProperty("missingCreatedCount").GetInt64());
+        Assert.Equal(1, trend.GetProperty("amountKnownOrderCount").GetInt64());
+        Assert.Equal(0, trend.GetProperty("amountUnknownOrderCount").GetInt64());
+        var points = trend.GetProperty("points");
+        Assert.Equal(days, points.GetArrayLength());
+        var point = points[days - 1];
+        Assert.Equal("2026-11-17", point.GetProperty("date").GetString());
+        Assert.Equal(1, point.GetProperty("orderCount").GetInt64());
+        Assert.Equal(7, point.GetProperty("itemQuantity").GetInt64());
+        Assert.Equal(12.34m, point.GetProperty("salesAmount").GetDecimal());
+        var previous = trend.GetProperty("previous");
+        Assert.Equal(1, previous.GetProperty("orderCount").GetInt64());
+        Assert.Equal(3, previous.GetProperty("itemQuantity").GetInt64());
+        Assert.Equal(JsonValueKind.Null, previous.GetProperty("salesAmount").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("?trendDays=0", "趋势周期只支持 7 或 30 天。")]
+    [InlineData("?trendDays=14", "趋势周期只支持 7 或 30 天。")]
+    [InlineData("?trendDays=31", "趋势周期只支持 7 或 30 天。")]
+    [InlineData("?trendDays=abc", "趋势周期只支持 7 或 30 天。")]
+    [InlineData("?trendEnd=", "趋势结束日期必须使用 yyyy-MM-dd 格式。")]
+    [InlineData("?trendEnd=2026-02-30", "趋势结束日期必须使用 yyyy-MM-dd 格式。")]
+    [InlineData("?trendEnd=2026-1-07", "趋势结束日期必须使用 yyyy-MM-dd 格式。")]
+    [InlineData("?trendEnd=2026-11-17T00:00:00Z", "趋势结束日期必须使用 yyyy-MM-dd 格式。")]
+    public async Task Rejects_invalid_trend_parameters_with_specific_problem_details(string query, string title)
+    {
+        // Given 可用的报表路由；When 传入非法趋势参数；Then 禁止缓存并返回 400 及对应文案。
+        var (response, json, provider) = await InvokeRouteAsync(query);
+        Assert.Equal(StatusCodes.Status400BadRequest, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl.ToString());
+        Assert.Equal(title, json.GetProperty("title").GetString());
+        Assert.Null(provider.Request);
+    }
+
+    private static async Task<(HttpResponse Response, JsonElement Json, TestQuery Provider)> InvokeRouteAsync(string query)
+    {
+        var builder = WebApplication.CreateEmptyBuilder(new());
+        builder.WebHost.UseKestrelCore();
+        var provider = new TestQuery();
+        builder.Services.AddSingleton<IOrderSnapshotReportQuery>(provider);
+        await using var app = builder.Build();
+        app.MapOrderReports();
+        var endpoint = Assert.Single(Assert.Single(((IEndpointRouteBuilder)app).DataSources).Endpoints);
+        using var body = new MemoryStream();
+        var context = new DefaultHttpContext { RequestServices = app.Services };
+        context.Request.Method = HttpMethods.Get;
+        context.Request.Path = "/api/reports/order-snapshot";
+        context.Request.QueryString = new QueryString(query);
+        context.Response.Body = body;
+        await endpoint.RequestDelegate!(context);
+        body.Position = 0;
+        return (context.Response, await JsonSerializer.DeserializeAsync<JsonElement>(body,
+            cancellationToken: TestContext.Current.CancellationToken), provider);
+    }
+
     private static async Task<TestHost> StartAsync()
     {
         var builder = WebApplication.CreateBuilder();
@@ -86,9 +168,15 @@ public sealed class OrderSnapshotReportEndpointTests
         public Task<OpResult<OrderSnapshotReport>> QueryAsync(OrderSnapshotReportRequest request, CancellationToken cancellationToken)
         {
             Request = request;
+            var end = new DateOnly(2026, 11, 17);
+            var points = Enumerable.Range(1 - request.TrendDays, request.TrendDays)
+                .Select(offset => new OrderTrendPoint(end.AddDays(offset).ToString("yyyy-MM-dd",
+                    System.Globalization.CultureInfo.InvariantCulture), offset == 0 ? 1 : 0,
+                    offset == 0 ? 7 : 0, offset == 0 ? 12.34m : 0m)).ToArray();
             OpResult<OrderSnapshotReport> result = Fail
                 ? OpResults.Err("读取本地订单失败，请重试。")
-                : new OrderSnapshotReport(new(2026, 11, 17, 1, 2, 3, DateTimeKind.Utc), new(2, 7), [], [], [], [], 2, 10, 2);
+                : new OrderSnapshotReport(new(2026, 11, 17, 1, 2, 3, DateTimeKind.Utc), new(2, 7), [], [], [], [], 2, 10, 2,
+                    new(12.34m, "USD", 1, 1), new(request.TrendDays, end, "USD", points, new(1, 3, null), 2, 1, 0));
             return Task.FromResult(result);
         }
     }
