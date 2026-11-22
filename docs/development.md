@@ -165,6 +165,10 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 [后端 PR 检查](../.github/workflows/ci-backend.yml)在 PR 改动后端项目、共享构建输入、Node.js/pnpm 工具链文件或该 workflow 时触发，按照 [Aspire 官方 CI 指导](https://aspire.dev/testing/testing-in-ci/)在 Ubuntu 上还原、构建并无过滤执行整个 solution。容器由既有 Aspire 测试夹具启动和清理，YAML 不自行编排容器；Node.js/pnpm 用于既有 `WebInstallerTests`，HTTPS 信任用于既有集成测试。构建、容器启动、测试断言或清理失败会使 job 失败。
 
+后端在锁定还原后、构建前运行 `python3 .github/nuget/check-graph.py`。它读取解决方案内每个项目的 `obj/project.assets.json`，逐个检查目标框架及 RID 的已解析包。直接或传递引入的 .NET 产品线组件解析为 11 或更高主版本时，日志列出项目、目标、包名及实际版本。可用 `dotnet nuget why OpenERP.slnx <包名>` 追查引入路径。[NuGet 依赖解析](https://learn.microsoft.com/en-us/nuget/concepts/dependency-resolution#dependency-resolution-with-packagereference) · [.NET SDK 依赖链查询](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-nuget-why)
+
+[包名清单](../.github/nuget/dotnet-packages.txt)按微软发布表中与 Runtime 同版的包（含该版本的预发行组件）、Platform Extensions 和本项目配套的 Npgsql EF provider 确定。平台运行包按同系列匹配，其余按包 ID 区分，例如 `System.IO.Hashing` 随 Runtime 发布，`System.IdentityModel.Tokens.Jwt` 随 IdentityModel 发布。微软发布新包 ID 或项目迁移产品线时，按发布清单同步更新。CI 从仓库读取清单，可离线检查已还原的图。[.NET 10.0.15 包表](https://github.com/dotnet/core/blob/main/release-notes/10.0/10.0.15/10.0.15.md#packages-updated-in-this-release) · [.NET 11.0.0 包表](https://github.com/dotnet/core/blob/main/release-notes/11.0/11.0.0/11.0.0.md#packages-updated-in-this-release) · [Platform Extensions 包表](https://github.com/dotnet/extensions/releases/tag/v11.0.1)
+
 测试使用运行器原生 `--zero-tests-policy strict` 拒绝零用例。xUnit 直接生成 CTRF 报告 `backend.json`，GitHub Actions 将测试结果目录原样上传为 `backend-results-<attempt>`，可从对应运行下载。CI 未提供真实 ERP 凭证或隔离浏览器开关时，相应用例跳过，单独报告。完整后端套件包含真实容器集成测试，执行耗时不能按纯单元测试估算。
 
 [前端检查](../.github/workflows/ci-web.yml)在 PR 改动 Web 项目、发布宿主输入、共享构建配置或该 workflow 时触发，也在每次推送 `main` 时运行。它执行 lint、类型检查、单元测试与构建，依赖安装成功且运行未取消时，一项失败后仍执行其余检查。浏览器 job 只在 `workflow_dispatch` 时执行，手动运行失败仍会传递到结果汇总；失败时在运行页下载 `playwright-report-<attempt>` 产物，用 `pnpm --dir OpenERP.Web exec playwright show-report <下载的 zip>` 查看失败用例的截图与 trace。浏览器 job 的前序步骤失败时会尝试上传已生成的报告。
