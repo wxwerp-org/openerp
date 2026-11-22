@@ -13,24 +13,32 @@ public static class OrderReportEndpoints
     public static void MapOrderReports(this WebApplication app)
     {
         app.MapGet("/api/reports/order-snapshot", async Task<Results<Ok<OrderSnapshotReport>, ProblemHttpResult>>
-            (IOrderSnapshotReportQuery query, AppDbContext db, HttpContext context, string? platform,
-                [FromQuery] string[]? shops, int? page, int? pageSize, string? trendDays, string? trendEnd,
+            (IOrderSnapshotReportQuery query, TimeProvider clock, AppDbContext db, HttpContext context, string? platform,
+                [FromQuery] string[]? shops, int? page, int? pageSize, string? trendStart, string? trendEnd,
+
                 CancellationToken cancellationToken) =>
         {
             context.Response.Headers.CacheControl = "no-store";
-            var days = 7;
-            if (trendDays is not null && !int.TryParse(trendDays, NumberStyles.Integer, CultureInfo.InvariantCulture, out days))
-                return TypedResults.Problem(statusCode: 400, title: OrderSnapshotReportRequest.InvalidTrendDays);
+            DateOnly? start = null;
+            if (trendStart is not null)
+            {
+                if (trendStart.Length != 10 || !DateOnly.TryParseExact(trendStart, "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+                    return TypedResults.Problem(statusCode: 400, title: "走势开始日期必须使用 yyyy-MM-dd 格式。");
+                start = date;
+            }
 
             DateOnly? end = null;
             if (trendEnd is not null)
             {
-                if (!DateOnly.TryParseExact(trendEnd, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
-                    return TypedResults.Problem(statusCode: 400, title: "趋势结束日期必须使用 yyyy-MM-dd 格式。");
+                if (trendEnd.Length != 10 || !DateOnly.TryParseExact(trendEnd, "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+                    return TypedResults.Problem(statusCode: 400, title: "走势结束日期必须使用 yyyy-MM-dd 格式。");
                 end = date;
             }
 
-            var request = new OrderSnapshotReportRequest(platform, shops ?? [], page ?? 1, pageSize ?? 20, days, end);
+            end ??= DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+            var request = new OrderSnapshotReportRequest(platform, shops ?? [], page ?? 1, pageSize ?? 20, start, end);
             if (request.ValidationError is { } error)
                 return TypedResults.Problem(statusCode: 400, title: error);
 

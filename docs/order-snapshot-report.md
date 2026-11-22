@@ -27,7 +27,7 @@
 - 已知金额按原值相加，其中真实零金额计为已知。缺少 ERP 收入权限时所有订单的金额均未知。部分金额已知时只加已知部分。存在订单但金额全未知的日期返回 `null`，没有订单的日期返回 `0`。
 - 工作台数字卡的 `sales` 汇总匹配平台与店铺的全部本地订单，包括没有创建日期的订单。汇总范围内没有已知金额时，合计为 `null`。既有订单在重新同步取得金额后才计入已知金额。
 - 走势按订单创建原始墙钟日期分桶，原值含偏移时也保留原日期。历史 epoch 值沿用订单列表的 UTC 解析。创建日期无法解析的匹配订单在走势中只进入 `missingCreatedCount`，该计数覆盖全部日期范围。
-- 当前窗口包含结束日期及向前的 `days - 1` 天，环比取紧邻当前窗口之前的等长窗口。当前窗口起点之前无可解析的匹配订单时，`previous` 为 `null`，工作台显示「无对比」。若只有更早的历史订单，环比窗口返回全零。
+- 当前窗口含开始和结束当天，共 `days = end - start + 1` 天。客户端可按季度、年份或自定义区间传入起止日期，服务端统一按日分桶。环比取紧邻当前窗口之前的等长区间 `[start - days, start - 1]`。当前窗口起点之前无可解析创建日期的匹配订单时，`previous` 为 `null`，工作台显示「无对比」。若只有早于环比区间的历史订单，环比窗口返回全零。
 - 金额已知订单的币种一致且有值时返回该币种。混合币种或有金额但币种缺失时，`currency` 为 `null`，金额仍按原值相加，未做汇率换算。
 
 ## 查询接口
@@ -40,8 +40,10 @@
 | `shops` | 可重复提交的店铺键，取自响应 `shops[].key`；省略表示全部。最多100家，未知键不会退回查询全部 |
 | `page` | 从1开始，默认1；超出结果页数时返回最后一页 |
 | `pageSize` | 每页1至100条，默认20 |
-| `trendDays` | 走势天数，支持 7 或 30，默认 7 |
-| `trendEnd` | 走势结束日期，格式为 `yyyy-MM-dd`，默认查询时的 UTC 日期 |
+| `trendStart` | 可选的走势开始日期，含当天，严格使用 `yyyy-MM-dd`。省略时取结束日期往前第 6 天，形成 7 天窗口 |
+| `trendEnd` | 可选的走势结束日期，含当天，严格使用 `yyyy-MM-dd`。省略时取查询时的 UTC 日期 |
+
+接口会忽略旧的 `trendDays` 参数。起止日期均省略时，返回以查询时的 UTC 日期结尾的 7 天窗口。开始日期须早于或等于结束日期，窗口最长 366 天。
 
 响应包含 `summary`、当前筛选下的 `groups`、分页 `orders`、可见订单生成的选项 `platforms` / `shops`、分页信息、`generatedAtUtc`、`sales` 和 `trend`。管理员可读取全量；员工的明细、选项和工作台统计按分配的「平台 + SID」范围计算，包含仍有分配的历史店铺。店铺名称未保存在现有订单库中，标签使用来源店铺编号，不虚构店铺名。空结果仍返回第1页，`pageCount` 为1。
 
@@ -51,13 +53,14 @@
 | --- | --- |
 | `sales.amount`、`sales.currency` | 全部匹配订单的已知金额合计及唯一币种，均可为 `null` |
 | `sales.knownOrderCount`、`sales.unknownOrderCount` | 全部匹配订单中金额已知和未知的订单数 |
-| `trend.days`、`trend.end`、`trend.currency` | 当前窗口天数、结束日期（`yyyy-MM-dd`）及其唯一币种（可为 `null`） |
-| `trend.points` | 与窗口天数等长，日期升序且缺日补零。每项含 `date`（`yyyy-MM-dd`）、`orderCount`、`itemQuantity`、`salesAmount`（可为 `null`） |
+| `trend.start`、`trend.end` | 当前窗口的开始和结束日期，都是 `yyyy-MM-dd` 字符串 |
+| `trend.days`、`trend.currency` | 当前窗口天数（1 至 366）及其唯一币种（可为 `null`） |
+| `trend.points` | 从 `trend.start` 到 `trend.end` 每天一个点，按日期升序排列，缺日补零，长度为 `trend.days`。每项含 `date`（`yyyy-MM-dd`）、`orderCount`、`itemQuantity`、`salesAmount`（可为 `null`） |
 | `trend.previous` | 上一个等长窗口的 `orderCount`、`itemQuantity`、`salesAmount`，无可对比历史时整个字段为 `null` |
 | `trend.missingCreatedCount` | 全部匹配订单中缺少可解析创建日期的订单数 |
 | `trend.amountKnownOrderCount`、`trend.amountUnknownOrderCount` | 当前窗口内金额已知和未知的订单数 |
 
-无效查询返回400。员工在 `shops` 中指定未分配的店铺时返回403。数据库读取失败返回503及 ProblemDetails。所有异步读取接收请求取消信号。
+无效查询返回 400 及 ProblemDetails。走势参数的 `title` 按失败原因分别为 `走势开始日期必须使用 yyyy-MM-dd 格式。`、`走势结束日期必须使用 yyyy-MM-dd 格式。`、`走势开始日期不能晚于结束日期。` 或 `走势区间最长支持 366 天。`。员工在 `shops` 中指定未分配的店铺时返回 403。数据库读取失败返回 503 及 ProblemDetails。所有异步读取接收请求取消信号。
 
 ## 代码边界与扩展
 

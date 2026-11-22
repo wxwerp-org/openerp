@@ -26,6 +26,10 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
 
     public async Task<OpResult<OrderSnapshotReport>> QueryAsync(OrderSnapshotReportRequest request, CancellationToken cancellationToken)
     {
+        var generatedAt = clock.GetUtcNow().UtcDateTime;
+        var trendEnd = request.TrendEnd ?? DateOnly.FromDateTime(generatedAt);
+        if (request.TrendEnd is null)
+            request = request with { TrendEnd = trendEnd };
         if (request.ValidationError is { } error)
             return OpResults.Err(error);
 
@@ -36,7 +40,7 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
             return await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
-                var report = await ReadAsync(request, cancellationToken);
+                var report = await ReadAsync(request, generatedAt, trendEnd, cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return OpResults.Ok(report);
             });
@@ -48,10 +52,9 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
         }
     }
 
-    private async Task<OrderSnapshotReport> ReadAsync(OrderSnapshotReportRequest request, CancellationToken ct)
+    private async Task<OrderSnapshotReport> ReadAsync(
+        OrderSnapshotReportRequest request, DateTime generatedAt, DateOnly trendEnd, CancellationToken ct)
     {
-        var generatedAt = clock.GetUtcNow().UtcDateTime;
-        var trendEnd = request.TrendEnd ?? DateOnly.FromDateTime(generatedAt);
         var all = db.Orders.AsNoTracking();
         if (request.AllowedShops is { } allowed)
             all = FilterByShops(all, allowed);
@@ -88,16 +91,17 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
             .Include(order => order.PlatformOrders).Include(order => order.Lines)
             .AsSplitQuery().ToArrayAsync(ct);
 
-        var (sales, trend) = await ReadAmountsAsync(selected, trendEnd, request.TrendDays, ct);
+        var (sales, trend) = await ReadAmountsAsync(selected, request.TrendStart, trendEnd, ct);
         return new(generatedAt, summary, shops.Select(shop => shop.Platform).Distinct().ToArray(),
             shops, groups, rows.Select(StoredOrderMapping.Snapshot).ToArray(), page, request.PageSize, pageCount, sales, trend);
     }
 
     private async Task<(OrderSnapshotSales Sales, OrderSnapshotTrend Trend)> ReadAmountsAsync(
-        IQueryable<OrderRecord> selected, DateOnly end, int days, CancellationToken ct)
+        IQueryable<OrderRecord> selected, DateOnly? start, DateOnly end, CancellationToken ct)
     {
         var lastDay = end.DayNumber;
-        var firstDay = lastDay - days + 1;
+        var firstDay = start?.DayNumber ?? lastDay - 6;
+        var days = lastDay - firstDay + 1;
         var previousFirst = firstDay - days;
         var buckets = await QueryAmountBuckets(selected, previousFirst, lastDay).ToArrayAsync(ct);
 
@@ -116,7 +120,7 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
         var previous = buckets.Any(bucket => bucket.Day < firstDay)
             ? SumWindow(buckets.Where(bucket => bucket.Day >= previousFirst && bucket.Day < firstDay))
             : null;
-        var trend = new OrderSnapshotTrend(days, end, CurrencyOf(current.SelectMany(group => group)), points, previous,
+        var trend = new OrderSnapshotTrend(days, points[0].Date, end, CurrencyOf(current.SelectMany(group => group)), points, previous,
             buckets.Where(bucket => bucket.Day == null).Sum(bucket => bucket.OrderCount),
             currentKnown, points.Sum(point => point.OrderCount) - currentKnown);
         return (sales, trend);
@@ -167,7 +171,7 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
         return currencies.Length == 1 ? currencies[0] : null;
     }
 
-    // 合法结束日期可早于公元 1 年 1 月 30 日，此时窗口前部落在 ISO 8601 的 0000 年 12 月。
+    // 省略开始日期且结束日期早于 0001-01-07 时，默认窗口向前延伸至 ISO 8601 的 0000 年 12 月。
     private static string FormatDay(int day) => day < 0
         ? FormattableString.Invariant($"0000-12-{32 + day:00}")
         : DateOnly.FromDayNumber(day).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
