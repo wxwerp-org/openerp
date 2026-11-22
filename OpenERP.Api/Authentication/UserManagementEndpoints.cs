@@ -11,6 +11,8 @@ internal static class UserManagementEndpoints
         users.MapGet("", ListAsync).WithSummary("查询用户列表");
         users.MapGet("/{id:guid}", GetAsync).WithSummary("按 UUID 查询用户")
             .ProducesProblem(StatusCodes.Status404NotFound);
+        users.MapGet("/{id:guid}/shops", GetShopsAsync).WithSummary("读取员工的店铺分配");
+        users.MapPut("/{id:guid}/shops", SetShopsAsync).WithSummary("替换员工的店铺分配");
         users.MapPost("", CreateAsync).WithSummary("创建普通用户")
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status409Conflict);
@@ -51,6 +53,28 @@ internal static class UserManagementEndpoints
             return TypedResults.Problem(result.Error.Message, statusCode: StatusCodes.Status409Conflict);
 
         return TypedResults.Created($"/api/users/{result.Value.Id:D}", result.Value.Adapt<UserResponse>());
+    }
+
+    private static async Task<Results<Ok<AssignedShop[]>, ProblemHttpResult>> GetShopsAsync(
+        Guid id, AccountStore store, CancellationToken ct)
+    {
+        var user = await store.FindUserAsync(id, ct);
+        if (user is null)
+            return TypedResults.Problem("用户不存在。", statusCode: StatusCodes.Status404NotFound);
+        if (user.IsAdministrator)
+            return TypedResults.Problem("管理员已拥有全部店铺权限。", statusCode: StatusCodes.Status409Conflict);
+        return TypedResults.Ok(await store.GetShopAssignmentsAsync(id, ct));
+    }
+
+    private static async Task<Results<NoContent, ProblemHttpResult>> SetShopsAsync(
+        Guid id, AssignedShop?[] shops, AccountStore store, CancellationToken ct)
+    {
+        if (shops.Any(shop => shop is null || string.IsNullOrWhiteSpace(shop.Platform) ||
+                shop.Platform.Length > 64 || shop.Sid <= 0))
+            return TypedResults.Problem("店铺必须包含有效的平台和 SID。", statusCode: StatusCodes.Status400BadRequest);
+
+        var (result, status) = await store.SetShopAssignmentsAsync(id, shops.OfType<AssignedShop>().ToHashSet(), ct);
+        return result.IsErr ? TypedResults.Problem(result.Error.Message, statusCode: status) : TypedResults.NoContent();
     }
 
     private static async Task<Results<Ok<UserResponse>, ValidationProblem, ProblemHttpResult>> UpdateAsync(

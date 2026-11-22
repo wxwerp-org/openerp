@@ -79,6 +79,25 @@ public sealed class ShopSyncMigrationTests(AspireIntegrationFixture fixture) : I
     }
 
     [Fact]
+    public async Task Upgrade_keeps_existing_employees_and_shops_without_granting_access()
+    {
+        // Given 升级前的数据库已有员工和店铺。
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = CreateDbContext();
+        await db.GetService<IMigrator>().MigrateAsync("20261120055817_AddOrderSyncRevision", ct);
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO "Users" ("Id", "Username", "Name") VALUES (uuidv7(), 'legacy', '原员工');
+            INSERT INTO "Shops" ("Id", "Platform", "Sid", "Name") VALUES (uuidv7(), 'TemuPop', 30, '原店铺');
+            """, ct);
+
+        // When 应用店铺分配迁移。Then 保留两条业务记录，员工的初始分配为空。
+        await db.Database.MigrateAsync(ct);
+        Assert.Equal("原员工", (await db.Users.SingleAsync(ct)).Name);
+        Assert.Equal(30, (await db.Shops.SingleAsync(ct)).Sid);
+        Assert.False(await db.UserShopAssignments.AnyAsync(ct));
+    }
+
+    [Fact]
     public async Task Upgrade_preserves_populated_legacy_tables_relationships_and_constraints()
     {
         // Given 旧库已经保存管理员、刷新凭证、店铺、订单、子单、明细和所有单行设置。
