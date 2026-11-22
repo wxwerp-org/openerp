@@ -124,6 +124,30 @@ const reportPayload = (orderCount = 10, itemQuantity = 42) => ({
   pageCount: 1,
 })
 
+function requestedTrendDays(url: URL): number {
+  const start = url.searchParams.get('trendStart')!
+  const end = url.searchParams.get('trendEnd')!
+  return (
+    Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1
+  )
+}
+
+/** 按请求区间生成逐日走势夹具，使响应与所选周期自洽。 */
+function trendForRequest(url: URL, orderCounts: number[] = [1]) {
+  return trendFixture({
+    days: requestedTrendDays(url),
+    start: url.searchParams.get('trendStart')!,
+    orderCounts,
+  })
+}
+
+function localDate(offsetDays = 0): string {
+  const date = new Date()
+  date.setDate(date.getDate() + offsetDays)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
 const directoryPayload = (items = 2, lastSyncedAt: string | null = '2026-11-20T05:40:00Z') => ({
   items: Array.from({ length: items }, (_, index) => ({
     sid: String(30 + index),
@@ -187,11 +211,14 @@ function createRouterFor(): Router {
   })
 }
 
-async function mountDashboard(): Promise<{ wrapper: VueWrapper; router: Router }> {
+async function mountDashboard(
+  attachToBody = false,
+): Promise<{ wrapper: VueWrapper; router: Router }> {
   const router = createRouterFor()
   await router.push('/')
   await router.isReady()
   const wrapper = mount(DashboardView, {
+    attachTo: attachToBody ? document.body : undefined,
     global: { plugins: [router], stubs: { OrderSyncDialog: true } },
   })
   await flushPromises()
@@ -434,10 +461,7 @@ describe('工作台', () => {
       report: (url) =>
         Response.json({
           ...reportPayload(),
-          trend:
-            url.searchParams.get('trendDays') === '30'
-              ? trendFixture({ days: 30, end: '2026-11-20', orderCounts: [1] })
-              : dataTrendFixture(),
+          trend: requestedTrendDays(url) === 30 ? trendForRequest(url) : dataTrendFixture(),
         }),
     })
     const mounted = await mountDashboard()
@@ -455,8 +479,8 @@ describe('工作台', () => {
     const calls = stub.mock.calls
       .filter(([input]) => String(input).startsWith('/api/reports/order-snapshot?'))
       .map(([input]) => new URL(String(input), 'http://localhost'))
-    expect(calls.at(-1)?.searchParams.get('trendDays')).toBe('30')
-    expect(calls.at(-1)?.searchParams.get('trendEnd')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(calls.at(-1)?.searchParams.get('trendStart')).toBe(localDate(-29))
+    expect(calls.at(-1)?.searchParams.get('trendEnd')).toBe(localDate())
     expect(wrapper.get('[data-testid="workspace-trend-card"]').text()).toContain('近 30 天')
   })
 
@@ -464,15 +488,12 @@ describe('工作台', () => {
     let fail = false
     stubApi({
       report: (url) => {
-        const days = url.searchParams.get('trendDays') === '30' ? 30 : 7
+        const days = requestedTrendDays(url)
         if (days === 30 && fail)
           return Response.json({ title: '报表数据暂不可用' }, { status: 503 })
         return Response.json({
           ...reportPayload(),
-          trend:
-            days === 30
-              ? trendFixture({ days: 30, end: '2026-11-20', orderCounts: [1] })
-              : dataTrendFixture(),
+          trend: days === 30 ? trendForRequest(url) : dataTrendFixture(),
         })
       },
     })
@@ -484,12 +505,146 @@ describe('工作台', () => {
     await thirty().trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-testid="report-stale"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="workspace-trend-card"]').text()).toContain('近 7 天')
+    expect(wrapper.get('[data-testid="trend-footnote"]').text()).toContain(
+      '近 7 天按订单创建日期分桶',
+    )
+    expect(thirty().attributes('aria-pressed')).toBe('false')
 
     fail = false
     await thirty().trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-testid="workspace-trend-card"]').text()).toContain('近 30 天')
+    expect(wrapper.get('[data-testid="trend-footnote"]').text()).toContain(
+      '近 30 天按订单创建日期分桶',
+    )
+    expect(thirty().attributes('aria-pressed')).toBe('true')
+  })
+
+  it('Given 周期请求在途 When 快速切回已展示周期 Then 迟到响应按版本失效不覆盖当前周期', async () => {
+    const pending: Array<{ url: URL; resolve: (body: unknown) => void }> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = new URL(String(input), 'http://localhost')
+        if (url.pathname === '/api/reports/order-snapshot') {
+          return new Promise<Response>((resolve) => {
+            pending.push({
+              url,
+              resolve: (body) => resolve(Response.json(body)),
+            })
+          })
+        }
+        if (url.pathname === '/api/erp/shops')
+          return Promise.resolve(Response.json(directoryPayload()))
+        if (url.pathname === '/api/erp/config')
+          return Promise.resolve(Response.json({ configured: true, orderSyncEnabled: true }))
+        if (url.pathname === '/api/erp/order-sync-availability')
+          return Promise.resolve(Response.json({ configured: true, orderSyncEnabled: true }))
+        return Promise.resolve(new Response(null, { status: 404 }))
+      }),
+    )
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+    const reportBody = (url: URL) => ({ ...reportPayload(), trend: trendForRequest(url) })
+
+    // 先完成初始近 7 天请求，建立「已展示周期」。
+    expect(pending).toHaveLength(1)
+    pending[0]!.resolve(reportBody(pending[0]!.url))
+    await flushPromises()
+    expect(wrapper.get('[data-testid="trend-footnote"]').text()).toContain(
+      '近 7 天按订单创建日期分桶',
+    )
+
+    // 切到本季度（挂起），再切回已展示的近 7 天（应发起新请求而不是吞掉点击）。
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '本季度')!
+      .trigger('click')
+    await flushPromises()
+    expect(pending).toHaveLength(2)
+    const seven = () => wrapper!.findAll('button').find((button) => button.text() === '近 7 天')!
+    await seven().trigger('click')
+    await flushPromises()
+    expect(pending).toHaveLength(3)
+
+    // 近 7 天先返回，随后本季度迟到，迟到的本季度响应必须被丢弃。
+    pending[2]!.resolve(reportBody(pending[2]!.url))
+    await flushPromises()
+    pending[1]!.resolve(reportBody(pending[1]!.url))
+    await flushPromises()
+    expect(wrapper.get('[data-testid="trend-footnote"]').text()).toContain(
+      '近 7 天按订单创建日期分桶',
+    )
+    expect(seven().attributes('aria-pressed')).toBe('true')
+    expect(
+      wrapper
+        .findAll('button')
+        .find((button) => button.text() === '本季度')!
+        .attributes('aria-pressed'),
+    ).toBe('false')
+  })
+
+  it('Given 周期响应迟到 When 自定义面板正在编辑 Then 不关闭面板也不丢失草稿', async () => {
+    const pending: Array<{ url: URL; resolve: (body: unknown) => void }> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = new URL(String(input), 'http://localhost')
+        if (url.pathname === '/api/reports/order-snapshot') {
+          return new Promise<Response>((resolve) => {
+            pending.push({ url, resolve: (body) => resolve(Response.json(body)) })
+          })
+        }
+        if (url.pathname === '/api/erp/shops')
+          return Promise.resolve(Response.json(directoryPayload()))
+        if (url.pathname === '/api/erp/config')
+          return Promise.resolve(Response.json({ configured: true, orderSyncEnabled: true }))
+        if (url.pathname === '/api/erp/order-sync-availability')
+          return Promise.resolve(Response.json({ configured: true, orderSyncEnabled: true }))
+        return Promise.resolve(new Response(null, { status: 404 }))
+      }),
+    )
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+    const reportBody = (url: URL) => ({ ...reportPayload(), trend: trendForRequest(url) })
+    pending[0]!.resolve(reportBody(pending[0]!.url))
+    await flushPromises()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '本季度')!
+      .trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="trend-custom-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="trend-custom-start"]').setValue('2025-06-01')
+
+    pending[1]!.resolve(reportBody(pending[1]!.url))
+    await flushPromises()
+    expect(wrapper.find('[data-testid="trend-custom-panel"]').exists()).toBe(true)
+    expect(
+      (wrapper.get('[data-testid="trend-custom-start"]').element as HTMLInputElement).value,
+    ).toBe('2025-06-01')
+  })
+
+  it('Given 自定义面板 When 应用或取消 Then 焦点回到自定义按钮', async () => {
+    stubApi({})
+    const mounted = await mountDashboard(true)
+    wrapper = mounted.wrapper
+    const toggle = wrapper.get('[data-testid="trend-custom-toggle"]')
+    ;(toggle.element as HTMLElement).focus()
+
+    await toggle.trigger('click')
+    await wrapper.get('[data-testid="trend-custom-apply"]').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(toggle.element)
+
+    ;(toggle.element as HTMLElement).focus()
+    await toggle.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '取消')!
+      .trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(toggle.element)
   })
 
   it('Given 走势图获得焦点 When 按方向键 Then 显示逐日 tooltip 且 Escape 关闭', async () => {
@@ -551,5 +706,111 @@ describe('工作台', () => {
     wrapper = mounted.wrapper
 
     expect(wrapper.text()).toContain('工作台数据加载失败')
+  })
+  it('Given 走势卡 When 点击本季度 Then 请求季度首日到今天并展示本季度口径', async () => {
+    const stub = stubApi({
+      report: (url) => Response.json({ ...reportPayload(), trend: trendForRequest(url, [2]) }),
+    })
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+    const now = new Date()
+    const quarterStart = `${now.getFullYear()}-${String(Math.floor(now.getMonth() / 3) * 3 + 1).padStart(2, '0')}-01`
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '本季度')!
+      .trigger('click')
+    await flushPromises()
+
+    const calls = stub.mock.calls
+      .filter(([input]) => String(input).startsWith('/api/reports/order-snapshot?'))
+      .map(([input]) => new URL(String(input), 'http://localhost'))
+    expect(calls.at(-1)?.searchParams.get('trendStart')).toBe(quarterStart)
+    expect(calls.at(-1)?.searchParams.get('trendEnd')).toBe(localDate())
+    expect(wrapper.get('[data-testid="trend-footnote"]').text()).toContain(
+      `本季度（${quarterStart} 至 ${localDate()}）`,
+    )
+  })
+
+  it('Given 走势卡 When 点击本年 Then 请求自然年首日到今天并展示本年口径', async () => {
+    const stub = stubApi({
+      report: (url) => Response.json({ ...reportPayload(), trend: trendForRequest(url, [1]) }),
+    })
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '本年')!
+      .trigger('click')
+    await flushPromises()
+
+    const calls = stub.mock.calls
+      .filter(([input]) => String(input).startsWith('/api/reports/order-snapshot?'))
+      .map(([input]) => new URL(String(input), 'http://localhost'))
+    expect(calls.at(-1)?.searchParams.get('trendStart')).toBe(`${new Date().getFullYear()}-01-01`)
+    expect(calls.at(-1)?.searchParams.get('trendEnd')).toBe(localDate())
+    expect(wrapper.get('[data-testid="trend-footnote"]').text()).toContain('本年（')
+  })
+
+  it('Given 自定义区间 When 应用起止日期 Then 按浏览器本地日期重新取数并展示自定义口径', async () => {
+    const stub = stubApi({
+      report: (url) => Response.json({ ...reportPayload(), trend: trendForRequest(url) }),
+    })
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+
+    await wrapper.get('[data-testid="trend-custom-toggle"]').trigger('click')
+    expect(wrapper.find('[data-testid="trend-custom-panel"]').exists()).toBe(true)
+    await wrapper.get('[data-testid="trend-custom-start"]').setValue('2025-06-12')
+    await wrapper.get('[data-testid="trend-custom-end"]').setValue('2025-06-30')
+    await wrapper.get('[data-testid="trend-custom-apply"]').trigger('click')
+    await flushPromises()
+
+    const calls = stub.mock.calls
+      .filter(([input]) => String(input).startsWith('/api/reports/order-snapshot?'))
+      .map(([input]) => new URL(String(input), 'http://localhost'))
+    expect(calls.at(-1)?.searchParams.get('trendStart')).toBe('2025-06-12')
+    expect(calls.at(-1)?.searchParams.get('trendEnd')).toBe('2025-06-30')
+    expect(wrapper.find('[data-testid="trend-custom-panel"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="trend-footnote"]').text()).toContain(
+      '自定义区间（2025-06-12 至 2025-06-30）',
+    )
+  })
+
+  it('Given 自定义区间非法 When 校验 Then 显示错误且不发起取数', async () => {
+    const stub = stubApi({})
+    const mounted = await mountDashboard()
+    wrapper = mounted.wrapper
+    const reportCalls = () =>
+      stub.mock.calls.filter(([input]) => String(input).startsWith('/api/reports/order-snapshot?'))
+        .length
+
+    await wrapper.get('[data-testid="trend-custom-toggle"]').trigger('click')
+    const apply = wrapper.get('[data-testid="trend-custom-apply"]')
+    const start = wrapper.get('[data-testid="trend-custom-start"]')
+    const end = wrapper.get('[data-testid="trend-custom-end"]')
+    const before = reportCalls()
+
+    await start.setValue('2025-07-01')
+    await end.setValue('2025-06-01')
+    expect(wrapper.get('[data-testid="trend-custom-error"]').text()).toBe(
+      '开始日期不能晚于结束日期。',
+    )
+    expect(apply.attributes('disabled')).toBeDefined()
+
+    await start.setValue('2024-06-01')
+    await end.setValue('2025-12-31')
+    expect(wrapper.get('[data-testid="trend-custom-error"]').text()).toBe(
+      '统计区间最长支持 366 天。',
+    )
+
+    await start.setValue(localDate(-1))
+    await end.setValue(localDate(1))
+    expect(wrapper.get('[data-testid="trend-custom-error"]').text()).toBe('结束日期不能晚于今天。')
+
+    await apply.trigger('click')
+    await flushPromises()
+    expect(reportCalls()).toBe(before)
   })
 })

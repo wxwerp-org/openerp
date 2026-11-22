@@ -15,7 +15,7 @@ import WorkspaceStatusBar from '../components/workspace/WorkspaceStatusBar.vue'
 import WorkspaceSyncCard from '../components/workspace/WorkspaceSyncCard.vue'
 import WorkspaceSystemCard from '../components/workspace/WorkspaceSystemCard.vue'
 import WorkspaceTrendCard from '../components/workspace/WorkspaceTrendCard.vue'
-import { useWorkspaceDashboard, type TrendDays } from '../workspace/useWorkspaceDashboard'
+import { useWorkspaceDashboard } from '../workspace/useWorkspaceDashboard'
 import { onboardingSummaryDismissed } from '../workspace/onboardingState'
 import {
   formatCount,
@@ -32,8 +32,11 @@ import {
   platformDrillQuery,
   rankTopShops,
   resolveDashboardState,
+  resolveTrendRange,
   shopDrillQuery,
   type OnboardingStep,
+  type TrendPreset,
+  type TrendRange,
 } from '../workspace/workspaceDerivation'
 
 const authorizeUrl = 'https://v3.wxwerp.com/system/authorize'
@@ -69,7 +72,7 @@ const hub = useErpHub({
   shopSync: administrator.value,
   orderSync: true,
   onOrdersChanged: () => {
-    void loadReport(trendDays.value)
+    refreshTrend()
     void loadDirectory()
   },
 })
@@ -85,7 +88,11 @@ const {
   startAllOrderSync,
 } = hub
 
-const trendDays = ref<TrendDays>(7)
+const trendPreset = ref<TrendPreset>('last7')
+/** 最近一次应用的自定义区间；失败时仍保留，供刷新与重新应用重试。 */
+const customTrendRange = ref<TrendRange | null>(null)
+/** 已成功展示的周期：请求失败时停在旧周期，再次切换才重新取数。 */
+const displayedTrendPreset = ref<TrendPreset>('last7')
 const syncOpen = ref(false)
 const startingAll = ref(false)
 const batchMessage = ref('')
@@ -116,8 +123,6 @@ const platformRows = computed(() => platformTotals(report.value?.groups ?? []))
 const topShops = computed(() => rankTopShops(report.value?.groups ?? [], shopNames.value))
 
 const trend = computed(() => report.value?.trend ?? null)
-/** 服务端已返回并展示的周期；请求失败时仍保留旧周期，允许再次切换重试。 */
-const displayedTrendDays = computed<TrendDays>(() => (report.value?.trend.days === 30 ? 30 : 7))
 
 const salesAmount = computed(() => report.value?.sales.amount ?? null)
 const salesDetail = computed(() => {
@@ -242,7 +247,12 @@ function drillShop(key: string): void {
 async function refreshAll(): Promise<void> {
   await reconnect()
   if (disposed) return
-  await refresh(trendDays.value)
+  const preset = trendPreset.value
+  const range = currentTrendRange()
+  // 周期与报表在 loadReport 的版本校验内一起提交；这里不能再按 refresh 的完成时机回写。
+  await refresh(range, () => {
+    displayedTrendPreset.value = preset
+  })
 }
 
 async function syncDirectory(): Promise<void> {
@@ -314,7 +324,7 @@ watch(
         if (task.status === 'running' || task.status === 'failed') changed = true
       }
     }
-    if (changed) void loadReport(trendDays.value)
+    if (changed) refreshTrend()
   },
 )
 
@@ -332,15 +342,38 @@ watch(
 
 function handleVisibilityChange(): void {
   if (document.visibilityState !== 'visible') return
-  void loadReport(trendDays.value)
+  refreshTrend()
   void loadDirectory()
 }
 
-function selectTrendDays(days: TrendDays): void {
-  // 以「已展示周期」去重：请求失败后再次点击同一周期应能重试。
-  if (days === displayedTrendDays.value) return
-  trendDays.value = days
-  void loadReport(days)
+function currentTrendRange(): TrendRange {
+  return resolveTrendRange(trendPreset.value, new Date(), customTrendRange.value)
+}
+
+async function loadTrend(preset: TrendPreset, range: TrendRange): Promise<void> {
+  trendPreset.value = preset
+  if (preset === 'custom') customTrendRange.value = { ...range }
+  await loadReport(range, () => {
+    displayedTrendPreset.value = preset
+  })
+}
+
+/** 用当前选择重新取数；季度/本年按「至今」重算，自定义区间保持已应用的起止日期。 */
+function refreshTrend(): void {
+  void loadTrend(trendPreset.value, currentTrendRange())
+}
+
+function selectTrendPreset(preset: TrendPreset): void {
+  if (preset === 'custom') return
+  trendPreset.value = preset
+  // 已展示同一周期且没有在途请求时才去重；若有在途请求（用户刚切到别的周期），
+  // 切回已展示周期必须重新取数，让旧响应按请求版本失效。
+  if (preset === displayedTrendPreset.value && !reportRefreshing.value) return
+  void loadTrend(preset, resolveTrendRange(preset))
+}
+
+function applyCustomRange(range: TrendRange): void {
+  void loadTrend('custom', range)
 }
 
 function retrySystem(): void {
@@ -411,7 +444,7 @@ onUnmounted(() => {
         <AppCard class="flex max-w-420 flex-col items-center gap-10 p-28 text-center">
           <strong class="text-14 font-semibold text-ink">工作台数据加载失败</strong>
           <span class="text-12 text-muted">{{ reportError }}</span>
-          <AppButton variant="primary" @click="loadReport(trendDays)">重试</AppButton>
+          <AppButton variant="primary" @click="refreshTrend()">重试</AppButton>
         </AppCard>
       </div>
 
@@ -477,7 +510,10 @@ onUnmounted(() => {
           <WorkspaceTrendCard
             v-if="trend"
             :trend="trend"
-            @period-change="selectTrendDays"
+            :preset="displayedTrendPreset"
+            :custom-range="customTrendRange"
+            @preset-change="selectTrendPreset"
+            @custom-apply="applyCustomRange"
             @open="router.push('/reports/orders')"
           />
 

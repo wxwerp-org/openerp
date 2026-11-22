@@ -1,20 +1,17 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { apiRequest } from '../account/session'
 import { parseOrderSnapshotReport, type OrderSnapshotReport } from '../reports/orderSnapshot'
+import { resolveTrendRange, type TrendRange } from './workspaceDerivation'
 import {
   parseErpAvailability,
   parseErpConfig,
   parseShopDirectory,
-  localDateString,
   type ErpAvailability,
   type ErpConfigSummary,
   type ShopDirectory,
 } from './workspaceData'
 
 export type LoadStatus = 'idle' | 'loading' | 'success' | 'error'
-
-/** 走势周期只支持 7 / 30 天，与后端契约一致。 */
-export type TrendDays = 7 | 30
 
 export type WorkspaceDashboardOptions = {
   administrator: boolean
@@ -65,32 +62,39 @@ export function useWorkspaceDashboard({ administrator }: WorkspaceDashboardOptio
   let availabilityVersion = 0
   let temuShopVersion = 0
 
-  /** 报表是走势的主数据；周期变化时重新取数，日期结束点按浏览器本地时区给出。 */
-  async function loadReport(trendDays: TrendDays = 7): Promise<void> {
+  /**
+   * 报表是走势的主数据；区间变化时重新取数。
+   * 返回本次请求是否成功；`onLoaded` 只在本次响应仍然是最新请求时触发，
+   * 用于把「已展示周期」与报表在同一版本校验内一起提交，避免迟到响应写回旧周期。
+   */
+  async function loadReport(range: TrendRange, onLoaded?: () => void): Promise<boolean> {
     const version = ++reportVersion
     if (!report.value) reportStatus.value = 'loading'
     reportRefreshing.value = true
     reportError.value = ''
+    let succeeded = false
     try {
       const query = new URLSearchParams({
         page: '1',
         pageSize: '1',
-        trendDays: String(trendDays),
-        trendEnd: localDateString(),
+        trendStart: range.start,
+        trendEnd: range.end,
       })
       const response = await apiRequest(`/api/reports/order-snapshot?${query.toString()}`, {
         cache: 'no-store',
       })
-      if (version !== reportVersion) return
+      if (version !== reportVersion) return false
       if (!response.ok)
         throw new Error(await responseTitle(response, '无法加载工作台数据，请稍后重试。'))
       const parsed = parseOrderSnapshotReport(await response.json())
-      if (version !== reportVersion) return
+      if (version !== reportVersion) return false
       report.value = parsed
       reportStatus.value = 'success'
       reportStale.value = false
+      succeeded = true
+      onLoaded?.()
     } catch (cause) {
-      if (version !== reportVersion) return
+      if (version !== reportVersion) return false
       const message = cause instanceof Error ? cause.message : '无法加载工作台数据，请稍后重试。'
       if (report.value) {
         reportStale.value = true
@@ -102,6 +106,7 @@ export function useWorkspaceDashboard({ administrator }: WorkspaceDashboardOptio
     } finally {
       if (version === reportVersion) reportRefreshing.value = false
     }
+    return succeeded
   }
 
   /** 读取当前账号的目录用于店名映射，管理员另有全局授权汇总。 */
@@ -185,14 +190,18 @@ export function useWorkspaceDashboard({ administrator }: WorkspaceDashboardOptio
     }
   }
 
-  async function refresh(trendDays: TrendDays = 7): Promise<void> {
-    await Promise.allSettled([
-      loadReport(trendDays),
+  async function refresh(
+    range: TrendRange = resolveTrendRange('last7'),
+    onReportLoaded?: () => void,
+  ): Promise<boolean> {
+    const [reportResult] = await Promise.allSettled([
+      loadReport(range, onReportLoaded),
       loadDirectory(),
       loadValidTemuShopCount(),
       loadConfig(),
       loadAvailability(),
     ])
+    return reportResult.status === 'fulfilled' && reportResult.value === true
   }
 
   onMounted(() => {

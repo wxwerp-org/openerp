@@ -9,9 +9,13 @@ import {
   nextOnboardingLabel,
   rankTopShops,
   resolveDashboardState,
+  resolveTrendRange,
   resolveTrendState,
   trendOrderTotal,
+  trendRangeDays,
+  trendRangeLabel,
   trendSalesTotal,
+  validateTrendRange,
   type DashboardStateInput,
   type OnboardingInput,
 } from '../../src/workspace/workspaceDerivation'
@@ -387,5 +391,153 @@ describe('经营走势派生', () => {
     expect(labels.length).toBeLessThanOrEqual(8)
     expect(labels.at(0)).toBe('10-22')
     expect(labels.at(-1)).toBe('11-20')
+  })
+})
+
+describe('走势区间', () => {
+  const now = new Date(2026, 10, 22, 15, 30)
+
+  it('Given 近 7/30 天 When 解析区间 Then 从本地今天向前推固定天数', () => {
+    expect(resolveTrendRange('last7', now)).toEqual({ start: '2026-11-16', end: '2026-11-22' })
+    expect(resolveTrendRange('last30', now)).toEqual({ start: '2026-10-24', end: '2026-11-22' })
+  })
+
+  it('Given 本季度 When 解析区间 Then 从自然季度第一天到今天', () => {
+    expect(resolveTrendRange('quarter', now)).toEqual({ start: '2026-10-01', end: '2026-11-22' })
+    expect(resolveTrendRange('quarter', new Date(2026, 0, 5))).toEqual({
+      start: '2026-01-01',
+      end: '2026-01-05',
+    })
+    expect(resolveTrendRange('quarter', new Date(2026, 3, 1))).toEqual({
+      start: '2026-04-01',
+      end: '2026-04-01',
+    })
+  })
+
+  it('Given 本年 When 解析区间 Then 从自然年第一天到今天', () => {
+    expect(resolveTrendRange('year', now)).toEqual({ start: '2026-01-01', end: '2026-11-22' })
+  })
+
+  it('Given 自定义区间 When 解析 Then 原样返回，未应用时回退近 7 天', () => {
+    expect(resolveTrendRange('custom', now, { start: '2025-06-12', end: '2025-06-30' })).toEqual({
+      start: '2025-06-12',
+      end: '2025-06-30',
+    })
+    expect(resolveTrendRange('custom', now, null)).toEqual({
+      start: '2026-11-16',
+      end: '2026-11-22',
+    })
+  })
+
+  it('Given 含闰日与跨年区间 When 计算天数 Then 含首尾且按日历日', () => {
+    expect(trendRangeDays({ start: '2024-02-28', end: '2024-03-01' })).toBe(3)
+    expect(trendRangeDays({ start: '2024-02-29', end: '2024-02-29' })).toBe(1)
+    expect(trendRangeDays({ start: '2025-11-20', end: '2026-11-20' })).toBe(366)
+  })
+
+  it('Given 不同周期 When 生成区间描述 Then 短周期沿用原文、长周期补充起止日期', () => {
+    expect(trendRangeLabel('last7', { start: '2026-11-16', end: '2026-11-22' })).toBe('近 7 天')
+    expect(trendRangeLabel('last30', { start: '2026-10-24', end: '2026-11-22' })).toBe('近 30 天')
+    expect(trendRangeLabel('quarter', { start: '2026-10-01', end: '2026-11-22' })).toBe(
+      '本季度（2026-10-01 至 2026-11-22）',
+    )
+    expect(trendRangeLabel('year', { start: '2026-01-01', end: '2026-11-22' })).toBe(
+      '本年（2026-01-01 至 2026-11-22）',
+    )
+    expect(trendRangeLabel('custom', { start: '2025-06-12', end: '2025-06-30' })).toBe(
+      '自定义区间（2025-06-12 至 2025-06-30）',
+    )
+  })
+
+  it('Given 自定义区间 When 校验 Then 拒绝倒序、超过 366 天、未来结束日与非法日期', () => {
+    expect(validateTrendRange({ start: '2026-11-01', end: '2026-11-22' }, now)).toBeNull()
+    expect(validateTrendRange({ start: '2025-11-20', end: '2026-11-20' }, now)).toBeNull()
+    expect(validateTrendRange({ start: '2026-11-22', end: '2026-11-01' }, now)).toBe(
+      '开始日期不能晚于结束日期。',
+    )
+    expect(validateTrendRange({ start: '2025-11-19', end: '2026-11-20' }, now)).toBe(
+      '统计区间最长支持 366 天。',
+    )
+    expect(validateTrendRange({ start: '2026-11-01', end: '2026-11-23' }, now)).toBe(
+      '结束日期不能晚于今天。',
+    )
+    expect(validateTrendRange({ start: '2026-02-30', end: '2026-03-01' }, now)).toBe(
+      '请选择有效的开始与结束日期。',
+    )
+  })
+
+  it('Given 0001..0099 年日历日期 When 校验与计算 Then 不按 1900 年代偏移', () => {
+    expect(validateTrendRange({ start: '0001-01-01', end: '0001-01-10' }, now)).toBeNull()
+    expect(trendRangeDays({ start: '0001-01-01', end: '0001-01-10' })).toBe(10)
+    expect(validateTrendRange({ start: '0099-12-31', end: '0100-01-01' }, now)).toBeNull()
+    expect(trendRangeDays({ start: '0099-12-31', end: '0100-01-01' })).toBe(2)
+  })
+})
+
+describe('走势单点与刻度', () => {
+  it('Given 单日窗口 When 计算几何 Then 订单数与销售额都产生可见标记', () => {
+    const geometry = buildTrendGeometry(
+      trendFixture({ days: 1, orderCounts: [2], salesAmounts: [5] }),
+      { width: 800, height: 240 },
+    )
+    expect(geometry.points).toHaveLength(1)
+    expect(geometry.orders.markers).toHaveLength(1)
+    expect(geometry.sales.markers).toHaveLength(1)
+  })
+
+  it('Given 单日且金额未知 When 计算几何 Then 订单数标记仍可见', () => {
+    const geometry = buildTrendGeometry(
+      trendFixture({
+        days: 1,
+        orderCounts: [2],
+        salesAmounts: [null],
+        amountKnownOrderCount: 0,
+        amountUnknownOrderCount: 2,
+      }),
+      { width: 800, height: 240 },
+    )
+    expect(geometry.showSales).toBe(false)
+    expect(geometry.orders.markers).toHaveLength(1)
+  })
+
+  it('Given 32 天窄图 When 计算 x 轴刻度 Then 末尾两档保持可读间距', () => {
+    const geometry = buildTrendGeometry(trendFixture({ days: 32, orderCounts: [1] }), {
+      width: 326,
+      height: 240,
+    })
+    const xs = geometry.xTicks.map((tick) => tick.x)
+    expect(xs.length).toBeGreaterThan(1)
+    expect(xs[xs.length - 1]! - xs[xs.length - 2]!).toBeGreaterThanOrEqual(40)
+    expect(geometry.xTicks.at(-1)?.index).toBe(31)
+  })
+
+  it('Given 366 天跨年窗口 When 计算 x 轴刻度 Then 标签带年份避免重复', () => {
+    const geometry = buildTrendGeometry(trendFixture({ days: 366, end: '2025-06-12' }), {
+      width: 900,
+      height: 240,
+    })
+    for (const tick of geometry.xTicks) expect(tick.label).toMatch(/^\d{4}-\d{2}$/)
+    expect(new Set(geometry.xTicks.map((tick) => tick.label)).size).toBe(geometry.xTicks.length)
+  })
+
+  it('Given 本年至今 163 天 When 计算 x 轴刻度 Then 同一月份标签不重复', () => {
+    const geometry = buildTrendGeometry(trendFixture({ days: 163, end: '2025-06-12' }), {
+      width: 900,
+      height: 240,
+    })
+    const labels = geometry.xTicks.map((tick) => tick.label)
+    expect(new Set(labels).size).toBe(labels.length)
+    for (const label of labels) expect(label).toMatch(/^\d{4}-\d{2}$/)
+  })
+
+  it('Given 366 天窄图 When 计算 x 轴刻度 Then 长标签按宽度抽稀不重叠', () => {
+    const geometry = buildTrendGeometry(trendFixture({ days: 366, end: '2025-06-12' }), {
+      width: 326,
+      height: 240,
+    })
+    const ticks = geometry.xTicks
+    expect(ticks.length).toBeLessThanOrEqual(5)
+    for (let index = 1; index < ticks.length; index += 1)
+      expect(ticks[index]!.x - ticks[index - 1]!.x).toBeGreaterThanOrEqual(56)
   })
 })

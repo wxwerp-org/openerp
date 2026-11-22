@@ -10,7 +10,6 @@ public sealed record OrderSnapshotReportRequest(string? Platform, IReadOnlyList<
     /// <summary>服务端计算的完整店铺读取范围；null 表示全量，空集合表示无权读取任何店铺。</summary>
     public IReadOnlyList<OrderShop>? AllowedShops { get; init; }
 
-
     public string? ValidationError => Page < 1 || PageSize is < 1 or > 100 || (long)(Page - 1) * PageSize > int.MaxValue
         ? "页码必须大于0，每页1至100条，分页范围不能超出限制。"
         : Shops.Count > 100 || Shops.Any(key => string.IsNullOrWhiteSpace(key) || key.Length > 1000)

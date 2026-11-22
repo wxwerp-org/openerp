@@ -180,7 +180,6 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
 
     private sealed record AmountBucket(int? Day, string? Currency, long OrderCount, long KnownCount,
         long ItemQuantity, decimal Amount);
-
     private static IQueryable<OrderRecord> FilterByShops(IQueryable<OrderRecord> orders, IEnumerable<OrderShop> shops)
     {
         var keys = shops.Select(shop => shop.Platform + "/" + shop.ShopId).ToArray();

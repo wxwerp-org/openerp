@@ -14,8 +14,19 @@ function datesEndingAt(end: string, days: number): string[] {
   })
 }
 
+function datesStartingAt(start: string, days: number): string[] {
+  const startDate = new Date(`${start}T00:00:00Z`)
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(startDate)
+    date.setUTCDate(startDate.getUTCDate() + index)
+    return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`
+  })
+}
+
 export type TrendFixtureOptions = {
-  days?: 7 | 30
+  days?: number
+  /** 显式开始日期；与 end 同时给出时以开始日期生成逐日序列。 */
+  start?: string
   end?: string
   currency?: string | null
   orderCounts?: number[]
@@ -30,7 +41,7 @@ export type TrendFixtureOptions = {
 export function trendFixture(options: TrendFixtureOptions = {}): ReportTrend {
   const days = options.days ?? 7
   const end = options.end ?? '2026-11-20'
-  const dates = datesEndingAt(end, days)
+  const dates = options.start ? datesStartingAt(options.start, days) : datesEndingAt(end, days)
   const points: TrendPoint[] = dates.map((date, index) => ({
     date,
     orderCount: options.orderCounts?.[index] ?? 0,
@@ -49,7 +60,8 @@ export function trendFixture(options: TrendFixtureOptions = {}): ReportTrend {
       .reduce((total, point) => total + point.orderCount, 0)
   return {
     days,
-    end,
+    start: dates[0]!,
+    end: dates[dates.length - 1]!,
     currency: options.currency === undefined ? 'USD' : options.currency,
     points,
     previous: options.previous === undefined ? null : options.previous,

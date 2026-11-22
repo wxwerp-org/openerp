@@ -57,6 +57,8 @@ export type TrendPrevious = {
 
 export type ReportTrend = {
   days: number
+  /** 窗口开始日期（含当天），与 points[0].date 一致。 */
+  start: string
   end: string
   currency: string | null
   points: TrendPoint[]
@@ -202,16 +204,25 @@ function isTrendPoint(value: unknown): value is TrendPoint {
 
 function isTrendPrevious(value: unknown): value is TrendPrevious {
   if (!isRecord(value)) return false
+  // 环比商品量与当前窗口一致：来源商品行允许负数，不能按订单数规则要求非负。
   return (
-    isCount(value.orderCount) && isCount(value.itemQuantity) && isNullableAmount(value.salesAmount)
+    isCount(value.orderCount) &&
+    isSignedInteger(value.itemQuantity) &&
+    isNullableAmount(value.salesAmount)
   )
 }
 
-/** 走势契约必须完整：窗口天数、逐日补零和环比汇总共同决定前端展示，不能容忍缺字段。 */
+/** 工作台与报表共用的最长走势窗口，与后端校验保持一致。 */
+export const MaxTrendDays = 366
+
+/** 走势契约必须完整：窗口起止、逐日补零和环比汇总共同决定前端展示，不能容忍缺字段。 */
 function isTrend(value: unknown): value is ReportTrend {
   if (!isRecord(value)) return false
   if (!(
-    (value.days === 7 || value.days === 30) &&
+    isCount(value.days) &&
+    value.days >= 1 &&
+    value.days <= MaxTrendDays &&
+    isDate(value.start) &&
     isDate(value.end) &&
     isNullableString(value.currency) &&
     Array.isArray(value.points) &&
@@ -225,15 +236,18 @@ function isTrend(value: unknown): value is ReportTrend {
     return false
 
   const points = value.points as TrendPoint[]
-  // 图表按数组顺序绘制，必须校验窗口连续、升序且恰好落在 end 上。
-  const firstDate = addDays(value.end as string, -(value.days - 1))
-  if (points[0]?.date !== firstDate) return false
+  // 图表按数组顺序绘制，必须校验窗口从 start 连续、升序且恰好落在 end 上。
+  if (points[0]?.date !== value.start) return false
+  if (points[points.length - 1]?.date !== value.end) return false
   for (let index = 1; index < points.length; index += 1) {
     if (points[index]!.date !== addDays(points[index - 1]!.date, 1)) return false
   }
   // 金额计数与逐日订单数必须自洽，否则降级判断与环比会失真。
   const totalOrders = points.reduce((total, point) => total + point.orderCount, 0)
-  return value.amountKnownOrderCount + value.amountUnknownOrderCount === totalOrders
+  if (value.amountKnownOrderCount + value.amountUnknownOrderCount !== totalOrders) return false
+  // 有已知金额的订单必然落在某个「有订单且金额非 null」的日期上；全未知时不能出现这种日期。
+  const hasKnownDay = points.some((point) => point.orderCount > 0 && point.salesAmount !== null)
+  return value.amountKnownOrderCount === 0 ? !hasKnownDay : hasKnownDay
 }
 
 export function parseOrderSnapshotReport(value: unknown): OrderSnapshotReport {
