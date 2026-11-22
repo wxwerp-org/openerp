@@ -29,3 +29,13 @@ internal sealed class UserRefreshTokenConfiguration : EntityConfiguration<UserRe
         builder.HasQueryFilter(token => token.DeletedAt == null && token.User.DeletedAt == null);
     }
 }
+
+internal sealed class UserShopAssignmentConfiguration : IEntityTypeConfiguration<UserShopAssignment>
+{
+    public void Configure(EntityTypeBuilder<UserShopAssignment> builder)
+    {
+        builder.HasKey(row => new { row.UserId, row.Platform, row.Sid });
+        builder.Property(row => row.Platform).HasMaxLength(64);
+        builder.HasOne<UserAccount>().WithMany().HasForeignKey(row => row.UserId);
+    }
+}

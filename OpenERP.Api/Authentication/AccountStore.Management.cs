@@ -67,6 +67,7 @@ internal sealed partial class AccountStore
 
         var now = UtcNow();
         await RevokeUserSessionsAsync(write, id, now, ct);
+        await write.UserShopAssignments.Where(row => row.UserId == id).ExecuteDeleteAsync(ct);
         user.DeletedAt = now;
         await write.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);

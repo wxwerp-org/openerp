@@ -115,6 +115,23 @@ namespace OpenERP.Api.Migrations
                     b.ToTable("RefreshTokens", (string)null);
                 });
 
+            modelBuilder.Entity("OpenERP.Api.Authentication.UserShopAssignment", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Platform")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("Sid")
+                        .HasColumnType("integer");
+
+                    b.HasKey("UserId", "Platform", "Sid");
+
+                    b.ToTable("UserShopAssignments");
+                });
+
             modelBuilder.Entity("OpenERP.Api.Erp.ErpSettings", b =>
                 {
                     b.Property<Guid>("Id")
@@ -453,6 +470,15 @@ namespace OpenERP.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("OpenERP.Api.Authentication.UserShopAssignment", b =>
+                {
+                    b.HasOne("OpenERP.Api.Authentication.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("OpenERP.Api.Orders.OrderLineRecord", b =>

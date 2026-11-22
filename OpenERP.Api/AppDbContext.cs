@@ -13,6 +13,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 {
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
     internal DbSet<UserAccount> Users => Set<UserAccount>();
+    internal DbSet<UserShopAssignment> UserShopAssignments => Set<UserShopAssignment>();
     internal DbSet<UserRefreshToken> RefreshTokens => Set<UserRefreshToken>();
     internal DbSet<OrderRecord> Orders => Set<OrderRecord>();
 
