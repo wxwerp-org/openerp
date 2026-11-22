@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@microsoft/signalr':
-        specifier: ^11.0.0
-        version: 11.0.0
+        specifier: ^10.0.11
+        version: 10.0.11
       vue:
         specifier: 3.5.45
         version: 3.5.45(typescript@6.0.3)
@@ -220,8 +220,8 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@microsoft/signalr@11.0.0':
-    resolution: {integrity: sha512-NNYwAOYFaVH8HRt3YWUFJYETZ66G8P3K/g3Ch/6Od+Rrdpe/Uafe8iZp81UI7TIM7qRzjDe5DKUAuwsnt391zg==}
+  '@microsoft/signalr@10.0.11':
+    resolution: {integrity: sha512-FulOJ2EEtKvLQcswe/U7v8pzyXyk7Jua5xgWJPPwyQU/2Z9ORvKcVjyO75VvLsem+CJ1ORRexJ+7Bz1FCei2aw==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -1803,7 +1803,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@microsoft/signalr@11.0.0':
+  '@microsoft/signalr@10.0.11':
     dependencies:
       abort-controller: 3.0.0
       eventsource: 2.0.2
