@@ -254,7 +254,7 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
             TrendOrder("missing", null, 10, 4m)
         ]);
 
-        // When 省略结束日期查询 7 天走势，并用订单列表查询同一日期窗口。
+        // When 省略起止日期查询 7 天走势，并用订单列表查询同一日期窗口。
         var report = await QueryAsync(new(null, []));
         var trend = report.Trend;
         var end = new DateOnly(2026, 11, 17);
@@ -270,6 +270,7 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
         Assert.Equal(4, listed.Total);
         Assert.Equal(22, listed.Items.Sum(item => item.ItemQuantity));
         Assert.Equal(7, trend.Days);
+        Assert.Equal("2026-11-11", trend.Start);
         Assert.Equal(end, trend.End);
         Assert.Equal("USD", trend.Currency);
         Assert.Equal(new OrderTrendPoint[]
@@ -296,7 +297,7 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
     }
 
     [Fact]
-    public async Task Sales_and_thirty_day_trend_share_platform_and_shop_filters()
+    public async Task Sales_and_custom_trend_share_platform_and_shop_filters()
     {
         // Given 多平台相同店铺编号、混合币种、无创建日期及已知金额为零的订单。
         await SaveAsync([
@@ -306,14 +307,16 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
             TrendOrder("other-platform", "2026-11-17 08:00", 3, 0m, "EUR") with { Platform = "OtherPlatform" }
         ]);
 
-        // When 组合平台和店铺条件，并查询未筛选及条件无交集时的结果。
+        // When 指定 30 天的区间并组合平台和店铺条件，再查询未筛选及条件无交集时的结果。
+        var start = new DateOnly(2026, 10, 19);
+        var end = new DateOnly(2026, 11, 17);
         var request = new OrderSnapshotReportRequest("TemuPop",
-            [ShopKey("TemuPop", "30"), ShopKey("OtherPlatform", "30")], TrendDays: 30, TrendEnd: new(2026, 11, 17));
+            [ShopKey("TemuPop", "30"), ShopKey("OtherPlatform", "30")], TrendStart: start, TrendEnd: end);
         var filtered = await QueryAsync(request);
         var all = await QueryAsync(request with { Platform = null, Shops = [] });
         var none = await QueryAsync(request with { Shops = [ShopKey("OtherPlatform", "30")] });
 
-        // Then 总销售额包含无日期订单，走势只含窗口内订单，混合币种仍返回金额。
+        // Then 总销售额包含无日期订单，走势逐日连续，无更早历史时环比为空，混合币种仍返回金额。
         Assert.Equal(new OrderSnapshotSales(15m, "USD", 2, 0), filtered.Sales);
         Assert.Equal(new OrderSnapshotTotals(2, 5), filtered.Summary);
         Assert.Single(filtered.Groups);
@@ -321,7 +324,11 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
         Assert.Equal("USD", filtered.Trend.Currency);
         Assert.Equal(1, filtered.Trend.MissingCreatedCount);
         Assert.Null(filtered.Trend.Previous);
-        Assert.Equal(30, filtered.Trend.Points.Count);
+        Assert.Equal(30, filtered.Trend.Days);
+        Assert.Equal("2026-10-19", filtered.Trend.Start);
+        Assert.Equal(end, filtered.Trend.End);
+        Assert.Equal(Enumerable.Range(0, 30).Select(offset => start.AddDays(offset).ToString("yyyy-MM-dd",
+            System.Globalization.CultureInfo.InvariantCulture)), filtered.Trend.Points.Select(point => point.Date));
         Assert.Equal(new OrderTrendPoint("2026-10-19", 1, 4, 10m), filtered.Trend.Points[0]);
         Assert.Equal(new OrderTrendPoint("2026-11-17", 0, 0, 0m), filtered.Trend.Points[^1]);
         Assert.Equal(new OrderSnapshotSales(26m, null, 4, 0), all.Sales);
@@ -330,6 +337,59 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
         Assert.Equal(new OrderSnapshotSales(null, null, 0, 0), none.Sales);
         Assert.Null(none.Trend.Previous);
         Assert.Equal(0, none.Trend.MissingCreatedCount);
+    }
+
+    [Fact]
+    public async Task Leap_year_trend_returns_366_consecutive_days_and_an_equally_long_previous_window()
+    {
+        // Given 当前和上期窗口边界均有订单，且各有一张订单落在整个区间之前和之后。
+        await SaveAsync([
+            TrendOrder("too-old", "2022-12-30", 10, 10m),
+            TrendOrder("previous-start", "2022-12-31", 2, 2m),
+            TrendOrder("previous-end", "2023-12-31", 3, 3m),
+            TrendOrder("start", "2024-01-01", 4, 4m),
+            TrendOrder("leap-day", "2024-02-29", 5, 5m),
+            TrendOrder("end", "2024-12-31", 6, 6m),
+            TrendOrder("future", "2025-01-01", 20, 20m)
+        ]);
+
+        // When 查询完整的闰年区间。
+        var start = new DateOnly(2024, 1, 1);
+        var end = new DateOnly(2024, 12, 31);
+        var report = await QueryAsync(new(null, [], TrendStart: start, TrendEnd: end));
+
+        // Then 走势按日连续并含闰日，环比覆盖上期的两个边界，区间外订单仍计入总销售额。
+        var trend = report.Trend;
+        Assert.Equal(366, trend.Days);
+        Assert.Equal("2024-01-01", trend.Start);
+        Assert.Equal(end, trend.End);
+        Assert.Equal(Enumerable.Range(0, 366).Select(offset => start.AddDays(offset).ToString("yyyy-MM-dd",
+            System.Globalization.CultureInfo.InvariantCulture)), trend.Points.Select(point => point.Date));
+        Assert.Equal(new OrderTrendPoint("2024-01-01", 1, 4, 4m), trend.Points[0]);
+        Assert.Equal(new OrderTrendPoint("2024-02-28", 0, 0, 0m), trend.Points[58]);
+        Assert.Equal(new OrderTrendPoint("2024-02-29", 1, 5, 5m), trend.Points[59]);
+        Assert.Equal(new OrderTrendPoint("2024-12-31", 1, 6, 6m), trend.Points[^1]);
+        Assert.Equal(new OrderTrendPrevious(2, 5, 5m), trend.Previous);
+        Assert.Equal(new OrderSnapshotSales(50m, "USD", 7, 0), report.Sales);
+    }
+
+    [Fact]
+    public async Task End_near_the_earliest_date_preserves_the_default_seven_day_window()
+    {
+        // Given 空数据库与 DateOnly 可表示的最早结束日期。
+        var end = new DateOnly(1, 1, 1);
+
+        // When 只指定结束日期。
+        var report = await QueryAsync(new(null, [], TrendEnd: end));
+
+        // Then 保留向前六天的窗口和 ISO 8601 年份 0000 的日期输出。
+        var trend = report.Trend;
+        Assert.Equal(7, trend.Days);
+        Assert.Equal("0000-12-26", trend.Start);
+        Assert.Equal(end, trend.End);
+        Assert.Equal(new[] { "0000-12-26", "0000-12-27", "0000-12-28", "0000-12-29", "0000-12-30", "0000-12-31", "0001-01-01" },
+            trend.Points.Select(point => point.Date));
+        Assert.Null(trend.Previous);
     }
 
     [Theory]

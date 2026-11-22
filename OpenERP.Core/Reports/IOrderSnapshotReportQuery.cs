@@ -5,19 +5,20 @@ namespace OpenERP.Core.Reports;
 
 /// <summary>本地订单快照查询；空平台、空店铺集合表示全部，店铺键来自报表选项。</summary>
 public sealed record OrderSnapshotReportRequest(string? Platform, IReadOnlyList<string> Shops, int Page = 1, int PageSize = 20,
-    int TrendDays = 7, DateOnly? TrendEnd = null)
+    DateOnly? TrendStart = null, DateOnly? TrendEnd = null)
 {
     /// <summary>服务端计算的完整店铺读取范围；null 表示全量，空集合表示无权读取任何店铺。</summary>
     public IReadOnlyList<OrderShop>? AllowedShops { get; init; }
 
-    public const string InvalidTrendDays = "趋势周期只支持 7 或 30 天。";
 
     public string? ValidationError => Page < 1 || PageSize is < 1 or > 100 || (long)(Page - 1) * PageSize > int.MaxValue
         ? "页码必须大于0，每页1至100条，分页范围不能超出限制。"
         : Shops.Count > 100 || Shops.Any(key => string.IsNullOrWhiteSpace(key) || key.Length > 1000)
             ? "请选择有效店铺，最多同时选择100家。"
             : Platform is { Length: > 100 } ? "平台标识过长。"
-            : TrendDays is not (7 or 30) ? InvalidTrendDays : null;
+            : TrendStart > TrendEnd ? "走势开始日期不能晚于结束日期。"
+            : TrendEnd?.DayNumber - TrendStart?.DayNumber + 1 > 366 ? "走势区间最长支持 366 天。"
+            : null;
 }
 
 /// <summary>来源订单条数和当前商品行数量原值之和，不等同于付款后净销量。</summary>
@@ -33,7 +34,7 @@ public sealed record OrderSnapshotReport(DateTime GeneratedAtUtc, OrderSnapshotT
 
 public sealed record OrderSnapshotSales(decimal? Amount, string? Currency, long KnownOrderCount, long UnknownOrderCount);
 
-public sealed record OrderSnapshotTrend(int Days, DateOnly End, string? Currency, IReadOnlyList<OrderTrendPoint> Points,
+public sealed record OrderSnapshotTrend(int Days, string Start, DateOnly End, string? Currency, IReadOnlyList<OrderTrendPoint> Points,
     OrderTrendPrevious? Previous, long MissingCreatedCount, long AmountKnownOrderCount, long AmountUnknownOrderCount);
 
 public sealed record OrderTrendPoint(string Date, long OrderCount, long ItemQuantity, decimal? SalesAmount);
