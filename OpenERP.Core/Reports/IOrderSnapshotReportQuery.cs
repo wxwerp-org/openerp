@@ -6,6 +6,9 @@ namespace OpenERP.Core.Reports;
 /// <summary>本地订单快照查询；空平台、空店铺集合表示全部，店铺键来自报表选项。</summary>
 public sealed record OrderSnapshotReportRequest(string? Platform, IReadOnlyList<string> Shops, int Page = 1, int PageSize = 20)
 {
+    /// <summary>服务端计算的完整店铺读取范围；null 表示全量，空集合表示无权读取任何店铺。</summary>
+    public IReadOnlyList<OrderShop>? AllowedShops { get; init; }
+
     public string? ValidationError => Page < 1 || PageSize is < 1 or > 100 || (long)(Page - 1) * PageSize > int.MaxValue
         ? "页码必须大于0，每页1至100条，分页范围不能超出限制。"
         : Shops.Count > 100 || Shops.Any(key => string.IsNullOrWhiteSpace(key) || key.Length > 1000)
@@ -24,7 +27,7 @@ public sealed record OrderSnapshotReport(DateTime GeneratedAtUtc, OrderSnapshotT
     IReadOnlyList<string> Platforms, IReadOnlyList<OrderShop> Shops, IReadOnlyList<OrderShopTotals> Groups,
     IReadOnlyList<SourceOrderSnapshot> Orders, int Page, int PageSize, int PageCount);
 
-/// <summary>报表读取边界；实现负责读取本地事实，不调用电商平台，也不改写来源数量。</summary>
+/// <summary>报表读取边界；实现按照请求的店铺范围读取本地事实并保留来源数量。</summary>
 public interface IOrderSnapshotReportQuery
 {
     Task<OpResult<OrderSnapshotReport>> QueryAsync(OrderSnapshotReportRequest request, CancellationToken cancellationToken);
