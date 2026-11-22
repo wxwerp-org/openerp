@@ -12,10 +12,49 @@ updates:
         versions: [">= 11.0.0-0"]
       - dependency-name: "Microsoft.EntityFrameworkCore*"
         versions: [">= 11.0.0-0"]
-      - dependency-name: "Microsoft.Extensions.*"
-        versions: [">= 11.0.0-0"]
       - dependency-name: "Npgsql.EntityFrameworkCore.PostgreSQL"
         versions: [">= 11.0.0-0"]
+
+      # Microsoft.Extensions 同名空间包含两条产品线。仅对锁文件中随 .NET 发布的包保留上限，
+      # 使单独维护的 Platform Extensions 可以跟进受支持版本（含传递依赖的安全修复提案）。
+      # https://dotnet.microsoft.com/platform/support/policy/extensions
+      - { dependency-name: "Microsoft.Extensions.Caching.Abstractions", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Caching.Memory", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Caching.StackExchangeRedis", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Configuration", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Configuration.Abstractions", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Configuration.Binder", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Configuration.CommandLine", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Configuration.EnvironmentVariables", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Configuration.FileExtensions", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Configuration.Json", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Configuration.UserSecrets", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.DependencyInjection", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.DependencyInjection.Abstractions", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.DependencyModel", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Diagnostics", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Diagnostics.Abstractions", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Diagnostics.HealthChecks", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Features", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.FileProviders.Abstractions", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.FileProviders.Physical", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.FileSystemGlobbing", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Hosting", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Hosting.Abstractions", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Http", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Logging", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Logging.Abstractions", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Logging.Configuration", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Logging.Console", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Logging.Debug", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Logging.EventLog", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Logging.EventSource", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.ObjectPool", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Options", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Options.ConfigurationExtensions", versions: [">= 11.0.0-0"] }
+      - { dependency-name: "Microsoft.Extensions.Primitives", versions: [">= 11.0.0-0"] }
 
   - package-ecosystem: "npm"
     directory: "/OpenERP.Web"
