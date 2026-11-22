@@ -232,13 +232,26 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
     }
 
     [Fact]
-    public async Task Employee_receives_order_sync_snapshot_and_can_start_order_sync()
+    public async Task Employee_can_sync_and_receive_status_for_assigned_temu_pop_shops_only()
     {
-        // Given 订单同步已启用，员工建立已登录连接。
+        // Given 员工获分配 TemuPop 的 SID 30，同时保留 Temu 的 SID 31 历史分配。
         var ct = TestContext.Current.CancellationToken;
         var (_, employeeLogin) = await SeedAccountsAsync(ct);
         var job = new RecordingShopSyncJob();
         await using var app = await StartAppAsync(job, orderSync: true, ct);
+        await using var scope = app.App.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Shops.AddRange(
+            new Shop { Platform = "TemuPop", Sid = 30, Name = "已分配店铺" },
+            new Shop { Platform = "TemuPop", Sid = 31, Name = "未分配店铺" });
+        var assigned = new UserShopAssignment { UserId = employeeLogin.UserId, Platform = "TemuPop", Sid = 30 };
+        db.UserShopAssignments.AddRange(assigned,
+            new UserShopAssignment { UserId = employeeLogin.UserId, Platform = "Temu", Sid = 31 });
+        await db.SaveChangesAsync(ct);
+        var jobs = app.App.Services.GetRequiredService<OrderSyncJobs>();
+        Assert.False(jobs.StartScheduledBatch([31]).IsErr);
+        await TestWait.UntilAsync(() => jobs.Latest(31)?.Status == "succeeded", "定时同步未完成。", ct);
+
         var snapshots = Channel.CreateUnbounded<OrderSyncSnapshot>();
         var updates = Channel.CreateUnbounded<OrderSyncStatus>();
         await using var employee = CreateConnection(app.App, IssueToken(app.App, employeeLogin));
@@ -247,20 +260,106 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
         using var updateSubscription = employee.On<OrderSyncStatus>(
             ErpHub.OrderSyncUpdated, state => updates.Writer.TryWrite(state));
 
-        // When 员工连接；Then 收到订单同步初始快照。
+        // When 员工连接并直接发出 SID 31；Then 快照和拒绝结果都不会泄露该店已有同步状态。
         await employee.StartAsync(ct);
         var snapshot = await ReadAsync(snapshots, ct);
         Assert.False(string.IsNullOrWhiteSpace(snapshot.Epoch));
         Assert.Empty(snapshot.Statuses);
+        var rejected = await employee.InvokeAsync<OrderSyncStartResult>("StartOrderSync", 31, ct);
+        Assert.False(rejected.Accepted);
+        Assert.Null(rejected.Status);
 
-        // When 员工发起单店订单同步；Then 受理并收到排队状态。
-        var started = await employee.InvokeAsync<JsonElement>("StartOrderSync", 30, ct);
-        Assert.True(started.GetProperty("accepted").GetBoolean());
+        // When 未分配店铺先排队，员工发起自己的单店同步；Then 员工只收到已分配店铺的排队状态。
+        await TestWait.EventuallyAsync(() => jobs.Start(31), "未受理店铺 31 补跑。", ct);
+        var started = await employee.InvokeAsync<OrderSyncStartResult>("StartOrderSync", 30, ct);
+        Assert.True(started.Accepted, started.Error);
         var queued = await ReadAsync(updates, ct);
         Assert.Equal(30, queued.Sid);
         Assert.Equal("queued", queued.Stage);
-        await TestWait.UntilAsync(() => app.App.Services.GetRequiredService<OrderSyncJobs>().Latest(30)?.Status == "succeeded",
-            "员工发起的订单同步未完成。", ct);
+        Assert.Equal(started.Status!.Id, queued.Id);
+        OrderSyncStatus update;
+        do
+        {
+            update = await ReadAsync(updates, ct);
+            Assert.Equal(30, update.Sid);
+            Assert.Equal(queued.Id, update.Id);
+        } while (update.Status != "succeeded");
+
+        // When 员工重连并调用一键同步；Then 快照仍只含自己店铺，受理计数也只涉及自己店铺。
+        await employee.StopAsync(ct);
+        await employee.StartAsync(ct);
+        Assert.Equal(30, Assert.Single((await ReadAsync(snapshots, ct)).Statuses).Sid);
+        var bulk = await employee.InvokeAsync<AllOrderSyncStartResult>("StartAllOrderSync", ct);
+        Assert.True(bulk.Accepted, bulk.Error);
+        Assert.Equal(1, bulk.StartedCount + bulk.BusyCount);
+
+        // When 管理员撤销员工分配，员工再次重连；Then 先前可见的店铺状态也从快照消失。
+        db.UserShopAssignments.Remove(assigned);
+        await db.SaveChangesAsync(ct);
+        await employee.StopAsync(ct);
+        await employee.StartAsync(ct);
+        Assert.Empty((await ReadAsync(snapshots, ct)).Statuses);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Employee_receives_manual_sync_completion_for_shops_assigned_after_connecting(bool singleShop)
+    {
+        // Given 本地已有两家店，员工零分配连接并收到空快照。
+        var ct = TestContext.Current.CancellationToken;
+        var (_, employeeLogin) = await SeedAccountsAsync(ct);
+        await using var app = await StartAppAsync(new RecordingShopSyncJob(), orderSync: true, ct);
+        await using var scope = app.App.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Shops.AddRange(
+            new Shop { Platform = "TemuPop", Sid = 30, Name = "店铺 30" },
+            new Shop { Platform = "TemuPop", Sid = 31, Name = "店铺 31" });
+        await db.SaveChangesAsync(ct);
+
+        var snapshots = Channel.CreateUnbounded<OrderSyncSnapshot>();
+        var completed = Channel.CreateUnbounded<OrderSyncStatus>();
+        await using var employee = CreateConnection(app.App, IssueToken(app.App, employeeLogin));
+        using var snapshotSubscription = employee.On<OrderSyncSnapshot>(
+            ErpHub.OrderSyncSnapshot, state => snapshots.Writer.TryWrite(state));
+        using var updateSubscription = employee.On<OrderSyncStatus>(ErpHub.OrderSyncUpdated, state =>
+        {
+            if (state.Status == "succeeded")
+                completed.Writer.TryWrite(state);
+        });
+        await employee.StartAsync(ct);
+        Assert.Empty((await ReadAsync(snapshots, ct)).Statuses);
+
+        // When 分配店铺后，员工通过同一连接发起单店或一键同步。
+        var sids = singleShop ? new[] { 30 } : new[] { 30, 31 };
+        db.UserShopAssignments.AddRange(sids.Select(sid =>
+            new UserShopAssignment { UserId = employeeLogin.UserId, Platform = "TemuPop", Sid = sid }));
+        await db.SaveChangesAsync(ct);
+        if (singleShop)
+        {
+            var start = await employee.InvokeAsync<OrderSyncStartResult>("StartOrderSync", 30, ct);
+            Assert.True(start.Accepted, start.Error);
+            Assert.Equal(30, start.Status!.Sid);
+        }
+        else
+        {
+            var start = await employee.InvokeAsync<AllOrderSyncStartResult>("StartAllOrderSync", ct);
+            Assert.True(start.Accepted, start.Error);
+            Assert.Equal(sids.Length, start.StartedCount);
+        }
+
+        // Then 所有受理任务完成，原连接收到每家店的对应终态。
+        var jobs = app.App.Services.GetRequiredService<OrderSyncJobs>();
+        await TestWait.UntilAsync(() => sids.All(sid => jobs.Latest(sid)?.Status == "succeeded"),
+            "新分配店铺的手动同步未完成。", ct);
+        var received = new List<int>();
+        foreach (var _ in sids)
+        {
+            var status = await ReadAsync(completed, ct);
+            Assert.Equal(jobs.Latest(status.Sid)?.Id, status.Id);
+            received.Add(status.Sid);
+        }
+        Assert.Equal(sids, received.Order().ToArray());
     }
 
     private async Task<(UserRefreshToken Admin, UserRefreshToken Employee)> SeedAccountsAsync(CancellationToken ct)

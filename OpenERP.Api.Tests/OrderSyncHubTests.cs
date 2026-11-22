@@ -19,8 +19,93 @@ namespace OpenERP.Api.Tests;
 
 public sealed class OrderSyncHubTests
 {
+    [Theory]
+    [InlineData("StartOrderSync", true)]
+    [InlineData("StartAllOrderSync", false)]
+    public async Task Employee_without_assignments_cannot_start_order_sync(string command, bool hasSid)
+    {
+        // Given 店铺目录已有一家 TemuPop 店铺，新员工尚未获分配。
+        var ct = TestContext.Current.CancellationToken;
+        await using var fixture = new AspireIntegrationFixture();
+        await fixture.InitializeAsync();
+        await using var app = await StartAppAsync(orderSyncEnabled: true, new TestErpClient(), ct,
+            await fixture.GetPostgresConnectionStringAsync(ct));
+        var accessToken = await SeedSyncEmployeeAsync(app, ct);
+        await using var connection = CreateConnection(app, accessToken);
+        await connection.StartAsync(ct);
+
+        // When 员工直接请求同步该 SID 或一键同步。
+        var result = await connection.InvokeCoreAsync<JsonElement>(command, hasSid ? [30] : [], ct);
+
+        // Then 单店越权返回拒绝，一键同步受理零家，均不创建订单同步任务。
+        if (hasSid)
+        {
+            Assert.False(result.GetProperty("accepted").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, result.GetProperty("status").ValueKind);
+            Assert.Equal("无权同步该店铺。", result.GetProperty("error").GetString());
+        }
+        else
+        {
+            Assert.True(result.GetProperty("accepted").GetBoolean());
+            Assert.Equal(0, result.GetProperty("startedCount").GetInt32());
+            Assert.Equal(0, result.GetProperty("busyCount").GetInt32());
+        }
+        Assert.Empty(app.Services.GetRequiredService<OrderSyncJobs>().Snapshot().Statuses);
+    }
+
     [Fact]
-    public async Task All_sync_covers_the_local_temu_directory_and_continues_after_disconnect()
+    public async Task Employee_without_assignments_receives_no_order_sync_statuses()
+    {
+        // Given 一个已完成的同步任务，新员工尚未获分配。
+        var ct = TestContext.Current.CancellationToken;
+        await using var fixture = new AspireIntegrationFixture();
+        await fixture.InitializeAsync();
+        await using var app = await StartAppAsync(orderSyncEnabled: true, new TestErpClient
+        {
+            ReadOrders = (_, _, _) => Task.FromResult<OpResult<OrderImportBatch>>(OpResults.Err("ERP 读取中断。"))
+        }, ct, await fixture.GetPostgresConnectionStringAsync(ct));
+        var accessToken = await SeedSyncEmployeeAsync(app, ct);
+        var jobs = app.Services.GetRequiredService<OrderSyncJobs>();
+        Assert.False(jobs.StartScheduledBatch([30]).IsErr);
+        await TestWait.UntilAsync(() => jobs.Latest(30)?.Status == "failed", "定时批次未结束。", ct);
+
+        // When 该员工连接、重连，后台再次同步同一家店。
+        var snapshots = Channel.CreateUnbounded<OrderSyncSnapshot>();
+        var updates = Channel.CreateUnbounded<OrderSyncStatus>();
+        await using var connection = CreateConnection(app, accessToken);
+        using var snapshotSubscription = connection.On<OrderSyncSnapshot>(ErpHub.OrderSyncSnapshot,
+            state => snapshots.Writer.TryWrite(state));
+        using var updateSubscription = connection.On<OrderSyncStatus>(ErpHub.OrderSyncUpdated,
+            state => updates.Writer.TryWrite(state));
+        await connection.StartAsync(ct);
+        var first = await ReadAsync(snapshots, ct);
+        await connection.StopAsync(ct);
+        await connection.StartAsync(ct);
+        var second = await ReadAsync(snapshots, ct);
+        var repeat = await TestWait.EventuallyAsync(() => jobs.Start(30), "补跑未受理。", ct);
+        await TestWait.UntilAsync(() => jobs.Latest(30) is { Status: "failed" } status && status.Id == repeat.Id,
+            "补跑未结束。", ct);
+        using var observation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        observation.CancelAfter(TimeSpan.FromMilliseconds(500));
+        var delivered = false;
+        try
+        {
+            delivered = await updates.Reader.WaitToReadAsync(observation.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // 观察期结束，员工没有收到增量。
+        }
+
+        // Then 两次快照为空，员工也未收到同一家店的增量。
+        Assert.Multiple(
+            () => Assert.Empty(first.Statuses),
+            () => Assert.Empty(second.Statuses),
+            () => Assert.False(delivered));
+    }
+
+    [Fact]
+    public async Task Administrator_all_sync_covers_the_local_temu_directory_and_continues_after_disconnect()
     {
         // Given 超过一页 TemuPop 店铺，包含所有授权状态，另有一家其他平台店铺。
         var ct = TestContext.Current.CancellationToken;
@@ -41,7 +126,7 @@ public sealed class OrderSyncHubTests
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             await db.Database.MigrateAsync(ct);
-            var user = new UserAccount { Username = "batch-sync-user", PasswordHash = "test-hash" };
+            var user = new UserAccount { Username = UserAccount.AdminUsername, PasswordHash = "test-hash" };
             var login = new UserRefreshToken
             {
                 UserId = user.Id,
@@ -67,7 +152,7 @@ public sealed class OrderSyncHubTests
             throw new Xunit.Sdk.XunitException(busy.Error.Message);
         var busyId = busy.Value.Id;
 
-        // When 员工一键同步，收到结果后断开连接，放行 ERP 读取。
+        // When 管理员一键同步，收到结果后断开连接，放行 ERP 读取。
         var snapshots = Channel.CreateUnbounded<OrderSyncSnapshot>();
         await using var connection = CreateConnection(app, accessToken);
         using var subscription = connection.On<OrderSyncSnapshot>(ErpHub.OrderSyncSnapshot,
@@ -110,6 +195,13 @@ public sealed class OrderSyncHubTests
         await AuthenticationIntegrationTests.LoginAsync(client, ct, password, username);
         await using var db = new NpgsqlConnection(await fixture.GetPostgresConnectionStringAsync(ct));
         await db.OpenAsync(ct);
+        await using var assignShop = new NpgsqlCommand("""
+            INSERT INTO "Shops" ("Id", "Sid", "Name", "Platform") VALUES (uuidv7(), 30, '同步店铺', 'TemuPop');
+            INSERT INTO "UserShopAssignments" ("UserId", "Platform", "Sid")
+                SELECT "Id", 'TemuPop', 30 FROM "Users" WHERE "Username" = @username;
+            """, db);
+        assignShop.Parameters.AddWithValue("username", username);
+        await assignShop.ExecuteNonQueryAsync(ct);
         await using var connection = new HubConnectionBuilder()
             .WithUrl(new Uri(fixture.ApiEndpoint, "/api/hubs/erp"), options =>
                 options.AccessTokenProvider = () => Task.FromResult(client.DefaultRequestHeaders.Authorization?.Parameter))
@@ -125,7 +217,6 @@ public sealed class OrderSyncHubTests
 
         await using var seed = new NpgsqlCommand("""
             INSERT INTO "ErpSettings" ("Id", "ProtectedAccessToken") VALUES (uuidv7(), 'invalid-protected-token');
-            INSERT INTO "Shops" ("Id", "Sid", "Name", "Platform") VALUES (uuidv7(), 30, '同步店铺', 'TemuPop');
             """, db);
         await seed.ExecuteNonQueryAsync(ct);
 
@@ -195,7 +286,7 @@ public sealed class OrderSyncHubTests
 
         // When 连接时补齐快照，断线后使用同一客户端重新连接。
         var snapshot = Channel.CreateUnbounded<JsonElement>();
-        await using var connection = CreateConnection(app);
+        await using var connection = CreateConnection(app, role: UserAccount.AdministratorRole);
         using var subscription = connection.On<JsonElement>("OrderSyncSnapshot",
             state => snapshot.Writer.TryWrite(state));
         await connection.StartAsync(ct);
@@ -233,7 +324,7 @@ public sealed class OrderSyncHubTests
                 await releaseResult.Task.WaitAsync(cancellationToken);
                 return OpResults.Err("ERP 读取中断。");
             }
-        }, ct, hubRole: UserAccount.AdministratorRole);
+        }, ct);
         var shopUpdates = Channel.CreateUnbounded<ShopSyncStatus>();
         var updates = Channel.CreateUnbounded<JsonElement>();
         await using var connection = CreateConnection(app, role: UserAccount.AdministratorRole);
@@ -295,7 +386,7 @@ public sealed class OrderSyncHubTests
         }, ct);
         var snapshots = Channel.CreateUnbounded<OrderSyncSnapshot>();
         var updates = Channel.CreateUnbounded<OrderSyncStatus>();
-        await using var connection = CreateConnection(app);
+        await using var connection = CreateConnection(app, role: UserAccount.AdministratorRole);
         using var snapshotSubscription = connection.On<OrderSyncSnapshot>(ErpHub.OrderSyncSnapshot,
             state => snapshots.Writer.TryWrite(state));
         using var updateSubscription = connection.On<OrderSyncStatus>(ErpHub.OrderSyncUpdated,
@@ -342,7 +433,7 @@ public sealed class OrderSyncHubTests
         // Given 一个已经建立连接、随后未能提供有效会话的调用方。
         var ct = TestContext.Current.CancellationToken;
         await using var app = await StartAppAsync(orderSyncEnabled: true, new TestErpClient(), ct);
-        await using var connection = CreateConnection(app);
+        await using var connection = CreateConnection(app, role: UserAccount.AdministratorRole);
         await connection.StartAsync(ct);
 
         // When 调用方尝试手动发起订单同步。
@@ -359,8 +450,7 @@ public sealed class OrderSyncHubTests
     {
         // Given 环境未注册订单同步服务。
         var ct = TestContext.Current.CancellationToken;
-        await using var app = await StartAppAsync(
-            orderSyncEnabled: false, new TestErpClient(), ct, hubRole: UserAccount.AdministratorRole);
+        await using var app = await StartAppAsync(orderSyncEnabled: false, new TestErpClient(), ct);
         var updates = Channel.CreateUnbounded<ShopSyncStatus>();
         await using var connection = CreateConnection(app, role: UserAccount.AdministratorRole);
         using var subscription = connection.On<ShopSyncStatus>(ErpHub.ShopSyncUpdated,
@@ -384,6 +474,25 @@ public sealed class OrderSyncHubTests
     private static Task<T> ReadAsync<T>(Channel<T> channel, CancellationToken ct) =>
         channel.Reader.ReadAsync(ct).AsTask().WaitAsync(TimeSpan.FromSeconds(5), ct);
 
+    private static async Task<string> SeedSyncEmployeeAsync(WebApplication app, CancellationToken ct)
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.MigrateAsync(ct);
+        var user = new UserAccount { Username = "sync-employee", PasswordHash = "test-hash" };
+        var login = new UserRefreshToken
+        {
+            User = user,
+            UserId = user.Id,
+            TokenHash = new byte[32],
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
+        };
+        db.RefreshTokens.Add(login);
+        db.Shops.Add(new Shop { Sid = 30, Name = "同步店铺", Platform = "TemuPop" });
+        await db.SaveChangesAsync(ct);
+        return app.Services.GetRequiredService<AccessTokens>().Issue(login, DateTimeOffset.UtcNow)!.Value.Value;
+    }
+
     private static void AssertBulkRejection(JsonElement result, string error)
     {
         Assert.False(result.GetProperty("accepted").GetBoolean());
@@ -393,8 +502,7 @@ public sealed class OrderSyncHubTests
     }
 
     private static async Task<WebApplication> StartAppAsync(
-        bool orderSyncEnabled, TestErpClient erp, CancellationToken ct, string? connectionString = null,
-        string? hubRole = null)
+        bool orderSyncEnabled, TestErpClient erp, CancellationToken ct, string? connectionString = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
@@ -405,14 +513,9 @@ public sealed class OrderSyncHubTests
             builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
             builder.AddAccountAuthentication();
         }
-        else if (hubRole is not null)
-        {
-            ErpEndpointTestAuth.Configure(builder);
-        }
         else
         {
-            builder.Services.AddAuthentication();
-            builder.Services.AddAuthorization();
+            ErpEndpointTestAuth.Configure(builder);
         }
         builder.Services.AddSingleton<IShopSyncJob, FakeShopSyncJob>();
         if (orderSyncEnabled)
@@ -424,9 +527,7 @@ public sealed class OrderSyncHubTests
         }
 
         var app = builder.Build();
-        var hub = app.MapHub<ErpHub>("/api/hubs/erp");
-        if (connectionString is null && hubRole is null)
-            hub.AllowAnonymous();
+        app.MapHub<ErpHub>("/api/hubs/erp");
         try
         {
             await app.StartAsync(ct);
