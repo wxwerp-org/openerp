@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { apiRequest, type Account } from '../account/session'
+import UserShopAssignments from '../components/users/UserShopAssignments.vue'
 import AppButton from '../ui/AppButton.vue'
 import AppDialog from '../ui/AppDialog.vue'
 import AppEmptyState from '../ui/AppEmptyState.vue'
@@ -32,8 +33,14 @@ function toggleCreatedSort(): void {
 
 const loading = ref(false)
 const listError = ref('')
-const mode = ref<'create' | 'view' | 'edit' | 'delete' | null>(null)
-const titles = { create: '添加用户', view: '查看用户', edit: '编辑用户', delete: '删除用户' }
+const mode = ref<'create' | 'view' | 'edit' | 'delete' | 'shops' | null>(null)
+const titles = {
+  create: '添加用户',
+  view: '查看用户',
+  edit: '编辑用户',
+  delete: '删除用户',
+  shops: '分配店铺',
+}
 const selectedUser = ref<ManagedUser | null>(null)
 const userPath = computed(() =>
   selectedUser.value ? `/api/users/${selectedUser.value.id}` : '/api/users',
@@ -85,6 +92,11 @@ async function openDetails(user: ManagedUser): Promise<void> {
   } finally {
     if (detailRequest === controller) detailRequest = undefined
   }
+}
+
+function openShopAssignments(user: ManagedUser): void {
+  selectedUser.value = user
+  mode.value = 'shops'
 }
 
 function confirmDelete(user: ManagedUser): void {
@@ -223,7 +235,7 @@ onUnmounted(() => detailRequest?.abort())
             </button>
           </AppTh>
           <AppTh class="w-145">最近登录时间</AppTh>
-          <AppTh class="w-146">操作</AppTh>
+          <AppTh class="w-210">操作</AppTh>
         </tr>
       </thead>
       <tbody>
@@ -278,6 +290,14 @@ onUnmounted(() => detailRequest?.abort())
                   @click="confirmDelete(user)"
                   >删除</AppButton
                 >
+                <AppButton
+                  variant="text"
+                  :aria-label="`分配店铺：${user.username}`"
+                  :disabled="loading"
+                  aria-haspopup="dialog"
+                  @click="openShopAssignments(user)"
+                  >分配店铺</AppButton
+                >
               </template>
             </div>
           </AppTd>
@@ -311,7 +331,14 @@ onUnmounted(() => detailRequest?.abort())
       <header v-if="mode" class="flex h-52 items-center border-b border-line px-20">
         <h2 id="user-dialog-title" class="text-dialog-title font-semibold">{{ titles[mode] }}</h2>
       </header>
-      <div v-if="mode === 'view'">
+      <UserShopAssignments
+        v-if="mode === 'shops' && selectedUser"
+        v-model:saving="saving"
+        :user-id="selectedUser.id"
+        :username="selectedUser.username"
+        @close="mode = null"
+      />
+      <div v-else-if="mode === 'view'">
         <div class="px-24 py-20">
           <p v-if="dialogError" class="text-danger" role="alert">{{ dialogError }}</p>
           <dl

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { expect, type APIRequestContext, type Page } from '@playwright/test'
 
 export const adminPassword = process.env.OPENERP_TEST_ADMIN_PASSWORD ?? ''
@@ -18,9 +19,10 @@ type SessionResponse = {
   }
 }
 
-export async function expectSessionResponse(response: {
-  json(): Promise<unknown>
-}): Promise<SessionResponse> {
+export async function expectSessionResponse(
+  response: { json(): Promise<unknown> },
+  role: WorkspaceRole = 'Administrator',
+): Promise<SessionResponse> {
   const session = (await response.json()) as SessionResponse
   expect(session).toMatchObject({
     accessToken: expect.any(String),
@@ -29,7 +31,7 @@ export async function expectSessionResponse(response: {
       id: expect.stringMatching(
         /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
       ),
-      role: 'Administrator',
+      role,
       username: expect.any(String),
       name: expect.any(String),
       expiresAt: expect.any(String),
@@ -62,6 +64,22 @@ export async function enterWorkspace(
 ): Promise<void> {
   if (adminPassword) {
     await signInForWorkspace(page.request)
+    if (role === 'User') {
+      const username = `staff-${randomBytes(5).toString('hex')}`
+      const password = randomBytes(8).toString('hex')
+      const created = await page.request.post('/api/users', {
+        headers: await bearerHeaders(page.request),
+        data: { username, name: '验收员工', password },
+      })
+      expect(created.status()).toBe(201)
+      const login = await page.request.post('/api/auth/login', {
+        headers: await csrfHeaders(page.request),
+        data: { username, password },
+      })
+      expect(login.status()).toBe(200)
+      const session = await expectSessionResponse(login, role)
+      accessTokens.set(page.request, session.accessToken)
+    }
     return
   }
 

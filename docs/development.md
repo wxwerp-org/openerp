@@ -148,7 +148,7 @@ pnpm --dir OpenERP.Web test:e2e
 OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class '*BrowserAcceptanceTests'
 ```
 
-该入口创建测试专用数据库，从未初始化状态启动 HTTPS 前端，将实际端点及本次测试要设置的密码通过环境传给 Playwright，并串行运行浏览器用例；测试密码不会注入 API 作为预置密码。员工角色用例通过真实管理页面创建并改名，登录后从订单页同步并核对新增订单。该宿主仅替换外部 ERP 的 HTTP 传输。初始化和角色用例保存实际界面截图，完成后由 Aspire 测试夹具清理测试资源。它先通过 .NET 严格校验前端证书，再通过 `NODE_EXTRA_CA_CERTS` 将已校验的服务端 PEM 证书提供给 Node 客户端，不跳过证书校验；临时文件在结束后删除。独立运行 Playwright 时，Node 如不识别本机开发证书，需用 `NODE_EXTRA_CA_CERTS` 指定对应的公开 PEM 证书。不设置开关时，此浏览器入口明确跳过，不计作浏览器验收通过。
+该入口创建测试专用数据库，从未初始化状态启动 HTTPS 前端，将实际端点及本次测试要设置的密码通过环境传给 Playwright，并串行运行浏览器用例；测试密码不会注入 API 作为预置密码。员工角色用例覆盖零店铺代办授权、管理员同步目录和分配、负责人核对历史小计与手动同步，以及未分配账号被拒绝读取。该宿主仅替换外部 ERP 的 HTTP 传输。初始化和角色用例保存实际界面截图，完成后由 Aspire 测试夹具清理测试资源。它先通过 .NET 严格校验前端证书，再通过 `NODE_EXTRA_CA_CERTS` 将已校验的服务端 PEM 证书提供给 Node 客户端，不跳过证书校验；临时文件在结束后删除。独立运行 Playwright 时，Node 如不识别本机开发证书，需用 `NODE_EXTRA_CA_CERTS` 指定对应的公开 PEM 证书。不设置开关时，此浏览器入口明确跳过，不计作浏览器验收通过。
 
 ### 真实 ERP 验证
 
@@ -186,7 +186,11 @@ python3 deploy/tests/smoke.py --compose ./aspire-output/docker-compose.yaml
 
 ## 用户、权限与会话
 
-系统的唯一管理员 `admin` 可以管理用户和系统设置，并可访问授权店铺与 ERP 接入。管理员创建的账号具有 `User` 角色，可查询业务数据、发起手动同步和维护本人资料；店铺授权状态、目录同步状态与授权/同步管理接口仅对管理员开放，员工直接访问会被重定向或返回 403。管理员用户名固定。姓名必填（最多 20 个字符），手机号可选（最多 20 个字符），邮箱可选并校验格式；手机号、邮箱仅作为个人资料。菜单中的资料与最近登录时间来自数据库，保存资料不会改变最近登录时间。
+唯一管理员 `admin` 管理用户、系统接入、全局目录与定时同步，并能读取所有店铺。员工使用 `User` 角色，可以从店铺列表去旺销网授权新店。员工的目录、平台选项、订单、报表、工作台和手动同步范围由服务端读取当前分配。
+
+`UserShopAssignments` 以用户 UUID、平台和 SID 为复合键。迁移为存量员工建立空范围。管理员在用户管理中选择已同步到本地目录的店铺，可以保留或撤销暂时下架的已有分配。归属独立于目录行，因此历史订单继续可查，同平台同 SID 恢复后沿用原分配。删除员工会在同一事务中清理归属和会话。
+
+管理员用户名固定。姓名必填（最多 20 个字符），手机号可选（最多 20 个字符），邮箱可选并校验格式；手机号、邮箱仅作为个人资料。菜单中的资料与最近登录时间来自数据库，保存资料不会改变最近登录时间。
 
 ### 本地初始化与密码重置
 
@@ -223,6 +227,7 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 | `PUT /api/account/profile` | 提交 `{ name, phone, email }` 保存本人资料 |
 | `GET /api/users`、`GET /api/users/{id}` | 管理员读取用户列表或指定用户详情 |
 | `POST /api/users` | 管理员创建普通用户 |
+| `GET /api/users/{id}/shops`、`PUT /api/users/{id}/shops` | 管理员读取或整体替换员工的店铺键数组，每项包含 `platform` 和整数 `sid`。提交空数组撤销全部分配 |
 | `PUT /api/users/{id}`、`DELETE /api/users/{id}` | 管理员编辑或软删除员工账号 |
 
 前端通过应用同源的 HTTPS `/api` 地址访问后端。初始化、登录、刷新和退出要求 `X-CSRF-TOKEN` 请求头及对应 CSRF Cookie，先请求 `/api/auth/csrf` 取得令牌。防伪校验继续使用存放于 PostgreSQL 的 Data Protection 密钥。Bearer 认证的业务写请求，包括密码修改、资料保存和文件上传，无需附带 CSRF 令牌。业务 API（包括 `/api/orders`、ERP 与文件）默认需要登录，`/api/about` 与健康检查保持匿名。
@@ -242,9 +247,9 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 | `GET /api/erp/order-sync-availability` | 已登录用户查询 `configured` 和 `orderSyncEnabled`，供业务页面判断能否同步 |
 | `GET /api/erp/config` | 管理员查询配置记录是否存在，返回 `configured`、`baseUrl` 和 `orderSyncEnabled`。查询失败返回 `503` |
 | `PUT /api/erp/config` | 管理员提交 `{ accessToken }` 保存或更换 Token，成功返回 `204`。下一次读取凭证的操作使用新值 |
-| `GET /api/erp/shops?page=1&pageSize=20&platform=&status=&keyword=` | 只读本地店铺目录；`status` 为 `valid`、`invalid`、`unknown`；按页返回 `items`、`summary`（含 `lastSyncedAt` 与目录版本 `syncVersion`）与分页信息；每页 1–100 条，超范围页码钳制到最后一页 |
-| `GET /api/erp/platforms` | 返回本地有店铺的平台（名称、展示名、图标、是否生产可用、店铺数）；平台元数据来自上游同步，不在本地写死 |
-| `GET /api/erp/shop-sync` | 返回店铺同步的当前或最近一次状态（运行中、开始/完成时间、总数、已检查、有效/无效/未知、错误、单调递增的 `version`） |
+| `GET /api/erp/shops?page=1&pageSize=20&platform=&status=&keyword=` | 按账号范围分页读取本地目录，每页 1–100 条。员工可查看所属店铺的状态、失败原因和检查时间。管理员额外获得 `summary`，可按 `status=valid/invalid/unknown` 筛选 |
+| `GET /api/erp/platforms` | 返回当前账号可见的本地店铺涉及的平台（名称、展示名、图标、是否生产可用、店铺数）；平台元数据来自上游同步，不在本地写死 |
+| `GET /api/erp/shop-sync` | 仅管理员可读取。返回店铺同步的当前或最近一次状态（运行中、开始/完成时间、总数、已检查、有效/无效/未知、错误、单调递增的 `version`） |
 | `GET /api/erp/order-sync-settings` | 仅管理员在 Development / Production 可用；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes` |
 | `PUT /api/erp/order-sync-settings` | 仅管理员在 Development / Production 可用；保存启用状态和店铺选择；启用时至少选择一家店铺 |
 | `GET /api/erp/order-sync-settings/shops` | 仅管理员在 Development / Production 可用。从本地目录返回全部 TemuPop 店铺。凭证缺失、凭证或本地目录读取失败返回 `503` |
@@ -273,14 +278,14 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 
 - 单 Hub：`/api/hubs/erp`。普通读取（订单列表、店铺目录、平台、配置、店铺同步状态）继续使用 HTTP；只有长时同步与进度使用 SignalR。
 - 浏览器通过 `access_token` 查询参数连接 Hub。JWT 中间件只对 `/api/hubs` 路径读取该参数，其他路径忽略，避免 token 泄漏到普通接口。
-- 客户端方法 `StartShopSync()` 返回 `accepted`、当前状态与错误；服务端事件 `ShopSyncUpdated(ShopSyncStatus)` 在连接建立、同步开始、每 10 家店检查、完成或失败时推送。状态带单调递增 `version`，客户端据此丢弃迟到的 HTTP/invoke 旧快照。
-- 订单列表通过 `StartOrderSync(sid)` 启动单店同步，返回 `accepted`、该店状态与错误。「全部同步」通过一次 `StartAllOrderSync()` 命令读取本地目录中的全部 TemuPop 店铺，覆盖所有分页和授权状态，返回本次受理和跳过的店铺数。
-- 两个命令在受理前均检查 ERP 凭证是否已配置。受理后关闭面板或断开连接，任务继续执行。若凭证无法解密，该店任务在 `shop` 阶段报告失败。
-- 连接或重连时，`OrderSyncSnapshot` 提供当前进程的 `epoch` 和每店最近状态。手动与定时任务通过 `OrderSyncUpdated` 推送带版本的状态，包含阶段、进度、入库计数和跳过原因。成功或部分成功后，页面按当前筛选刷新本地订单。
+- 管理员方法 `StartShopSync()` 返回 `accepted`、当前状态与错误；服务端事件 `ShopSyncUpdated(ShopSyncStatus)` 在管理员连接建立、同步开始、每 10 家店检查、完成或失败时向管理员推送。状态带单调递增 `version`，客户端据此丢弃迟到的 HTTP/invoke 旧快照。
+- 订单列表通过 `StartOrderSync(sid)` 启动单店同步，返回 `accepted`、该店状态与错误。「全部同步」通过一次 `StartAllOrderSync()` 命令读取本地目录中当前账号可见的 TemuPop 店铺，覆盖所有分页和授权状态，返回本次受理和跳过的店铺数。
+- 单店命令在读取状态或受理前按当前分配检查 TemuPop 和 SID。越权返回 `accepted: false` 和空状态。两个手动订单同步命令均检查 ERP 凭证是否已配置。受理后关闭面板或断开连接，任务继续执行。若凭证无法解密，该店任务在 `shop` 阶段报告失败。
+- 连接或重连时，`OrderSyncSnapshot` 提供当前进程的 `epoch` 和可见店铺的最近状态。管理员接收全部进度，员工连接按当次分配加入各自的店铺组，重连时重建。手动与定时任务通过 `OrderSyncUpdated` 推送带版本的状态，包含阶段、进度、入库计数和跳过原因。成功或部分成功后，页面按当前筛选刷新本地订单。
 - 客户端使用 `withAutomaticReconnect`；access token 由 `accessTokenFactory` 每次读取最新值，配合会话刷新处理 20 分钟 JWT 到期。连接断开时页面仍可浏览本地数据，但同步按钮不可用。
 - Hub 映射开启 `CloseOnAuthenticationExpiration`：JWT 到期即关闭连接，客户端用刷新后的 access token 重连，避免连接无限期沿用旧凭证。
 - `StartShopSync`、`StartOrderSync` 和 `StartAllOrderSync` 执行前按当前数据库会话校验一次登录状态；会话已撤销时拒绝命令并断开连接。这是官方文档给出的“在 Hub 方法内按当前数据校验”补偿，不是逐消息重新认证；普通 HTTP 接口仍按请求执行完整会话校验。
-- 撤销会话后、命令被调用前，旧连接仍可能收到同步状态广播；业务数据读取走 HTTP 并立即返回 `401`，广播只包含同步计数/时间/错误。
+- 撤销分配后，新 HTTP 请求与同步命令使用数据库中的最新范围。已有连接的进度组成员资格在正常断线或 JWT 到期重连时更新。撤销会话后，新的受保护 HTTP 请求返回 `401`。
 - 当前假设单个 API 实例；多实例部署需要 SignalR backplane，非本期范围。
 
 ## 本地订单列表

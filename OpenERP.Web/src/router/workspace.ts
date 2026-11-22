@@ -27,7 +27,7 @@ export type NavigationPage = {
 
 /** 侧栏独立项：只出现在导航里，不开页签。 */
 export const standalonePages: NavigationPage[] = [
-  { id: 'shops', label: '授权店铺', path: '/shops', administratorOnly: true },
+  { id: 'shops', label: '授权店铺', path: '/shops' },
 ]
 
 export const navigationPages: NavigationPage[] = [...workspacePages, ...standalonePages]

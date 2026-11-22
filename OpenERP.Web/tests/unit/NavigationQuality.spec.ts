@@ -129,7 +129,7 @@ describe('导航与临时状态质量', () => {
     })
 
     expect(wrapper.find('[data-group="orders"]').exists()).toBe(true)
-    expect(wrapper.find('[data-group="shops"]').exists()).toBe(false)
+    expect(wrapper.find('[data-group="shops"]').exists()).toBe(true)
     expect(wrapper.find('[data-group="settings"]').exists()).toBe(false)
     expect(wrapper.find('[data-group="upcoming"]').exists()).toBe(true)
   })

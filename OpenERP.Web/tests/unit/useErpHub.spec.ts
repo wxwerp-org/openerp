@@ -205,6 +205,25 @@ describe('ERP Hub 订单同步', () => {
     expect(hub.orderSyncTasks.value[42]).toEqual(completed)
   })
 
+  it('Given 同进程撤销一店分配 When 重连时新任务更新先于快照 Then 清除撤销店铺并保留最新进度', async () => {
+    const hub = useErpHub({ shopSync: false })
+    await hub.connect()
+    const send = hubMock.handlers.get('OrderSyncUpdated')
+    send?.(orderTask)
+    expect(hub.orderSyncTasks.value[42]).toEqual(orderTask)
+
+    hubMock.connection.onreconnecting.mock.lastCall?.[0]()
+    const allowed = { ...orderTask, sid: 43, version: 8 }
+    send?.(allowed)
+    hubMock.handlers.get('OrderSyncSnapshot')?.({
+      epoch: orderTask.epoch,
+      statuses: [{ ...allowed, version: 7 }],
+    })
+    hubMock.connection.onreconnected.mock.lastCall?.[0]()
+
+    expect(hub.orderSyncTasks.value).toEqual({ 43: allowed })
+  })
+
   it('Given 旧进程曾有任务运行 When 重连收到新进程空快照 Then 清除旧任务并重新读取本地订单', async () => {
     const onOrdersChanged = vi.fn()
     const hub = useErpHub({ shopSync: false, onOrdersChanged })

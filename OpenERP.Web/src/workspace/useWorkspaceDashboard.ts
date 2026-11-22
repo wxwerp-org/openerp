@@ -93,7 +93,7 @@ export function useWorkspaceDashboard({ administrator }: WorkspaceDashboardOptio
     }
   }
 
-  /** 管理员拿完整目录（含汇总），员工只拿四字段投影用于店名映射。 */
+  /** 读取当前账号的目录用于店名映射，管理员另有全局授权汇总。 */
   async function loadDirectory(): Promise<void> {
     const version = ++directoryVersion
     if (!directory.value) directoryStatus.value = 'loading'

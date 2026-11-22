@@ -50,7 +50,7 @@ describe('工作台数据解析', () => {
     expect(directory.items[0]?.isTokenOk).toBe(true)
   })
 
-  it('Given 员工最小投影 When 解析 Then 没有汇总且健康字段为未知', () => {
+  it('Given 目录缺少可选状态字段 When 解析 Then 没有汇总且健康字段为未知', () => {
     const directory = parseShopDirectory(employeeDirectory)
     expect(directory.summary).toBeNull()
     expect(directory.items[0]).toEqual({

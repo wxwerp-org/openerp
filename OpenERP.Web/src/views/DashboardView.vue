@@ -68,7 +68,7 @@ const hub = useErpHub({
   orderSync: true,
   onOrdersChanged: () => {
     void loadReport()
-    if (administrator.value) void loadDirectory()
+    void loadDirectory()
   },
 })
 
@@ -93,6 +93,12 @@ let disposed = false
 
 const orderCount = computed(() => report.value?.summary.orderCount ?? null)
 const directorySummary = computed(() => directory.value?.summary ?? null)
+const employeeHasNoShops = computed(
+  () =>
+    !administrator.value &&
+    directoryStatus.value === 'success' &&
+    directory.value?.items.length === 0,
+)
 const shopNames = computed(() => shopNameMap(directory.value))
 const shopNamesSid = computed(() => shopNameBySid(directory.value))
 const orderTasks = computed(() => Object.values(orderSyncTasks.value))
@@ -307,7 +313,7 @@ watch(
 function handleVisibilityChange(): void {
   if (document.visibilityState !== 'visible') return
   void loadReport()
-  if (administrator.value) void loadDirectory()
+  void loadDirectory()
 }
 
 function retrySystem(): void {
@@ -395,9 +401,13 @@ onUnmounted(() => {
             class="col-span-12 px-16 py-14"
             data-testid="employee-empty-hint"
           >
-            <p class="m-0 text-12 text-body">
-              订单数据仍为空，系统可能尚未初始化完成，请联系管理员。
-            </p>
+            <template v-if="employeeHasNoShops">
+              <p class="m-0 mb-8 text-12 text-body">
+                尚无可见店铺。新店在旺销网授权后，请联系管理员同步目录并分配。
+              </p>
+              <AppButton :to="{ path: '/shops' }">前往授权店铺</AppButton>
+            </template>
+            <p v-else class="m-0 text-12 text-body">当前还没有订单数据。</p>
           </AppCard>
 
           <AppCard

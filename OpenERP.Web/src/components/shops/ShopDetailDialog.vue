@@ -8,7 +8,7 @@ import type { Shop } from './types'
 
 const props = defineProps<{
   open: boolean
-  canAuthorize: boolean
+  administrator: boolean
   shop: Shop | null
   platformName: string
 }>()
@@ -136,9 +136,9 @@ function formatDateTime(value: string | null): string {
           <p class="font-semibold text-notice-amber-text [overflow-wrap:anywhere]">平台授权失效</p>
           <p class="mt-2 text-notice-amber-text [overflow-wrap:anywhere]">
             新数据可能停止，历史数据仍可读。{{
-              canAuthorize
+              administrator
                 ? '请去 wxw ERP 重新授权，完成后回到本页点击「立即同步」。'
-                : '请联系管理员重新授权，完成后可点击「立即同步」刷新状态。'
+                : '请去旺销网续授权，完成后等待目录定时同步或联系管理员同步目录。'
             }}
           </p>
         </div>
@@ -149,14 +149,8 @@ function formatDateTime(value: string | null): string {
       </p>
 
       <footer class="mt-20 flex justify-end gap-8">
-        <AppButton
-          v-if="canAuthorize"
-          id="shopAuthorize"
-          variant="primary"
-          autofocus
-          @click="emit('authorize')"
-        >
-          去 wxw 授权
+        <AppButton id="shopAuthorize" variant="primary" autofocus @click="emit('authorize')">
+          {{ administrator ? '去 wxw 授权' : '续授权' }}
         </AppButton>
         <AppButton @click="close">关闭</AppButton>
       </footer>

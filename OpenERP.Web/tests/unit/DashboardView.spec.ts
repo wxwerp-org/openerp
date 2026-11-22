@@ -262,14 +262,20 @@ describe('工作台', () => {
     expect(wrapper.text()).toContain('初始化')
   })
 
-  it('Given 空库员工 When 打开工作台 Then 显示联系管理员说明且不出现引导带与管理卡片', async () => {
+  it('Given 零店员工 When 打开工作台 Then 引导授权和分配且不出现管理卡片', async () => {
     setAccount({ ...adminAccount, role: 'User', username: 'employee' })
-    const stub = stubApi({ report: () => Response.json(reportPayload(0, 0)) })
+    const stub = stubApi({
+      report: () => Response.json(reportPayload(0, 0)),
+      directory: () => Response.json({ items: [] }),
+    })
     const mounted = await mountDashboard()
     wrapper = mounted.wrapper
 
     expect(wrapper.find('[data-testid="employee-empty-hint"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('订单数据仍为空，系统可能尚未初始化完成，请联系管理员')
+    const hint = wrapper.get('[data-testid="employee-empty-hint"]')
+    expect(hint.text()).toContain('尚无可见店铺')
+    expect(hint.text()).toContain('请联系管理员同步目录并分配')
+    expect(hint.get('a').attributes('href')).toBe('/shops')
     expect(wrapper.find('[data-testid="workspace-onboarding"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="workspace-health-card"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="workspace-system-card"]').exists()).toBe(false)

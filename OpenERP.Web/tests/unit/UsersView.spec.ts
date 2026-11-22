@@ -182,6 +182,80 @@ describe('真实用户管理', () => {
     },
   )
 
+  it('Given 员工有一条目录缺失的分配 When 分页并按平台与关键字选店 Then 保存多个店铺且可撤销全部分配', async () => {
+    let assignments = [{ platform: 'TemuPop', sid: 99 }]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === '/api/users') return Response.json([administrator, employee])
+        if (url === '/api/erp/platforms') {
+          return Response.json({ items: [{ name: 'TemuPop', displayName: 'Temu' }] })
+        }
+        if (url === `/api/users/${employee.id}/shops`) {
+          if (init?.method !== 'PUT') return Response.json(assignments)
+          assignments = JSON.parse(String(init.body))
+          return new Response(null, { status: 204 })
+        }
+        const params = new URL(url, 'https://example.test').searchParams
+        if (url.startsWith('/api/erp/shops?')) {
+          if (params.get('platform') === 'TemuPop' && params.get('keyword') === '华南') {
+            return Response.json({
+              items: [{ sid: '12', platform: 'TemuPop', name: '华南店' }],
+              page: 1,
+              pageCount: 1,
+            })
+          }
+          const page = Number(params.get('page')) || 1
+          return Response.json({
+            items: [{ sid: String(page), platform: 'TemuPop', name: `门店 ${page}` }],
+            page,
+            pageCount: 2,
+          })
+        }
+        return new Response(null, { status: 404 })
+      }),
+    )
+
+    wrapper = mount(UsersView)
+    await flushPromises()
+    const open = wrapper.get('button[aria-label="分配店铺：alice"]')
+    await open.trigger('click')
+    await flushPromises()
+    let dialog = wrapper.get('dialog[open]')
+    expect(dialog.get('fieldset').text()).toContain('99')
+    await dialog.get('button[aria-label="下一页"]').trigger('click')
+    await flushPromises()
+    await dialog.get('input[type="checkbox"][value="TemuPop/2"]').setValue(true)
+    await dialog.get('select').setValue('TemuPop')
+    await dialog.get('input[type="search"]').setValue('华南')
+    await dialog.get('form[role="search"]').trigger('submit')
+    await flushPromises()
+    expect(dialog.text()).toContain('华南店')
+    await dialog.get('input[type="checkbox"][value="TemuPop/12"]').setValue(true)
+    await dialog.get('form[data-testid="save-shop-assignments"]').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('dialog[open]').exists()).toBe(false)
+
+    await open.trigger('click')
+    await flushPromises()
+    dialog = wrapper.get('dialog[open]')
+    const selected = dialog.get('fieldset')
+    expect(selected.text()).toContain('TemuPop / 99')
+    expect(selected.text()).toContain('TemuPop / 2')
+    expect(selected.text()).toContain('TemuPop / 12')
+    expect(assignments).toEqual([
+      { platform: 'TemuPop', sid: 99 },
+      { platform: 'TemuPop', sid: 2 },
+      { platform: 'TemuPop', sid: 12 },
+    ])
+    for (const button of selected.findAll('button')) await button.trigger('click')
+    await dialog.get('form[data-testid="save-shop-assignments"]').trigger('submit')
+    await flushPromises()
+    await open.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('dialog[open] fieldset').text()).toContain('尚未选择店铺')
+  })
+
   it('Given 系统中的管理员和普通用户 When 打开用户管理 Then 展示真实账号且管理员仅可查看', async () => {
     vi.stubGlobal(
       'fetch',
@@ -201,6 +275,7 @@ describe('真实用户管理', () => {
       '查看',
       '编辑',
       '删除',
+      '分配店铺',
     ])
   })
 })
