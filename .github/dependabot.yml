@@ -4,6 +4,18 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # 保留 .NET 10 产品线的更新，忽略范围从 11.0.0 的预发行版本开始。
+    ignore:
+      - dependency-name: "dotnet-ef"
+        versions: [">= 11.0.0-0"]
+      - dependency-name: "Microsoft.AspNetCore.*"
+        versions: [">= 11.0.0-0"]
+      - dependency-name: "Microsoft.EntityFrameworkCore*"
+        versions: [">= 11.0.0-0"]
+      - dependency-name: "Microsoft.Extensions.*"
+        versions: [">= 11.0.0-0"]
+      - dependency-name: "Npgsql.EntityFrameworkCore.PostgreSQL"
+        versions: [">= 11.0.0-0"]
 
   - package-ecosystem: "npm"
     directory: "/OpenERP.Web"
