@@ -13,6 +13,9 @@
     <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.2" />
     <PackageReference Include="Aspire.Hosting.Testing" Version="17.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.15" />
+    <!-- xUnit 和 Aspire 测试宿主的传递依赖保持在 .NET 10 补丁线。 -->
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="10.0.15" />
+    <PackageReference Include="System.Threading.RateLimiting" Version="10.0.15" />
     <ProjectReference Include="../OpenERP.Api/OpenERP.Api.csproj" />
   </ItemGroup>
 

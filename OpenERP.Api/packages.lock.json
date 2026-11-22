@@ -104,9 +104,9 @@
       },
       "Microsoft.Extensions.Caching.Hybrid": {
         "type": "Direct",
-        "requested": "[10.11.0, )",
-        "resolved": "10.11.0",
-        "contentHash": "F4P+uZgDFnKfmHm0ReWJNSVXAlZmknQgkkrmEDtAdxWvVPCSZL7UPAY7Ewf8zs5qwPCGaYopZiRiPg2YGCfuhA=="
+        "requested": "[10.11.1, )",
+        "resolved": "10.11.1",
+        "contentHash": "+EVDWK8EXhpkmgTf/TBD+OZG2DSVCLd8/NnUOmRBk2IMaGVSGePugEQ3jtkVYecwlOio66fxUPGfMVTxqUOwuQ=="
       },
       "Npgsql.EntityFrameworkCore.PostgreSQL": {
         "type": "Direct",
@@ -124,6 +124,25 @@
         "requested": "[0.3.0, )",
         "resolved": "0.3.0",
         "contentHash": "svMDEpmoybmCprFhADzVrXWrOIwyQaHvBQ5uR9br5sEbs4im6vJjGqem9NnSivhn5j93+3C+okXibP8dEfOIMA=="
+      },
+      "System.CodeDom": {
+        "type": "Direct",
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "6oO8bbuYBjHWA9lZgDYRzVwtDwN5M1uW8MUcjiEHcHIEKM9B+xolkxVY9NCqzEn8yqGonMaat44cYKvv9TgYXw=="
+      },
+      "System.Composition": {
+        "type": "Direct",
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "tF+uBYeFaPOsU+61mDFZYIU26M9zH4hMkGshCVpdKFl+WozvKmPE+akyoxN76r4j2itnUUBrnPJ2iIFfEEAsmg==",
+        "dependencies": {
+          "System.Composition.AttributedModel": "10.0.15",
+          "System.Composition.Convention": "10.0.15",
+          "System.Composition.Hosting": "10.0.15",
+          "System.Composition.Runtime": "10.0.15",
+          "System.Composition.TypedParts": "10.0.15"
+        }
       },
       "Aspire.StackExchange.Redis": {
         "type": "Transitive",
@@ -523,57 +542,40 @@
           "System.IO.Hashing": "10.0.2"
         }
       },
-      "System.CodeDom": {
-        "type": "Transitive",
-        "resolved": "6.0.0",
-        "contentHash": "CPc6tWO1LAer3IzfZufDBRL+UZQcj5uS207NHALQzP84Vp/z6wF0Aa0YZImOQY8iStY0A2zI/e3ihKNPfUm8XA=="
-      },
-      "System.Composition": {
-        "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "3Djj70fFTraOarSKmRnmRy/zm4YurICm+kiCtI0dYRqGJnLX6nJ+G3WYuFJ173cAPax/gh96REcbNiVqcrypFQ==",
-        "dependencies": {
-          "System.Composition.AttributedModel": "9.0.0",
-          "System.Composition.Convention": "9.0.0",
-          "System.Composition.Hosting": "9.0.0",
-          "System.Composition.Runtime": "9.0.0",
-          "System.Composition.TypedParts": "9.0.0"
-        }
-      },
       "System.Composition.AttributedModel": {
         "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "iri00l/zIX9g4lHMY+Nz0qV1n40+jFYAmgsaiNn16xvt2RDwlqByNG4wgblagnDYxm3YSQQ0jLlC/7Xlk9CzyA=="
+        "resolved": "10.0.15",
+        "contentHash": "oqwGfyF9UorDJVX7wpfHS1zm+KoTlO2hQC56csL9nfd8FmLi+GXu5ialGKOPgQALtOXaeNSWJiEVKrepNU7RrQ=="
       },
       "System.Composition.Convention": {
         "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "+vuqVP6xpi582XIjJi6OCsIxuoTZfR0M7WWufk3uGDeCl3wGW6KnpylUJ3iiXdPByPE0vR5TjJgR6hDLez4FQg==",
+        "resolved": "10.0.15",
+        "contentHash": "tzD1VUBzQAZ8j6uA25NS+zcRLNEMngY61vV8Cc2Z3I+yPKv3TELyCuOjBbUtoWKTaPh0uzGRVyX5Qr6KPW4QAA==",
         "dependencies": {
-          "System.Composition.AttributedModel": "9.0.0"
+          "System.Composition.AttributedModel": "10.0.15"
         }
       },
       "System.Composition.Hosting": {
         "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "OFqSeFeJYr7kHxDfaViGM1ymk7d4JxK//VSoNF9Ux0gpqkLsauDZpu89kTHHNdCWfSljbFcvAafGyBoY094btQ==",
+        "resolved": "10.0.15",
+        "contentHash": "kQYnw+UoKirF4AaewuPKyNbYck7ov6mDGAh9Ol+QVzAE4TBSIwEslNkufRJ5mugDYdID1JPVj5/kgU0lMjfyqA==",
         "dependencies": {
-          "System.Composition.Runtime": "9.0.0"
+          "System.Composition.Runtime": "10.0.15"
         }
       },
       "System.Composition.Runtime": {
         "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "w1HOlQY1zsOWYussjFGZCEYF2UZXgvoYnS94NIu2CBnAGMbXFAX8PY8c92KwUItPmowal68jnVLBCzdrWLeEKA=="
+        "resolved": "10.0.15",
+        "contentHash": "jELOpwM0pMl4I4Fo8Tuv4i3tbu/hqGQSXjbrQ0NlMrC1YjOAZD3Q8FW/kF5aHdNslDwNDEzVQ84N95bLbYNx5A=="
       },
       "System.Composition.TypedParts": {
         "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "aRZlojCCGEHDKqh43jaDgaVpYETsgd7Nx4g1zwLKMtv4iTo0627715ajEFNpEEBTgLmvZuv8K0EVxc3sM4NWJA==",
+        "resolved": "10.0.15",
+        "contentHash": "5Y9+JXSO9VsNKZV/aAYGjduLS0vx4KMtiqlDqCu2EwbyTB8bCuhEYNqTy/8Cj7ExBkpwBmY7uURzvU3uetnUbw==",
         "dependencies": {
-          "System.Composition.AttributedModel": "9.0.0",
-          "System.Composition.Hosting": "9.0.0",
-          "System.Composition.Runtime": "9.0.0"
+          "System.Composition.AttributedModel": "10.0.15",
+          "System.Composition.Hosting": "10.0.15",
+          "System.Composition.Runtime": "10.0.15"
         }
       },
       "System.IdentityModel.Tokens.Jwt": {

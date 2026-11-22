@@ -16,6 +16,16 @@ updates:
         versions: [">= 11.0.0-0"]
       - dependency-name: "Npgsql.EntityFrameworkCore.PostgreSQL"
         versions: [">= 11.0.0-0"]
+      - dependency-name: "Microsoft.Bcl.AsyncInterfaces"
+        versions: [">= 11.0.0-0"]
+      - dependency-name: "System.CodeDom"
+        versions: [">= 11.0.0-0"]
+      - dependency-name: "System.Composition"
+        versions: [">= 11.0.0-0"]
+      - dependency-name: "System.Drawing.Common"
+        versions: [">= 11.0.0-0"]
+      - dependency-name: "System.Threading.RateLimiting"
+        versions: [">= 11.0.0-0"]
 
   - package-ecosystem: "npm"
     directory: "/OpenERP.Web"
