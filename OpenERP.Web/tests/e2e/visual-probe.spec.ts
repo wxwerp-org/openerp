@@ -9,6 +9,7 @@ import {
   visualAccount,
   wide,
 } from './visual-probe'
+import type { ReportTrend } from '../../src/reports/orderSnapshot'
 import { dataTrendFixture, emptyTrendFixture, salesFixture } from '../reportFixtures'
 
 test.skip(!process.env.VISUAL_PROBE, '仅 VISUAL_PROBE=1 时采集视觉探针。')
@@ -118,8 +119,55 @@ async function mockOrdersError(page: Page): Promise<void> {
   )
 }
 
+function addDays(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+/** 按请求区间重排夹具日期，使探针截图里的口径文案与窗口一致。 */
+function trendForRequest(trend: ReportTrend, url: URL): ReportTrend {
+  const start = url.searchParams.get('trendStart')
+  const end = url.searchParams.get('trendEnd')
+  if (!start || !end) return trend
+  const days =
+    Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1
+  const source =
+    trend.points.length > 0 ? trend.points : [{ orderCount: 0, itemQuantity: 0, salesAmount: 0 }]
+  const points = Array.from({ length: days }, (_, index) => {
+    const point = source[index % source.length]!
+    return {
+      date: addDays(start, index),
+      orderCount: point.orderCount,
+      itemQuantity: point.itemQuantity,
+      salesAmount: point.salesAmount,
+    }
+  })
+  let known = 0
+  let unknown = 0
+  for (const point of points) {
+    if (point.orderCount === 0) continue
+    if (point.salesAmount === null) unknown += point.orderCount
+    else known += point.orderCount
+  }
+  return {
+    ...trend,
+    start,
+    end,
+    days,
+    points,
+    amountKnownOrderCount: known,
+    amountUnknownOrderCount: unknown,
+  }
+}
+
 async function mockReport(page: Page, body: unknown = reportSample): Promise<void> {
-  await page.route('**/api/reports/order-snapshot?**', (route) => route.fulfill({ json: body }))
+  const report = body as { trend: ReportTrend } & Record<string, unknown>
+  await page.route('**/api/reports/order-snapshot?**', (route) =>
+    route.fulfill({
+      json: { ...report, trend: trendForRequest(report.trend, new URL(route.request().url())) },
+    }),
+  )
 }
 
 const shopsTable = (page: Page) => page.getByRole('table', { name: '授权店铺列表' })
@@ -285,6 +333,38 @@ const scenarios: Scenario[] = [
     path: '/',
     prepare: async (page) => mockWorkspaceDashboard(page, true),
     waitFor: waitWorkspace,
+  },
+  {
+    name: 'dashboard-quarter-1440',
+    path: '/',
+    prepare: mockWorkspaceDashboard,
+    waitFor: waitWorkspace,
+    afterGoto: async (page) => {
+      await page.getByRole('button', { name: '本季度' }).click()
+      await page.locator('[data-testid="trend-footnote"]').getByText('本季度（').waitFor()
+    },
+  },
+  {
+    name: 'dashboard-custom-1440',
+    path: '/',
+    prepare: mockWorkspaceDashboard,
+    waitFor: waitWorkspace,
+    afterGoto: async (page) => {
+      await page.getByTestId('trend-custom-toggle').click()
+      await page.getByTestId('trend-custom-panel').waitFor()
+    },
+  },
+  {
+    name: 'dashboard-custom-390',
+    width: 390,
+    height: 844,
+    path: '/',
+    prepare: mockWorkspaceDashboard,
+    waitFor: waitWorkspace,
+    afterGoto: async (page) => {
+      await page.getByTestId('trend-custom-toggle').click()
+      await page.getByTestId('trend-custom-panel').waitFor()
+    },
   },
   {
     name: 'dashboard-1920',

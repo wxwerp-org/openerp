@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { enterWorkspace, type WorkspaceRole } from './authentication'
+import type { ReportTrend } from '../../src/reports/orderSnapshot'
 import { dataTrendFixture, emptyTrendFixture, salesFixture } from '../reportFixtures'
 
 const shopsTable = (page: Page) => page.getByRole('table', { name: '授权店铺列表' })
@@ -8,6 +9,55 @@ const shopPagerCurrent = (page: Page) =>
   page.getByRole('navigation', { name: '授权店铺分页' }).locator('[aria-current="page"]')
 const hasPageOverflow = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+
+function localDate(offsetDays = 0): string {
+  const date = new Date()
+  date.setDate(date.getDate() + offsetDays)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function addDays(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+/** 按请求区间重排夹具日期，使 mock 响应与所选周期自洽。 */
+function trendForRequest(trend: ReportTrend, url: URL): ReportTrend {
+  const start = url.searchParams.get('trendStart')
+  const end = url.searchParams.get('trendEnd')
+  if (!start || !end) return trend
+  const days =
+    Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1
+  const source =
+    trend.points.length > 0 ? trend.points : [{ orderCount: 0, itemQuantity: 0, salesAmount: 0 }]
+  const points = Array.from({ length: days }, (_, index) => {
+    const point = source[index % source.length]!
+    return {
+      date: addDays(start, index),
+      orderCount: point.orderCount,
+      itemQuantity: point.itemQuantity,
+      salesAmount: point.salesAmount,
+    }
+  })
+  let known = 0
+  let unknown = 0
+  for (const point of points) {
+    if (point.orderCount === 0) continue
+    if (point.salesAmount === null) unknown += point.orderCount
+    else known += point.orderCount
+  }
+  return {
+    ...trend,
+    start,
+    end,
+    days,
+    points,
+    amountKnownOrderCount: known,
+    amountUnknownOrderCount: unknown,
+  }
+}
 
 /** 登录会话 + Hub 断连：工作台与列表页在无后端时按离线态渲染。 */
 async function prepare(page: Page, role: WorkspaceRole = 'Administrator'): Promise<void> {
@@ -102,11 +152,17 @@ async function mockWorkspaceApis(
   page: Page,
   options: { report?: unknown; directoryItems?: unknown[]; employee?: boolean } = {},
 ): Promise<void> {
-  const report = options.report ?? workspaceReport()
+  const report = (options.report ?? workspaceReport()) as { trend: ReportTrend } & Record<
+    string,
+    unknown
+  >
   const items = options.directoryItems ?? directoryItems
   // 员工响应含所属店铺的状态，管理员额外获得成员 ID 与授权汇总。
   const minimal = options.employee === true
-  await page.route('**/api/reports/order-snapshot?**', (route) => route.fulfill({ json: report }))
+  await page.route('**/api/reports/order-snapshot?**', (route) => {
+    const url = new URL(route.request().url())
+    return route.fulfill({ json: { ...report, trend: trendForRequest(report.trend, url) } })
+  })
   await page.route('**/api/about', (route) =>
     route.fulfill({
       json: { version: '1.0.0', commit: '3abfbcc', buildTime: '2026-11-20T00:00:00Z' },
@@ -413,13 +469,19 @@ test('Given 工作台有数据 When 打开 Then 状态条数字卡图表卡与�
   await expect(page.locator('[data-testid="trend-footnote"]')).toContainText('成本币种（USD）')
   await page.locator('[data-testid="workspace-trend-chart"]').hover({ position: { x: 220, y: 90 } })
   await expect(page.locator('[data-testid="trend-tooltip"]')).toBeVisible()
-  const trendRequest = page.waitForRequest(
-    (request) =>
-      request.url().includes('/api/reports/order-snapshot') &&
-      request.url().includes('trendDays=30'),
-  )
+  const trendRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return (
+      url.pathname.includes('/api/reports/order-snapshot') &&
+      url.searchParams.get('trendStart') === localDate(-29) &&
+      url.searchParams.get('trendEnd') === localDate()
+    )
+  })
   await trendCard.getByRole('button', { name: '近 30 天' }).click()
   await trendRequest
+  await expect(page.locator('[data-testid="trend-footnote"]')).toContainText(
+    '近 30 天按订单创建日期分桶',
+  )
 
   // 图卡：平台分布与店铺商品量 Top5，店名按目录映射。
   const platformCard = page.locator('[data-testid="workspace-platform-card"]')
@@ -451,6 +513,89 @@ test('Given 工作台有数据 When 打开 Then 状态条数字卡图表卡与�
   // 店铺下钻：URL 使用报表返回的完整店铺键并编码。
   await rankCard.locator('[data-shop-key="wxw-erp/TemuPop/30"]').click()
   await expect(page).toHaveURL(/\/reports\/orders\?shops=wxw-erp\/TemuPop\/30$/)
+})
+
+test('Given 走势卡 When 选择本季度、本年与自定义区间 Then 按浏览器本地日期重取并更新口径', async ({
+  page,
+}) => {
+  await prepare(page)
+  await mockWorkspaceApis(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  // 固定浏览器时钟，避免用例跨本地午夜时预期日期漂移；浏览器本地时区即断言口径。
+  await page.clock.setFixedTime(new Date('2026-11-20T02:00:00Z'))
+  await page.goto('/')
+  const browserDate = await page.evaluate(() => {
+    const now = new Date()
+    const pad = (value: number) => String(value).padStart(2, '0')
+    return {
+      today: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+      quarterStart: `${now.getFullYear()}-${pad(Math.floor(now.getMonth() / 3) * 3 + 1)}-01`,
+      yearStart: `${now.getFullYear()}-01-01`,
+    }
+  })
+  const trendCard = page.locator('[data-testid="workspace-trend-card"]')
+  const footnote = page.locator('[data-testid="trend-footnote"]')
+
+  // 本季度：季度首日至今天。
+  const quarterRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return (
+      url.pathname.includes('/api/reports/order-snapshot') &&
+      url.searchParams.get('trendStart') === browserDate.quarterStart &&
+      url.searchParams.get('trendEnd') === browserDate.today
+    )
+  })
+  await trendCard.getByRole('button', { name: '本季度' }).click()
+  await quarterRequest
+  await expect(footnote).toContainText(
+    `本季度（${browserDate.quarterStart} 至 ${browserDate.today}）`,
+  )
+
+  // 本年：自然年首日至今天。
+  const yearRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return (
+      url.pathname.includes('/api/reports/order-snapshot') &&
+      url.searchParams.get('trendStart') === browserDate.yearStart &&
+      url.searchParams.get('trendEnd') === browserDate.today
+    )
+  })
+  await trendCard.getByRole('button', { name: '本年' }).click()
+  await yearRequest
+  await expect(footnote).toContainText('本年（')
+
+  // 自定义：开始 + 结束日期，应用后按新区间取数并收起面板。
+  await page.getByTestId('trend-custom-toggle').click()
+  await expect(page.getByTestId('trend-custom-panel')).toBeVisible()
+  await page.getByTestId('trend-custom-start').fill('2025-06-12')
+  await page.getByTestId('trend-custom-end').fill('2025-06-30')
+  const customRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return (
+      url.pathname.includes('/api/reports/order-snapshot') &&
+      url.searchParams.get('trendStart') === '2025-06-12' &&
+      url.searchParams.get('trendEnd') === '2025-06-30'
+    )
+  })
+  await page.getByTestId('trend-custom-apply').click()
+  await customRequest
+  await expect(footnote).toContainText('自定义区间（2025-06-12 至 2025-06-30）')
+  await expect(page.getByTestId('trend-custom-panel')).toHaveCount(0)
+
+  // 窄屏打开自定义面板仍不产生页面级横向溢出，面板与按钮也不越出卡片。
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByTestId('trend-custom-toggle').click()
+  const panel = page.getByTestId('trend-custom-panel')
+  await expect(panel).toBeVisible()
+  expect(await hasPageOverflow(page)).toBe(false)
+  const cardBox = await trendCard.boundingBox()
+  const panelBox = await panel.boundingBox()
+  const toggleBox = await page.getByTestId('trend-custom-toggle').boundingBox()
+  expect(cardBox).not.toBeNull()
+  expect(panelBox).not.toBeNull()
+  expect(toggleBox).not.toBeNull()
+  expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1)
+  expect(toggleBox!.x + toggleBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1)
 })
 
 test('Given 1023 与 390 窄屏 When 打开工作台 Then 轨道侧栏与单列卡片均无页面级横向溢出', async ({

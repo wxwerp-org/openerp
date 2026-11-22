@@ -1,4 +1,5 @@
 import type { OrderSyncTask } from '../composables/orderSyncTask'
+import { MaxTrendDays } from '../reports/orderSnapshot'
 import type { OrderSnapshotReport, ReportTrend, TrendPoint } from '../reports/orderSnapshot'
 import {
   formatCompactMoney,
@@ -6,6 +7,7 @@ import {
   formatDateTime,
   formatMoney,
   formatShortDate,
+  localDateString,
 } from './workspaceData'
 
 export type DashboardState = 'loading' | 'error' | 'empty' | 'syncing' | 'data'
@@ -259,7 +261,13 @@ export type TrendChartGeometry = {
     markers: { x: number; y: number }[]
     max: number
   }
-  orders: { ticks: TrendChartAxisTick[]; line: string; max: number }
+  orders: {
+    ticks: TrendChartAxisTick[]
+    line: string
+    /** 单日窗口的折线只有一个 moveto，SVG 不绘制，需要常驻圆点。 */
+    markers: { x: number; y: number }[]
+    max: number
+  }
   points: TrendChartPoint[]
 }
 
@@ -348,17 +356,34 @@ function salesPaths(
 
 function xTicks(points: TrendPoint[], xOf: (index: number) => number): TrendChartTick[] {
   if (points.length === 0) return []
+  const longRange = points.length > 92
   const step = points.length <= 7 ? 1 : Math.ceil(points.length / 6)
   const indexes = new Set<number>()
   for (let index = 0; index < points.length; index += step) indexes.add(index)
   indexes.add(points.length - 1)
-  return [...indexes]
+  let ticks = [...indexes]
     .sort((left, right) => left - right)
     .map((index) => ({
       index,
       x: xOf(index),
-      label: formatShortDate(points[index]!.date),
+      // 超过一季度后 MM-DD 在跨年窗口里会重复，改用 YYYY-MM；季度内仍保留更细的日期。
+      label: longRange ? points[index]!.date.slice(0, 7) : formatShortDate(points[index]!.date),
     }))
+  // 长窗口固定步长可能在同一月份取到两档；同标签只保留更早的一档，避免轴标签重复。
+  ticks = ticks.filter((tick, index) => index === 0 || tick.label !== ticks[index - 1]!.label)
+  // 固定步长采样后再补末尾日期，可能和前一档只差几个像素；按最小可读间距贪心抽稀。
+  const minGap = longRange ? 56 : 40
+  const kept: TrendChartTick[] = []
+  for (const tick of ticks) {
+    if (kept.length === 0 || tick.x - kept[kept.length - 1]!.x >= minGap) kept.push(tick)
+  }
+  // 末尾日期必须保留：若它和上一档太近，就替换上一档，直到间距足够。
+  const finalTick = ticks[ticks.length - 1]!
+  if (kept[kept.length - 1] !== finalTick) {
+    while (kept.length >= 1 && finalTick.x - kept[kept.length - 1]!.x < minGap) kept.pop()
+    kept.push(finalTick)
+  }
+  return kept
 }
 
 /**
@@ -421,8 +446,113 @@ export function buildTrendGeometry(
         String(Math.round(value / Math.max(1, ordersScale.step)) * ordersScale.step),
       ),
       line: linePath(chartPoints.map((point) => ({ x: point.x, y: point.yOrders }))),
+      markers:
+        chartPoints.length === 1 ? [{ x: chartPoints[0]!.x, y: chartPoints[0]!.yOrders }] : [],
       max: ordersMax,
     },
     points: chartPoints,
   }
+}
+
+export type TrendPreset = 'last7' | 'last30' | 'quarter' | 'year' | 'custom'
+export type TrendRange = { start: string; end: string }
+
+export const TrendPresetLabels: Record<TrendPreset, string> = {
+  last7: '近 7 天',
+  last30: '近 30 天',
+  quarter: '本季度',
+  year: '本年',
+  custom: '自定义区间',
+}
+
+type CalendarDate = { year: number; month: number; day: number }
+
+/**
+ * 自定义区间允许 0001..9999 的完整日历日期；不能用 `new Date(year, ...)`，
+ * 因为它会把 0..99 年映射到 1900..1999 年。
+ */
+function parseCalendarDate(value: string): CalendarDate | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (year < 1 || month < 1 || month > 12 || day < 1) return null
+  const probe = new Date(0)
+  probe.setUTCHours(0, 0, 0, 0)
+  probe.setUTCFullYear(year, month - 1, day)
+  if (
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== month - 1 ||
+    probe.getUTCDate() !== day
+  )
+    return null
+  return { year, month, day }
+}
+
+/** UTC 日序（1970-01-01 为 0），只用于日期差，不参与本地时间展示。 */
+function calendarDayNumber(date: CalendarDate): number {
+  const probe = new Date(0)
+  probe.setUTCHours(0, 0, 0, 0)
+  probe.setUTCFullYear(date.year, date.month - 1, date.day)
+  return Math.round(probe.getTime() / 86_400_000)
+}
+
+function addDays(date: Date, days: number): Date {
+  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  result.setDate(result.getDate() + days)
+  return result
+}
+
+/** 含首尾的日历天数；用于校验后端 366 天上限与展示区间长度。 */
+export function trendRangeDays(range: TrendRange): number {
+  const start = parseCalendarDate(range.start)
+  const end = parseCalendarDate(range.end)
+  if (!start || !end) return 0
+  return calendarDayNumber(end) - calendarDayNumber(start) + 1
+}
+
+/**
+ * 预设区间按浏览器本地日期计算，结束日期固定为今天：
+ * 近 7/30 天向前推固定天数，本季度/本年从自然季度、自然年的第一天开始（即「至今」）。
+ */
+export function resolveTrendRange(
+  preset: TrendPreset,
+  now = new Date(),
+  custom: TrendRange | null = null,
+): TrendRange {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const end = localDateString(today)
+  if (preset === 'custom')
+    return custom ? { ...custom } : { start: localDateString(addDays(today, -6)), end }
+  if (preset === 'last7') return { start: localDateString(addDays(today, -6)), end }
+  if (preset === 'last30') return { start: localDateString(addDays(today, -29)), end }
+  if (preset === 'quarter')
+    return {
+      start: localDateString(
+        new Date(today.getFullYear(), Math.floor(today.getMonth() / 3) * 3, 1),
+      ),
+      end,
+    }
+  return { start: localDateString(new Date(today.getFullYear(), 0, 1)), end }
+}
+
+/** 脚注与无障碍摘要里的区间描述：短周期沿用原文，长周期补充实际起止日期。 */
+export function trendRangeLabel(preset: TrendPreset, range: TrendRange): string {
+  const label = TrendPresetLabels[preset]
+  return preset === 'last7' || preset === 'last30'
+    ? label
+    : `${label}（${range.start} 至 ${range.end}）`
+}
+
+/** 自定义区间只允许今天及以前，避免把未来空日计入走势和环比窗口。 */
+export function validateTrendRange(range: TrendRange, now = new Date()): string | null {
+  const start = parseCalendarDate(range.start)
+  const end = parseCalendarDate(range.end)
+  if (!start || !end) return '请选择有效的开始与结束日期。'
+  if (range.start > range.end) return '开始日期不能晚于结束日期。'
+  if (trendRangeDays(range) > MaxTrendDays) return `统计区间最长支持 ${MaxTrendDays} 天。`
+  if (range.end > localDateString(new Date(now.getFullYear(), now.getMonth(), now.getDate())))
+    return '结束日期不能晚于今天。'
+  return null
 }

@@ -1,49 +1,127 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import AppButton from '../../ui/AppButton.vue'
 import AppCard from '../../ui/AppCard.vue'
 import AppIcon from '../../ui/AppIcon.vue'
+import AppInput from '../../ui/AppInput.vue'
 import AppSegmented from '../../ui/AppSegmented.vue'
 import type { ReportTrend } from '../../reports/orderSnapshot'
-import { formatMoney, formatShortDate } from '../../workspace/workspaceData'
+import { formatMoney, formatShortDate, localDateString } from '../../workspace/workspaceData'
 import {
   buildTrendComparison,
   buildTrendGeometry,
   resolveTrendState,
   trendOrderTotal,
+  trendRangeLabel,
   trendSalesTotal,
+  validateTrendRange,
+  type TrendPreset,
+  type TrendRange,
 } from '../../workspace/workspaceDerivation'
 
-const props = defineProps<{ trend: ReportTrend }>()
+const props = defineProps<{
+  trend: ReportTrend
+  /** 当前已展示数据对应的周期；请求失败时保持旧周期。 */
+  preset: TrendPreset
+  /** 最近一次应用的自定义区间，用于重新打开面板时回填。 */
+  customRange: TrendRange | null
+}>()
 
-const emit = defineEmits<{ 'period-change': [days: 7 | 30]; open: [] }>()
+const emit = defineEmits<{
+  'preset-change': [preset: TrendPreset]
+  'custom-apply': [range: TrendRange]
+  open: []
+}>()
 
 const uid = useId()
 const descriptionId = `${uid}-trend-description`
+const customPanelId = `${uid}-trend-custom`
+const customErrorId = `${uid}-trend-custom-error`
+const customToggle = ref<HTMLButtonElement | null>(null)
+const customOpen = ref(false)
+const periodOptions = ['近 7 天', '近 30 天', '本季度', '本年']
+const presetLabels: Record<TrendPreset, string> = {
+  last7: '近 7 天',
+  last30: '近 30 天',
+  quarter: '本季度',
+  year: '本年',
+  custom: '',
+}
+const presetByLabel: Record<string, Exclude<TrendPreset, 'custom'>> = {
+  '近 7 天': 'last7',
+  '近 30 天': 'last30',
+  本季度: 'quarter',
+  本年: 'year',
+}
 const period = computed({
-  get: () => (props.trend.days === 30 ? '近 30 天' : '近 7 天'),
-  set: (value: string) => emit('period-change', value === '近 30 天' ? 30 : 7),
+  get: () => presetLabels[props.preset],
+  set: (value: string) => {
+    customOpen.value = false
+    const preset = presetByLabel[value]
+    // 始终上报点击：父组件负责去重，并用请求版本让在途的其它周期失效。
+    if (preset) emit('preset-change', preset)
+  },
 })
+
+const range = computed<TrendRange>(() => ({ start: props.trend.start, end: props.trend.end }))
+const rangeLabel = computed(() => trendRangeLabel(props.preset, range.value))
 
 const state = computed(() => resolveTrendState(props.trend))
 const comparison = computed(() => buildTrendComparison(props.trend))
 const orderTotal = computed(() => trendOrderTotal(props.trend))
 const salesTotal = computed(() => trendSalesTotal(props.trend))
 const windowLabel = computed(() => {
-  const first = props.trend.points[0]
-  return first ? `${formatShortDate(first.date)} - ${formatShortDate(props.trend.end)}` : ''
+  // 短周期用 MM-DD；季度/本年/自定义可能跨年，短格式会把两个不同年份显示成同一日期。
+  if (props.preset === 'last7' || props.preset === 'last30')
+    return `${formatShortDate(props.trend.start)} - ${formatShortDate(props.trend.end)}`
+  return `${props.trend.start} - ${props.trend.end}`
 })
 const footnote = computed(() => {
   const parts = [
     props.trend.currency
       ? `销售额为 ERP 成本币种（${props.trend.currency}），仅统计已同步订单`
       : '销售额仅统计已同步订单',
-    `近 ${props.trend.days} 天按订单创建日期分桶`,
+    `${rangeLabel.value}按订单创建日期分桶`,
   ]
   if (props.trend.missingCreatedCount > 0)
     parts.push(`另有 ${props.trend.missingCreatedCount} 单无创建日期未计入`)
   if (state.value === 'degraded') parts.push('暂无可用金额，存量订单重新同步后可补齐')
   return `${parts.join('；')}。`
 })
+
+/** 原生日期输入的 max 与应用校验共用同一个「今天」，跨过本地午夜后同步刷新。 */
+const today = ref(localDateString())
+const customStart = ref('')
+const customEnd = ref('')
+const customError = computed(() =>
+  customOpen.value ? validateTrendRange({ start: customStart.value, end: customEnd.value }) : null,
+)
+
+function refreshToday(): void {
+  today.value = localDateString()
+}
+
+/** 打开时回填最近一次应用的自定义区间，首次打开取当前图表窗口。 */
+function toggleCustom(): void {
+  if (!customOpen.value) {
+    refreshToday()
+    customStart.value = props.customRange?.start ?? props.trend.start
+    customEnd.value = props.customRange?.end ?? props.trend.end
+  }
+  customOpen.value = !customOpen.value
+}
+
+function closeCustom(focusToggle: boolean): void {
+  customOpen.value = false
+  if (!focusToggle) return
+  void nextTick(() => customToggle.value?.focus())
+}
+
+function applyCustom(): void {
+  if (customError.value) return
+  closeCustom(true)
+  emit('custom-apply', { start: customStart.value, end: customEnd.value })
+}
 
 const chartArea = ref<HTMLElement | null>(null)
 const chartSize = ref({ width: 720, height: 240 })
@@ -67,8 +145,16 @@ function observeChartArea(): void {
 }
 
 watch(chartArea, observeChartArea, { flush: 'post' })
-onMounted(observeChartArea)
-onUnmounted(() => observer?.disconnect())
+onMounted(() => {
+  observeChartArea()
+  window.addEventListener('focus', refreshToday)
+  document.addEventListener('visibilitychange', refreshToday)
+})
+onUnmounted(() => {
+  observer?.disconnect()
+  window.removeEventListener('focus', refreshToday)
+  document.removeEventListener('visibilitychange', refreshToday)
+})
 
 const geometry = computed(() => buildTrendGeometry(props.trend, chartSize.value))
 const showSales = computed(() => geometry.value.showSales)
@@ -84,7 +170,8 @@ const hovered = computed(() => {
 })
 
 const chartHint = computed(
-  () => `经营走势图，共 ${props.trend.days} 天；使用左右方向键查看每日数据，Escape 关闭提示`,
+  () =>
+    `${rangeLabel.value}经营走势图，共 ${props.trend.days} 天；使用左右方向键查看每日数据，Escape 关闭提示`,
 )
 
 /** 键盘等价交互：方向键逐日移动提示，Escape 关闭；指针离开时也清除。 */
@@ -164,13 +251,15 @@ const summaryText = computed(() => {
     showSales.value && salesTotal.value !== null
       ? `销售额 ${formatMoney(salesTotal.value, props.trend.currency)}`
       : '销售额不可用'
-  return `近 ${props.trend.days} 天共 ${orderTotal.value} 单，${sales}`
+  return `${rangeLabel.value}共 ${orderTotal.value} 单，${sales}`
 })
 </script>
 
 <template>
   <AppCard class="col-span-12 flex h-460 flex-col" data-testid="workspace-trend-card">
-    <div class="flex h-54 flex-none items-start justify-between gap-12 px-16 pt-16">
+    <div
+      class="flex min-h-54 flex-none flex-wrap items-start justify-between gap-x-12 gap-y-8 px-16 pt-16"
+    >
       <button
         type="button"
         class="flex items-center gap-4 text-14/22 font-bold whitespace-nowrap text-ink hover:text-primary"
@@ -182,19 +271,88 @@ const summaryText = computed(() => {
           class="text-title-caret [stroke-width:1.8]"
         />
       </button>
-      <div class="flex min-w-0 flex-nowrap items-center gap-8 whitespace-nowrap">
-        <span class="text-12 text-muted tabular-nums" data-testid="trend-window">
+      <div class="flex min-w-0 flex-wrap items-center justify-end gap-8 whitespace-nowrap">
+        <span class="hidden text-12 text-muted tabular-nums sm:inline" data-testid="trend-window">
           {{ windowLabel }}
         </span>
         <AppSegmented
           v-model="period"
-          :options="['近 7 天', '近 30 天']"
+          :options="periodOptions"
           aria-label="经营走势周期"
           :padding-x="7"
           :min-width="52"
           option-class="[@media(max-width:1500px)]:px-6 [@media(max-width:1500px)]:min-w-44"
         />
+        <button
+          type="button"
+          class="inline-flex h-28 shrink-0 items-center gap-4 rounded-4 border bg-white px-7 text-12/26 whitespace-nowrap hover:text-primary"
+          :class="preset === 'custom' ? 'border-primary text-primary' : 'border-input text-body'"
+          :aria-expanded="customOpen ? 'true' : 'false'"
+          aria-label="自定义统计区间"
+          data-testid="trend-custom-toggle"
+          @click="toggleCustom()"
+        >
+          <AppIcon name="i-calendar" :size="12" /><span class="hidden sm:inline">自定义</span>
+        </button>
       </div>
+    </div>
+
+    <div
+      v-if="customOpen"
+      :id="customPanelId"
+      class="flex flex-wrap items-end gap-x-10 gap-y-6 px-16 pt-8"
+      data-testid="trend-custom-panel"
+    >
+      <label class="flex flex-col gap-2 text-11/16 text-muted">
+        开始日期
+        <AppInput
+          v-model="customStart"
+          type="date"
+          size="sm"
+          class="w-124"
+          :max="customEnd || today"
+          :invalid="customError !== null"
+          :aria-describedby="customError ? customErrorId : undefined"
+          aria-label="自定义区间开始日期"
+          data-testid="trend-custom-start"
+        />
+      </label>
+      <label class="flex flex-col gap-2 text-11/16 text-muted">
+        结束日期
+        <AppInput
+          v-model="customEnd"
+          type="date"
+          size="sm"
+          class="w-124"
+          :min="customStart || undefined"
+          :max="today"
+          :invalid="customError !== null"
+          :aria-describedby="customError ? customErrorId : undefined"
+          aria-label="自定义区间结束日期"
+          data-testid="trend-custom-end"
+        />
+      </label>
+      <div class="flex items-center gap-8 pb-1">
+        <AppButton
+          :disabled="customError !== null"
+          data-testid="trend-custom-apply"
+          @click="applyCustom()"
+        >
+          应用
+        </AppButton>
+        <button type="button" class="text-12 text-muted hover:text-ink" @click="customOpen = false">
+          取消
+        </button>
+      </div>
+      <p
+        v-if="customError"
+        :id="customErrorId"
+        class="w-full text-11/16 text-danger"
+        role="alert"
+        data-testid="trend-custom-error"
+      >
+        {{ customError }}
+      </p>
     </div>
 
     <div class="flex flex-none flex-wrap items-center gap-x-16 gap-y-4 px-16 pt-10">
@@ -336,6 +494,16 @@ const summaryText = computed(() => {
             class="fill-none stroke-chart-line-alt [stroke-width:1.6] [stroke-dasharray:4_4] [stroke-linecap:round] [stroke-linejoin:round]"
             :d="geometry.orders.line"
           ></path>
+          <g v-if="geometry.orders.markers.length > 0">
+            <circle
+              v-for="marker in geometry.orders.markers"
+              :key="`orders-marker-${marker.x}`"
+              class="fill-chart-line-alt stroke-white [stroke-width:1]"
+              :cx="marker.x"
+              :cy="marker.y"
+              r="2.5"
+            ></circle>
+          </g>
           <g v-if="hovered">
             <line
               class="[stroke-dasharray:3_3] stroke-chart-point-border [stroke-width:1]"

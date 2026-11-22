@@ -52,12 +52,21 @@ describe('报表销售与走势契约解析', () => {
     expect(() => parseOrderSnapshotReport(reportBody({ trend }))).toThrow('报表数据格式无效')
   })
 
-  it('Given 非法周期或非法日期 When 解析 Then 拒绝', () => {
+  it('Given 非法窗口天数或非法日期 When 解析 Then 拒绝', () => {
     expect(() =>
-      parseOrderSnapshotReport(reportBody({ trend: { ...trendFixture(), days: 14 } })),
+      parseOrderSnapshotReport(reportBody({ trend: { ...trendFixture(), days: 0 } })),
+    ).toThrow('报表数据格式无效')
+    expect(() =>
+      parseOrderSnapshotReport(reportBody({ trend: { ...trendFixture(), days: 367 } })),
+    ).toThrow('报表数据格式无效')
+    expect(() =>
+      parseOrderSnapshotReport(reportBody({ trend: { ...trendFixture(), days: 7.5 } })),
     ).toThrow('报表数据格式无效')
     expect(() =>
       parseOrderSnapshotReport(reportBody({ trend: { ...trendFixture(), end: '2026-13-01' } })),
+    ).toThrow('报表数据格式无效')
+    expect(() =>
+      parseOrderSnapshotReport(reportBody({ trend: { ...trendFixture(), start: '2026-02-30' } })),
     ).toThrow('报表数据格式无效')
     const point = { ...trendFixture().points[0]!, date: '2026-02-30' }
     expect(() =>
@@ -66,6 +75,29 @@ describe('报表销售与走势契约解析', () => {
           trend: { ...trendFixture(), points: [point, ...trendFixture().points.slice(1)] },
         }),
       ),
+    ).toThrow('报表数据格式无效')
+  })
+
+  it('Given 自定义区间 When 解析 Then 接受 1 到 366 天的任意窗口', () => {
+    for (const days of [1, 14, 92, 366]) {
+      const trend = trendFixture({ days, end: '2026-11-20' })
+      const report = parseOrderSnapshotReport(reportBody({ trend }))
+      expect(report.trend.days).toBe(days)
+      expect(report.trend.start).toBe(trend.points[0]!.date)
+      expect(report.trend.end).toBe(trend.points[trend.points.length - 1]!.date)
+      expect(report.trend.points).toHaveLength(days)
+    }
+  })
+
+  it('Given 缺少 start 或 start 与首点不一致 When 解析 Then 拒绝', () => {
+    const withoutStart: Record<string, unknown> = { ...trendFixture() }
+    delete withoutStart.start
+    expect(() => parseOrderSnapshotReport(reportBody({ trend: withoutStart }))).toThrow(
+      '报表数据格式无效',
+    )
+    const trend = trendFixture()
+    expect(() =>
+      parseOrderSnapshotReport(reportBody({ trend: { ...trend, start: '2026-11-01' } })),
     ).toThrow('报表数据格式无效')
   })
 
@@ -128,5 +160,33 @@ describe('报表走势窗口一致性', () => {
     const report = parseOrderSnapshotReport(reportBody({ trend }))
     expect(report.trend.points[0]?.itemQuantity).toBe(-3)
     expect(report.trend.previous).toBeNull()
+  })
+
+  it('Given 环比商品件数为负 When 解析 Then 接受来源原始有符号数量', () => {
+    const trend = trendFixture({
+      orderCounts: [1],
+      previous: { orderCount: 2, itemQuantity: -2, salesAmount: 5 },
+    })
+    const report = parseOrderSnapshotReport(reportBody({ trend }))
+    expect(report.trend.previous?.itemQuantity).toBe(-2)
+  })
+
+  it('Given 金额计数与逐日金额矛盾 When 解析 Then 拒绝', () => {
+    const known = trendFixture({
+      orderCounts: [1],
+      salesAmounts: [42],
+      amountKnownOrderCount: 0,
+      amountUnknownOrderCount: 1,
+    })
+    expect(() => parseOrderSnapshotReport(reportBody({ trend: known }))).toThrow('报表数据格式无效')
+    const unknown = trendFixture({
+      orderCounts: [1],
+      salesAmounts: [null],
+      amountKnownOrderCount: 1,
+      amountUnknownOrderCount: 0,
+    })
+    expect(() => parseOrderSnapshotReport(reportBody({ trend: unknown }))).toThrow(
+      '报表数据格式无效',
+    )
   })
 })

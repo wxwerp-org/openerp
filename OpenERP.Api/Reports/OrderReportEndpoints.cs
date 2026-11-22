@@ -15,7 +15,6 @@ public static class OrderReportEndpoints
         app.MapGet("/api/reports/order-snapshot", async Task<Results<Ok<OrderSnapshotReport>, ProblemHttpResult>>
             (IOrderSnapshotReportQuery query, TimeProvider clock, AppDbContext db, HttpContext context, string? platform,
                 [FromQuery] string[]? shops, int? page, int? pageSize, string? trendStart, string? trendEnd,
-
                 CancellationToken cancellationToken) =>
         {
             context.Response.Headers.CacheControl = "no-store";
