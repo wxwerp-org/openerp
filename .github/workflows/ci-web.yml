@@ -6,6 +6,7 @@ on:
     paths:
       - 'OpenERP.Web/**'
       - '.github/workflows/ci-web.yml'
+      - '.github/workflows/actions.lock'
       - '.github/workflows/release.yml'
       - '.node-version'
       - '.editorconfig'
@@ -44,15 +45,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: 检出代码
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: 安装 Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version-file: .node-version
 
       - name: 安装 pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@v6.1.1
         with:
           package_json_file: OpenERP.Web/package.json
           cache: true
@@ -90,13 +91,13 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: 检出代码
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: 验证 houqin 实例更新
         run: python3 deploy/tests/test_houqin_update.py
 
       - name: 安装 .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@v6.1.0
         with:
           global-json-file: global.json
 
@@ -125,15 +126,15 @@ jobs:
       PLAYWRIGHT_HTML_OPEN: never
     steps:
       - name: 检出代码
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: 安装 Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           node-version-file: .node-version
 
       - name: 安装 pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@v6.1.1
         with:
           package_json_file: OpenERP.Web/package.json
           cache: true
@@ -166,7 +167,7 @@ jobs:
       # 失败时保留现场：HTML 报告自包含失败用例截图与 trace，下载后可本地打开。
       - name: 上传浏览器测试报告
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: playwright-report-${{ github.run_attempt }}
           path: OpenERP.Web/playwright-report
