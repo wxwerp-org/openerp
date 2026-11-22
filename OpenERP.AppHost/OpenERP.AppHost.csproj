@@ -19,5 +19,7 @@
     <PackageReference Include="Aspire.Hosting.JavaScript" Version="17.0.0" />
     <PackageReference Include="Aspire.Hosting.EntityFrameworkCore" Version="17.0.0-preview.1.26567.5" />
     <PackageReference Include="Aspire.Hosting.Browsers" Version="17.0.0-preview.1.26567.5" />
+    <!-- Hex1b 经 QRCoder 引入绘图库，SystemEvents 随绘图库更新。 -->
+    <PackageReference Include="System.Drawing.Common" Version="10.0.15" />
   </ItemGroup>
 </Project>

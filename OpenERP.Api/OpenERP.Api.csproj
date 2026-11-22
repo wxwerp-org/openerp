@@ -32,9 +32,12 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.15" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.11.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.11.1" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="RokyZevon.OpResult" Version="0.3.0" />
+    <!-- EF 迁移包使用 10.x 设计时依赖，API 发布目录无需携带这些程序集。 -->
+    <PackageReference Include="System.CodeDom" Version="10.0.15" Publish="false" />
+    <PackageReference Include="System.Composition" Version="10.0.15" Publish="false" />
   </ItemGroup>
 
   <!-- 提交与构建时间单独注入，避免依赖 SDK 自动追加的版本元数据。 -->

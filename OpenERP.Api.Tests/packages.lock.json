@@ -55,6 +55,18 @@
           "Microsoft.AspNetCore.SignalR.Client.Core": "10.0.15"
         }
       },
+      "Microsoft.Bcl.AsyncInterfaces": {
+        "type": "Direct",
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "FgW54xgaEM6RGqJQxJpxYJ9RzqXyCtZya77B1VdAJLIepgwuTLvbwdcJgyJNbD7gHiYEnbiI/u0P8x1xBTbU0A=="
+      },
+      "System.Threading.RateLimiting": {
+        "type": "Direct",
+        "requested": "[10.0.15, )",
+        "resolved": "10.0.15",
+        "contentHash": "3hkp+OP+GMUhMx77aPz1t40ClF3Prmh/NklskUy1KkZHfqriOdXBFRu8j9mDhp42GhB3yKnSfXaYunoUy/kADw=="
+      },
       "xunit.v3.mtp-v2": {
         "type": "Direct",
         "requested": "[4.0.2, )",
@@ -746,11 +758,6 @@
           "Microsoft.AspNetCore.SignalR.Common": "10.0.15"
         }
       },
-      "Microsoft.Bcl.AsyncInterfaces": {
-        "type": "Transitive",
-        "resolved": "6.0.0",
-        "contentHash": "UcSjPsst+DfAdJGVDsu346FX0ci0ah+lw3WRtn18NUwEqRt70HaOQ7lI72vy3+1LxtqI3T5GWwV39rQSrCzAeg=="
-      },
       "Microsoft.Bcl.Cryptography": {
         "type": "Transitive",
         "resolved": "10.0.2",
@@ -813,8 +820,8 @@
       },
       "Microsoft.Extensions.Caching.Hybrid": {
         "type": "Transitive",
-        "resolved": "10.11.0",
-        "contentHash": "F4P+uZgDFnKfmHm0ReWJNSVXAlZmknQgkkrmEDtAdxWvVPCSZL7UPAY7Ewf8zs5qwPCGaYopZiRiPg2YGCfuhA==",
+        "resolved": "10.11.1",
+        "contentHash": "+EVDWK8EXhpkmgTf/TBD+OZG2DSVCLd8/NnUOmRBk2IMaGVSGePugEQ3jtkVYecwlOio66fxUPGfMVTxqUOwuQ==",
         "dependencies": {
           "Microsoft.Extensions.Caching.Abstractions": "10.0.13",
           "Microsoft.Extensions.Caching.Memory": "10.0.13",
@@ -1379,8 +1386,8 @@
       },
       "Microsoft.Win32.SystemEvents": {
         "type": "Transitive",
-        "resolved": "6.0.0",
-        "contentHash": "hqTM5628jSsQiv+HGpiq3WKBl2c8v1KZfby2J6Pr7pEPlK9waPdgEO6b8A/+/xn/yZ9ulv8HuqK71ONy2tg67A=="
+        "resolved": "10.0.15",
+        "contentHash": "kisX7LaeY4exvIgeyRfIp+xUmz2JoL+2n7pZv4W6na115P8659zw6vfB7IxD4sk6g9YZHwJ+vMzgS3Y5GMJqkA=="
       },
       "ModelContextProtocol": {
         "type": "Transitive",
@@ -1607,6 +1614,59 @@
           "Newtonsoft.Json": "13.0.3"
         }
       },
+      "System.CodeDom": {
+        "type": "Transitive",
+        "resolved": "10.0.15",
+        "contentHash": "6oO8bbuYBjHWA9lZgDYRzVwtDwN5M1uW8MUcjiEHcHIEKM9B+xolkxVY9NCqzEn8yqGonMaat44cYKvv9TgYXw=="
+      },
+      "System.Composition": {
+        "type": "Transitive",
+        "resolved": "10.0.15",
+        "contentHash": "tF+uBYeFaPOsU+61mDFZYIU26M9zH4hMkGshCVpdKFl+WozvKmPE+akyoxN76r4j2itnUUBrnPJ2iIFfEEAsmg==",
+        "dependencies": {
+          "System.Composition.AttributedModel": "10.0.15",
+          "System.Composition.Convention": "10.0.15",
+          "System.Composition.Hosting": "10.0.15",
+          "System.Composition.Runtime": "10.0.15",
+          "System.Composition.TypedParts": "10.0.15"
+        }
+      },
+      "System.Composition.AttributedModel": {
+        "type": "Transitive",
+        "resolved": "10.0.15",
+        "contentHash": "oqwGfyF9UorDJVX7wpfHS1zm+KoTlO2hQC56csL9nfd8FmLi+GXu5ialGKOPgQALtOXaeNSWJiEVKrepNU7RrQ=="
+      },
+      "System.Composition.Convention": {
+        "type": "Transitive",
+        "resolved": "10.0.15",
+        "contentHash": "tzD1VUBzQAZ8j6uA25NS+zcRLNEMngY61vV8Cc2Z3I+yPKv3TELyCuOjBbUtoWKTaPh0uzGRVyX5Qr6KPW4QAA==",
+        "dependencies": {
+          "System.Composition.AttributedModel": "10.0.15"
+        }
+      },
+      "System.Composition.Hosting": {
+        "type": "Transitive",
+        "resolved": "10.0.15",
+        "contentHash": "kQYnw+UoKirF4AaewuPKyNbYck7ov6mDGAh9Ol+QVzAE4TBSIwEslNkufRJ5mugDYdID1JPVj5/kgU0lMjfyqA==",
+        "dependencies": {
+          "System.Composition.Runtime": "10.0.15"
+        }
+      },
+      "System.Composition.Runtime": {
+        "type": "Transitive",
+        "resolved": "10.0.15",
+        "contentHash": "jELOpwM0pMl4I4Fo8Tuv4i3tbu/hqGQSXjbrQ0NlMrC1YjOAZD3Q8FW/kF5aHdNslDwNDEzVQ84N95bLbYNx5A=="
+      },
+      "System.Composition.TypedParts": {
+        "type": "Transitive",
+        "resolved": "10.0.15",
+        "contentHash": "5Y9+JXSO9VsNKZV/aAYGjduLS0vx4KMtiqlDqCu2EwbyTB8bCuhEYNqTy/8Cj7ExBkpwBmY7uURzvU3uetnUbw==",
+        "dependencies": {
+          "System.Composition.AttributedModel": "10.0.15",
+          "System.Composition.Hosting": "10.0.15",
+          "System.Composition.Runtime": "10.0.15"
+        }
+      },
       "System.Diagnostics.EventLog": {
         "type": "Transitive",
         "resolved": "10.0.15",
@@ -1614,10 +1674,10 @@
       },
       "System.Drawing.Common": {
         "type": "Transitive",
-        "resolved": "6.0.0",
-        "contentHash": "NfuoKUiP2nUWwKZN6twGqXioIe1zVD0RIj2t976A+czLHr2nY454RwwXs6JU9Htc6mwqL6Dn/nEL3dpVf2jOhg==",
+        "resolved": "10.0.15",
+        "contentHash": "ecd2daLWqjQSGoMnvfITWsJkZWyUbrHyVwwVElLjcAO+POirHOVoM/ITrvj8UrdPXlY6Gb8IV3ZQARbEi4brCg==",
         "dependencies": {
-          "Microsoft.Win32.SystemEvents": "6.0.0"
+          "Microsoft.Win32.SystemEvents": "10.0.15"
         }
       },
       "System.IdentityModel.Tokens.Jwt": {
@@ -1651,11 +1711,6 @@
         "dependencies": {
           "System.Security.Cryptography.Pkcs": "10.0.15"
         }
-      },
-      "System.Threading.RateLimiting": {
-        "type": "Transitive",
-        "resolved": "8.0.0",
-        "contentHash": "7mu9v0QDv66ar3DpGSZHg9NuNcxDaaAcnMULuZlaTpP9+hwXhrxNGsF5GmLkSHxFdb5bBc1TzeujsRgTrPWi+Q=="
       },
       "xunit.analyzers": {
         "type": "Transitive",
@@ -1731,11 +1786,13 @@
           "Microsoft.AspNetCore.DataProtection.EntityFrameworkCore": "[10.0.15, )",
           "Microsoft.EntityFrameworkCore": "[10.0.15, )",
           "Microsoft.EntityFrameworkCore.Relational": "[10.0.15, )",
-          "Microsoft.Extensions.Caching.Hybrid": "[10.11.0, )",
+          "Microsoft.Extensions.Caching.Hybrid": "[10.11.1, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "OpenERP.Core": "[1.0.0, )",
           "OpenERP.ServiceDefaults": "[1.0.0, )",
-          "RokyZevon.OpResult": "[0.3.0, )"
+          "RokyZevon.OpResult": "[0.3.0, )",
+          "System.CodeDom": "[10.0.15, )",
+          "System.Composition": "[10.0.15, )"
         }
       },
       "openerp.apphost": {
@@ -1750,7 +1807,8 @@
           "Aspire.Hosting.JavaScript": "[17.0.0, )",
           "Aspire.Hosting.PostgreSQL": "[17.0.0, )",
           "Aspire.Hosting.Redis": "[17.0.0, )",
-          "CommunityToolkit.Aspire.Hosting.SeaweedFS": "[17.0.0, )"
+          "CommunityToolkit.Aspire.Hosting.SeaweedFS": "[17.0.0, )",
+          "System.Drawing.Common": "[10.0.15, )"
         }
       },
       "openerp.core": {
