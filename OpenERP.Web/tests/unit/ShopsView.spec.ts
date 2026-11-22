@@ -36,6 +36,7 @@ let fetchMock: ReturnType<typeof vi.fn>
 beforeAll(installNativeDialogShim)
 
 beforeEach(() => {
+  vi.spyOn(session, 'account', 'get').mockReturnValue(ref(adminAccount))
   hubMock.state = ref<ErpHubState>('connected')
   hubMock.status = ref<ShopSyncStatus | null>(null)
   hubMock.connect = vi.fn(async () => undefined)
@@ -161,12 +162,13 @@ describe('授权店铺页', () => {
     expect(wrapper.findAll('tbody tr')).toHaveLength(45)
   })
 
-  it('Given 普通用户 When 查看授权失效的店铺及详情 Then 两处均无授权入口并提示联系管理员', async () => {
+  it('Given 普通用户已获分配 When 查看授权失效的店铺及详情 Then 可看到失败原因并续授权', async () => {
     vi.spyOn(session, 'account', 'get').mockReturnValue(
       ref({ ...adminAccount, role: 'User', username: 'employee' }),
     )
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     installFetch(
-      defaultHandler([shop({ isTokenOk: false })], {
+      defaultHandler([shop({ isTokenOk: false, tokenError: '上游授权已过期' })], {
         valid: 0,
         invalid: 1,
         unknown: 0,
@@ -176,13 +178,43 @@ describe('授权店铺页', () => {
     wrapper = await mountView()
     const row = wrapper.get('tbody tr')
     expect(row.text()).toContain('无效')
-    expect.soft(row.text()).not.toContain('去 wxw 授权')
+    expect(row.text()).toContain('上游授权已过期')
+    await firstButton(wrapper, '续授权').trigger('click')
 
     await firstButton(wrapper, '详情').trigger('click')
     const dialog = wrapper.get('#shopDetailLayer')
     expect(dialog.text()).toContain('平台授权失效')
-    expect.soft(dialog.text()).not.toContain('去 wxw 授权')
-    expect(dialog.text()).toContain('联系管理员')
+    expect(dialog.text()).toContain('上游授权已过期')
+    expect(dialog.text()).toContain('联系管理员同步目录')
+    await dialog.get('#shopAuthorize').trigger('click')
+    expect(open).toHaveBeenCalledTimes(2)
+    expect(open).toHaveBeenLastCalledWith(
+      'https://v3.wxwerp.com/system/authorize',
+      '_blank',
+      'noopener,noreferrer',
+    )
+  })
+
+  it('Given 零店铺员工 When 打开授权店铺 Then 可授权新店并获知需要管理员分配', async () => {
+    vi.spyOn(session, 'account', 'get').mockReturnValue(
+      ref({ ...adminAccount, role: 'User', username: 'employee' }),
+    )
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    installFetch(defaultHandler([], { valid: 0, invalid: 0, unknown: 0, lastSyncedAt: null }))
+    wrapper = await mountView()
+
+    expect(wrapper.text()).toContain('尚未分配店铺')
+    expect(wrapper.text()).toContain('同步目录并分配')
+    expect(wrapper.findAll('[data-testid="shop-summary-card"]')).toHaveLength(0)
+    expect(wrapper.findAll('button').some((button) => button.text() === '立即同步')).toBe(false)
+    expect(hubMock.refreshStatus).not.toHaveBeenCalled()
+    expect(hubMock.connect).not.toHaveBeenCalled()
+    await firstButton(wrapper, '授权新店').trigger('click')
+    expect(open).toHaveBeenCalledWith(
+      'https://v3.wxwerp.com/system/authorize',
+      '_blank',
+      'noopener,noreferrer',
+    )
   })
 
   it('Given 管理员 When 打开详情 Then 展示可用字段且深链在新标签打开', async () => {
@@ -263,7 +295,7 @@ describe('授权店铺页', () => {
     expect(firstButton(wrapper, '立即同步').attributes('disabled')).toBeDefined()
   })
 
-  it('Given 普通用户且未配置 Token When 打开 Then 提示联系管理员且禁用同步但保留本地数据', async () => {
+  it('Given 普通用户且未配置 Token When 打开 Then 提示联系管理员且保留本地数据与新店授权入口', async () => {
     vi.spyOn(session, 'account', 'get').mockReturnValue(
       ref({ ...adminAccount, role: 'User', username: 'employee' }),
     )
@@ -281,7 +313,8 @@ describe('授权店铺页', () => {
     expect(wrapper.text()).toContain('请联系管理员配置 ERP 接入')
     expect(wrapper.text()).not.toContain('前往 ERP 接入')
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
-    expect(firstButton(wrapper, '立即同步').attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('button').some((button) => button.text() === '立即同步')).toBe(false)
+    expect(firstButton(wrapper, '授权新店')).toBeTruthy()
   })
 
   it('Given 本地无店铺 When 打开 Then 显示可操作的同步空态', async () => {

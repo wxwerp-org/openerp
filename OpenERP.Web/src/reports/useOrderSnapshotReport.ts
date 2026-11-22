@@ -58,6 +58,10 @@ export function useOrderSnapshotReport() {
         signal: controller.signal,
       })
       if (!isCurrentRequest(requestId)) return
+      if (response.status === 403) {
+        availablePlatforms.value = []
+        availableShops.value = []
+      }
       if (!response.ok) throw new Error(await errorTitle(response))
 
       const result = parseOrderSnapshotReport(await response.json())

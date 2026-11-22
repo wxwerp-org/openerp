@@ -93,7 +93,12 @@ const hasFilters = computed(() => Boolean(platform.value || statusFilter.value |
 const syncRunning = computed(() => syncStatus.value?.running === true)
 const syncConnected = computed(() => hubState.value === 'connected')
 const syncDisabled = computed(
-  () => !configured.value || !syncConnected.value || syncRunning.value || isLoading.value,
+  () =>
+    !isAdministrator.value ||
+    !configured.value ||
+    !syncConnected.value ||
+    syncRunning.value ||
+    isLoading.value,
 )
 const syncButtonLabel = computed(() => {
   if (!syncRunning.value) return '立即同步'
@@ -145,8 +150,10 @@ onMounted(async () => {
     now.value = Date.now()
   }, 30_000)
 
-  await Promise.allSettled([loadConfig(), loadPlatforms(), loadShops(1), hub.refreshStatus()])
-  if (isMounted) await hub.connect()
+  const requests = [loadConfig(), loadPlatforms(), loadShops(1)]
+  if (isAdministrator.value) requests.push(hub.refreshStatus())
+  await Promise.allSettled(requests)
+  if (isMounted && isAdministrator.value) await hub.connect()
 })
 
 onUnmounted(() => {
@@ -235,6 +242,7 @@ async function loadShops(page: number): Promise<void> {
     }
 
     const parsed = parseShopsResponse(await response.json())
+    if (version !== requestVersion) return
     shops.value = parsed.items
     summary.value = parsed.summary
     totalCount.value = parsed.totalCount
@@ -484,7 +492,11 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
       <div>
         <h1 id="shops-title" class="text-20/28 font-semibold text-ink">授权店铺</h1>
         <p class="mt-4 text-12/18 text-muted">
-          查看上游 ERP 可见店铺的平台授权状态；授权在 wxw ERP 完成。
+          {{
+            isAdministrator
+              ? '查看上游 ERP 可见店铺的平台授权状态；授权在 wxw ERP 完成。'
+              : '查看已分配店铺的授权状态，并前往旺销网办理授权。'
+          }}
         </p>
       </div>
       <AppTag
@@ -517,7 +529,7 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
       </AppNotice>
     </div>
 
-    <div v-else-if="syncError" class="shrink-0 pb-12">
+    <div v-else-if="isAdministrator && syncError" class="shrink-0 pb-12">
       <AppNotice tone="red" icon="i-warning" :title="syncError" role="alert">
         <template #trailing>
           <AppButton class="ml-auto" :disabled="syncDisabled" @click="syncNow">重试同步</AppButton>
@@ -525,7 +537,7 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
       </AppNotice>
     </div>
 
-    <div v-else-if="syncStatus?.error && !syncRunning" class="shrink-0 pb-12">
+    <div v-else-if="isAdministrator && syncStatus?.error && !syncRunning" class="shrink-0 pb-12">
       <AppNotice
         tone="amber"
         icon="i-warning"
@@ -539,7 +551,7 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
       </AppNotice>
     </div>
 
-    <div v-else-if="hubNotice" class="shrink-0 pb-12">
+    <div v-else-if="isAdministrator && hubNotice" class="shrink-0 pb-12">
       <AppNotice
         tone="amber"
         icon="i-warning"
@@ -555,6 +567,7 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
     </div>
 
     <ShopSummaryCards
+      v-if="isAdministrator"
       :summary="summary"
       :status-filter="statusFilter"
       :last-synced-label="lastSyncedLabel"
@@ -626,8 +639,12 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
               >，第 {{ currentPage }}/{{ pageCount }} 页</span
             >
           </span>
-          <AppTag :tone="hubTagClass">{{ hubLabel }}</AppTag>
+          <AppTag v-if="isAdministrator" :tone="hubTagClass">{{ hubLabel }}</AppTag>
+          <AppButton :variant="isAdministrator ? 'default' : 'primary'" @click="openAuthorization"
+            >授权新店</AppButton
+          >
           <AppButton
+            v-if="isAdministrator"
             variant="primary"
             :disabled="syncDisabled"
             :aria-busy="syncRunning ? 'true' : undefined"
@@ -691,13 +708,8 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
             <AppTd>{{ formatDateTime(shop.syncedAt) }}</AppTd>
             <AppTd sticky="right">
               <div class="flex flex-wrap gap-4">
-                <button
-                  v-if="isAdministrator"
-                  :class="rowActionClass"
-                  type="button"
-                  @click="openAuthorization"
-                >
-                  去 wxw 授权
+                <button :class="rowActionClass" type="button" @click="openAuthorization">
+                  {{ isAdministrator ? '去 wxw 授权' : '续授权' }}
                 </button>
                 <button :class="rowActionClass" type="button" @click="showDetail(shop)">
                   详情
@@ -710,6 +722,9 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
           <AppEmptyState v-if="isLoading" role="status">正在加载本地店铺…</AppEmptyState>
           <AppEmptyState v-else-if="shops.length === 0">
             <span v-if="hasFilters">没有符合条件的店铺</span>
+            <span v-else-if="!isAdministrator"
+              >尚未分配店铺。新店在旺销网授权后，请联系管理员同步目录并分配。</span
+            >
             <span v-else-if="!configured">配置上游连接后可同步店铺</span>
             <span v-else>本地暂无店铺数据，请点击「立即同步」</span>
           </AppEmptyState>
@@ -761,7 +776,7 @@ async function problemDetail(response: Response, fallback: string): Promise<stri
 
     <ShopDetailDialog
       :open="detailOpen"
-      :can-authorize="isAdministrator"
+      :administrator="isAdministrator"
       :shop="detailShop"
       :platform-name="detailPlatformName"
       @close="closeDetail"

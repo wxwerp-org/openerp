@@ -99,7 +99,7 @@ async function mockWorkspaceApis(
 ): Promise<void> {
   const report = options.report ?? workspaceReport()
   const items = options.directoryItems ?? directoryItems
-  // 员工拿最小投影：只有 sid/name/platform/region，没有授权健康字段与 summary。
+  // 员工响应含所属店铺的状态，管理员额外获得成员 ID 与授权汇总。
   const minimal = options.employee === true
   await page.route('**/api/reports/order-snapshot?**', (route) => route.fulfill({ json: report }))
   await page.route('**/api/about', (route) =>
@@ -162,13 +162,19 @@ async function mockWorkspaceApis(
     )
     const pageCount = filtered.length === 0 ? 0 : Math.ceil(filtered.length / pageSize)
     const start = (Math.min(currentPage, Math.max(pageCount, 1)) - 1) * pageSize
-    const pageItems = filtered
-      .slice(start, start + pageSize)
-      .map((shop) =>
-        minimal
-          ? { sid: shop.sid, name: shop.name, platform: shop.platform, region: shop.region }
-          : shop,
-      )
+    const pageItems = filtered.slice(start, start + pageSize).map((shop) =>
+      minimal
+        ? {
+            sid: shop.sid,
+            name: shop.name,
+            platform: shop.platform,
+            region: shop.region,
+            isTokenOk: shop.isTokenOk,
+            tokenError: shop.tokenError,
+            syncedAt: shop.syncedAt,
+          }
+        : shop,
+    )
     return route.fulfill({
       json: {
         items: pageItems,
@@ -583,7 +589,7 @@ test('Given 普通员工 When 打开工作台 Then 侧栏无管理条目且空�
   page,
 }) => {
   await prepare(page, 'User')
-  await mockWorkspaceApis(page, { report: emptyReport(), employee: true })
+  await mockWorkspaceApis(page, { report: emptyReport(), directoryItems: [], employee: true })
   await page.goto('/')
 
   const sidebar = page.locator('[data-testid="sidebar"]')
@@ -591,7 +597,8 @@ test('Given 普通员工 When 打开工作台 Then 侧栏无管理条目且空�
   await expect(
     sidebar.locator('[data-group="orders"] [data-nav-page="order-report"]'),
   ).toBeVisible()
-  for (const hidden of ['shops', 'users', 'business']) {
+  await expect(sidebar.locator('[data-nav-page="shops"]')).toBeVisible()
+  for (const hidden of ['users', 'business']) {
     await expect(sidebar.locator(`[data-nav-page="${hidden}"]`)).toHaveCount(0)
   }
 
@@ -599,10 +606,11 @@ test('Given 普通员工 When 打开工作台 Then 侧栏无管理条目且空�
   await page.locator('[data-testid="tab-add"]').click()
   await expect(page.locator('#tabMenu a')).toHaveCount(3)
 
-  // 员工空态：不给引导带与假数字，只给通用说明。
+  // 员工空态提供店铺授权入口和分配说明。
   const hint = page.locator('[data-testid="employee-empty-hint"]')
   await expect(hint).toBeVisible()
-  await expect(hint).toContainText('订单数据仍为空，系统可能尚未初始化完成，请联系管理员')
+  await expect(hint).toContainText('尚无可见店铺')
+  await expect(hint.getByRole('link', { name: '前往授权店铺' })).toHaveAttribute('href', '/shops')
   await expect(page.locator('[data-testid="workspace-onboarding"]')).toHaveCount(0)
   await expect(page.locator('[data-testid="workspace-health-card"]')).toHaveCount(0)
   await expect(page.locator('[data-testid="workspace-system-card"]')).toHaveCount(0)
@@ -617,7 +625,6 @@ test('Given 普通员工 When 直达管理路由 Then 重定向工作台并提�
   await mockWorkspaceApis(page, { report: emptyReport(), employee: true })
 
   const managedPages = [
-    { path: '/shops', selector: '#page-shops' },
     { path: '/users', selector: '#page-users' },
     { path: '/settings', selector: '#page-business' },
     { path: '/visual-prototype', selector: '[data-testid="visual-prototype"]' },

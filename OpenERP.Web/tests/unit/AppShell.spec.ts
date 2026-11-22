@@ -66,7 +66,7 @@ describe('应用公共框架', () => {
 
     expect(wrapper.find('[data-nav-page="orders"]').exists()).toBe(true)
     expect(wrapper.find('[data-nav-page="order-report"]').exists()).toBe(true)
-    expect(wrapper.find('[data-nav-page="shops"]').exists()).toBe(false)
+    expect(wrapper.find('[data-nav-page="shops"]').exists()).toBe(true)
     expect(wrapper.find('[data-nav-page="users"]').exists()).toBe(false)
     expect(wrapper.find('[data-nav-page="business"]').exists()).toBe(false)
     expect(wrapper.find('[data-account-action="profile"]').exists()).toBe(true)

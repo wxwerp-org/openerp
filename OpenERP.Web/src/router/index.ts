@@ -47,7 +47,7 @@ const router = createRouter({
       path: '/shops',
       name: 'shops',
       component: ShopsView,
-      meta: { title: '授权店铺', administratorOnly: true },
+      meta: { title: '授权店铺' },
     },
     {
       path: '/visual-prototype',

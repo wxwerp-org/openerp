@@ -43,8 +43,9 @@ const hub = useErpHub({
 const defaultPageSize = 20
 const currentPage = ref(1)
 const result = ref<OrderPage | null>(null)
-const loadFailed = ref(false)
-const options = ref<OrderPage['options']>({ shops: [], platforms: [], statuses: [] })
+const loadError = ref('')
+const emptyOptions: OrderPage['options'] = { shops: [], platforms: [], statuses: [] }
+const options = ref<OrderPage['options']>(emptyOptions)
 const emptyFilters = {
   shopSid: '',
   platform: '',
@@ -71,7 +72,7 @@ async function load(page = currentPage.value, keepOrders = false): Promise<void>
   const request = new AbortController()
   activeRequest = request
   if (!keepOrders) result.value = null
-  loadFailed.value = false
+  loadError.value = ''
   currentPage.value = page
 
   const query = new URLSearchParams({ page: String(page), pageSize: String(defaultPageSize) })
@@ -83,6 +84,13 @@ async function load(page = currentPage.value, keepOrders = false): Promise<void>
     const response = await apiRequest(`/api/orders?${query}`, {
       signal: request.signal,
     })
+    if (request.signal.aborted) return
+    if (response.status === 403) {
+      result.value = null
+      options.value = emptyOptions
+      loadError.value = '无权查看所选店铺，请重置筛选。'
+      return
+    }
     if (!response.ok) throw new Error()
     const data: OrderPage = await response.json()
     if (!request.signal.aborted) {
@@ -91,7 +99,7 @@ async function load(page = currentPage.value, keepOrders = false): Promise<void>
       currentPage.value = data.page
     }
   } catch {
-    if (!request.signal.aborted) loadFailed.value = true
+    if (!request.signal.aborted) loadError.value = '无法加载订单，请稍后重试。'
   }
 }
 
@@ -329,8 +337,8 @@ const pager =
           </nav>
         </template>
         <template #scroll-end>
-          <div v-if="loadFailed" data-testid="orders-message" :class="message">
-            <p role="alert">无法加载订单，请稍后重试。</p>
+          <div v-if="loadError" data-testid="orders-message" :class="message">
+            <p role="alert">{{ loadError }}</p>
             <AppButton :class="focusRing" aria-label="重新加载订单" @click="load()">重试</AppButton>
           </div>
           <div

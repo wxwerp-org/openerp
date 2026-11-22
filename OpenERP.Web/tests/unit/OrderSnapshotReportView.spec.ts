@@ -465,6 +465,22 @@ describe('本地订单商品量快照报表', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
   })
 
+  it('Given 曾可查看的报表店铺 When 刷新返回 403 Then 清除旧报表和筛选选项', async () => {
+    let revoked = false
+    stubFetch(() =>
+      revoked ? jsonResponse({ title: '无权查看所选店铺。' }, 403) : jsonResponse(reportBody()),
+    )
+    wrapper = await mountReport('/reports/orders?platform=TemuPop&shops=opaque%3Ashop%2F30')
+    expect(wrapper.text()).toContain('PO-001')
+    revoked = true
+    await wrapper.get('button[aria-label="刷新"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('无权查看所选店铺')
+    expect(wrapper.text()).not.toContain('PO-001')
+    expect(wrapper.get('[data-testid="report-searchbar"]').text()).not.toContain('店铺 30')
+  })
+
   it('Given 从工作台下钻带平台与店铺参数 When 打开报表 Then 首次请求携带筛选且控件反映 URL', async () => {
     const fetchMock = stubFetch(() => jsonResponse(reportBody()))
     wrapper = await mountReport(`/reports/orders?platform=TemuPop&shops=opaque%3Ashop%2F30`)

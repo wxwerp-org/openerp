@@ -69,6 +69,7 @@ const pageCount = ref(0)
 const errorMessage = ref('')
 const orderSyncErrors = ref<Record<string, string>>({})
 const orderSyncEnabled = ref(false)
+const employee = computed(() => account.value?.role === 'User')
 const canManageSchedule = computed(
   () => orderSyncEnabled.value && account.value?.role === 'Administrator',
 )
@@ -734,14 +735,20 @@ watch(
   (open) => {
     if (!open) return
 
-    if (!loadedOnOpen) {
+    if (!loadedOnOpen || employee.value) {
       loadedOnOpen = true
-      void loadPage(1, 20, true)
+      void loadPage(currentPage.value, pageSize.value, true)
     }
     if (hubState.value === 'disconnected') void connect()
   },
   { immediate: true },
 )
+
+watch(hubState, (state, previous) => {
+  if (!props.open || !employee.value || state !== 'connected' || previous === 'idle') return
+  orderSyncErrors.value = {}
+  void loadPage(currentPage.value, pageSize.value)
+})
 
 onUnmounted(() => {
   syncScheduleRequestVersion += 1
@@ -1098,7 +1105,13 @@ onUnmounted(() => {
             <AppEmptyState v-if="isLoading" role="status">正在加载店铺列表…</AppEmptyState>
             <AppEmptyState v-else-if="shopsStatus === 'success' && shops.length === 0">
               <div class="flex flex-col items-center gap-8">
-                <p class="m-0">本地暂无店铺，请先同步授权店铺目录。</p>
+                <p class="m-0">
+                  {{
+                    employee
+                      ? '暂无可同步的店铺，请联系管理员确认店铺分配。'
+                      : '本地暂无店铺，请先同步授权店铺目录。'
+                  }}
+                </p>
                 <AppButton
                   to="/shops"
                   :class="[focusRing, 'pointer-events-auto']"

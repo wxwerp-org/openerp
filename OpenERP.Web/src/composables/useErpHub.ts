@@ -101,6 +101,7 @@ export function useErpHub({ shopSync = true, orderSync, onOrdersChanged }: ErpHu
   const orderSyncTasks = ref<Record<number, OrderSyncTask>>({})
   const retiredEpochs = new Set<string>()
   let epoch: string | undefined
+  let orderVisibilityVersion = 0
   let connection: HubConnection | null = null
   let starting: Promise<void> | null = null
 
@@ -135,6 +136,13 @@ export function useErpHub({ shopSync = true, orderSync, onOrdersChanged }: ErpHu
     if (changed) orderSyncTasks.value = merged
 
     if (ordersChanged) onOrdersChanged?.()
+  }
+
+  function clearOrderTasks(): void {
+    if (!wantsOrder) return
+    orderVisibilityVersion += 1
+    // 重连时服务端重新解析店铺归属。同进程内也可能有店铺不再可见。
+    orderSyncTasks.value = {}
   }
 
   async function refreshStatus(): Promise<void> {
@@ -181,7 +189,9 @@ export function useErpHub({ shopSync = true, orderSync, onOrdersChanged }: ErpHu
           )
         })
         hub.onreconnecting(() => {
-          if (connection === hub) state.value = 'reconnecting'
+          if (connection !== hub) return
+          clearOrderTasks()
+          state.value = 'reconnecting'
         })
         hub.onreconnected(() => {
           if (connection !== hub) return
@@ -190,7 +200,9 @@ export function useErpHub({ shopSync = true, orderSync, onOrdersChanged }: ErpHu
           onOrdersChanged?.()
         })
         hub.onclose(() => {
-          if (connection === hub) state.value = 'disconnected'
+          if (connection !== hub) return
+          clearOrderTasks()
+          state.value = 'disconnected'
         })
 
         connection = hub
@@ -217,6 +229,7 @@ export function useErpHub({ shopSync = true, orderSync, onOrdersChanged }: ErpHu
   async function disconnect(): Promise<void> {
     const hub = connection
     connection = null
+    clearOrderTasks()
     starting = null
     if (hub) {
       try {
@@ -257,9 +270,15 @@ export function useErpHub({ shopSync = true, orderSync, onOrdersChanged }: ErpHu
     }
 
     const startError = { accepted: false, status: null, error: '无法启动订单同步，请稍后重试。' }
+    const visibilityVersion = orderVisibilityVersion
     try {
       const result = await hub.invoke<OrderSyncStartResult>('StartOrderSync', sid)
-      if (connection !== hub || typeof result?.accepted !== 'boolean') return startError
+      if (
+        connection !== hub ||
+        visibilityVersion !== orderVisibilityVersion ||
+        typeof result?.accepted !== 'boolean'
+      )
+        return startError
 
       if (isOrderSyncTask(result.status) && result.status.sid === sid) {
         updateOrders(result.status.epoch, [result.status])

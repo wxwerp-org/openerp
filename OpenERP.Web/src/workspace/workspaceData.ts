@@ -43,7 +43,7 @@ function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
 
-/** 管理员响应含授权汇总；员工最小投影没有 summary 与健康字段。 */
+/** 响应包含当前账号可见的店铺状态，全局授权汇总仅管理员可读。 */
 export function parseShopDirectory(value: unknown): ShopDirectory {
   if (!isRecord(value) || !Array.isArray(value.items)) {
     throw new Error('店铺目录数据格式无效，请刷新后重试。')

@@ -57,11 +57,13 @@ function configureFetch({
   availability,
   shopStatus = 200,
   emptyShops = false,
+  visibleShops,
 }: {
   loadOrders?: (query: URLSearchParams) => Response
   availability?: () => Response
   shopStatus?: number
   emptyShops?: boolean
+  visibleShops?: () => typeof shops
 } = {}) {
   const fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input), 'http://localhost')
@@ -80,17 +82,19 @@ function configureFetch({
         return availability?.() ?? Response.json({ configured: true, orderSyncEnabled: true })
       case '/api/orders':
         return loadOrders?.(url.searchParams) ?? ordersPage('本地订单')
-      case '/api/erp/shops':
+      case '/api/erp/shops': {
         if (shopStatus !== 200) {
           return Response.json({ title: '上游服务不可达' }, { status: shopStatus })
         }
+        const items = emptyShops ? [] : (visibleShops?.() ?? shops)
         return Response.json({
-          items: emptyShops ? [] : shops,
+          items,
           page: 1,
           pageSize: 20,
-          totalCount: emptyShops ? 0 : 2,
-          pageCount: emptyShops ? 0 : 1,
+          totalCount: items.length,
+          pageCount: items.length ? 1 : 0,
         })
+      }
       case '/api/erp/order-sync-settings':
         return Response.json({ enabled: false, shopSids: [], intervalMinutes: 30 })
       case '/api/erp/order-sync-settings/shops':
@@ -190,6 +194,79 @@ describe('订单列表同步面板', () => {
     } finally {
       await logout()
     }
+  })
+
+  it('Given 打开面板后员工的店铺分配被撤销 When 带着已开的面板重连 Then 重新查询店铺并禁用全部同步', async () => {
+    let visible = shops
+    configureFetch({ visibleShops: () => visible })
+    installNativeDialogShim()
+    await login('employee', 'password')
+    try {
+      wrapper = mount(OrdersView, { global: { stubs: { RouterLink: true } } })
+      await openPanel(wrapper)
+      expect(wrapper.get('dialog[open]').text()).toContain('测试店铺')
+      visible = []
+      state.value = 'reconnecting'
+      await flushPromises()
+      state.value = 'connected'
+      await flushPromises()
+
+      const panel = wrapper.get('dialog[open]')
+      expect(panel.find('tbody tr').exists()).toBe(false)
+      expect(panel.text()).toContain('暂无可同步的店铺')
+      expect(panel.text()).toContain('请联系管理员确认店铺分配')
+      expect(
+        panel.findAll<HTMLButtonElement>('button').find((button) => button.text() === '全部同步')
+          ?.element.disabled,
+      ).toBe(true)
+    } finally {
+      await logout()
+    }
+  })
+
+  it('Given 员工按单店筛选订单 When 权限刷新时服务端返回 403 Then 清除该订单和店铺选项', async () => {
+    let revoked = false
+    configureFetch({
+      loadOrders: () =>
+        revoked
+          ? new Response(null, { status: 403 })
+          : Response.json({
+              items: [
+                {
+                  id: 'private-order',
+                  sid: 42,
+                  shopName: '撤销店铺',
+                  platform: 'TemuPop',
+                  platformOrders: [{ number: 'PRIVATE-001', status: '待发货', matched: true }],
+                  created: null,
+                  dispatched: null,
+                  lineCount: 1,
+                  itemQuantity: 2,
+                },
+              ],
+              total: 1,
+              page: 1,
+              pageSize: 20,
+              options: {
+                shops: [{ sid: 42, name: '撤销店铺' }],
+                platforms: ['TemuPop'],
+                statuses: [],
+              },
+            }),
+    })
+    wrapper = mount(OrdersView)
+    await flushPromises()
+    await wrapper.get('select[name="shopSid"]').setValue('42')
+    await wrapper.get('form[aria-label="筛选订单"]').trigger('submit')
+    await flushPromises()
+    expect(wrapper.text()).toContain('PRIVATE-001')
+    revoked = true
+    onOrdersChanged?.()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('PRIVATE-001')
+    expect(wrapper.get('select[name="shopSid"]').text()).not.toContain('撤销店铺')
+    expect(wrapper.get('[role="alert"]').text()).toContain('无权查看所选店铺')
   })
 
   it('Given 普通用户且 ERP 未接入 When 打开同步面板 Then 提示联系管理员且不查询同步店铺', async () => {
