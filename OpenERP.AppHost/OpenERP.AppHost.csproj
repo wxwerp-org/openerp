@@ -11,7 +11,7 @@
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.AppHost" Version="17.0.0" />
     <PackageReference Include="Aspire.Hosting.Docker" Version="17.0.0" />
-    <PackageReference Include="AWSSDK.S3" Version="4.0.103.4" />
+    <PackageReference Include="AWSSDK.S3" Version="4.1.2" />
     <PackageReference Include="CommunityToolkit.Aspire.Hosting.SeaweedFS" Version="17.0.0" />
     <PackageReference Include="Aspire.Hosting.Dotnet" Version="17.0.0" />
     <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="17.0.0" />

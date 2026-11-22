@@ -319,11 +319,11 @@
       },
       "AWSSDK.S3": {
         "type": "Direct",
-        "requested": "[4.0.103.4, )",
-        "resolved": "4.0.103.4",
-        "contentHash": "qi8NkWG7s6GkNePTWSxP51O6AaTEWquin4X4L82plMte8bTFL2A1/osRfr6DBmvmSOc8y0orx25jJXg9gcbMIQ==",
+        "requested": "[4.1.2, )",
+        "resolved": "4.1.2",
+        "contentHash": "vGRpeXIxK7uRRHzVIrp2dYDri4wwlerUutG8TG7jHMolb3hX6Zu6VVDZpmwB8AlTIZ9BKLIV+V4Oi4xEsamZsQ==",
         "dependencies": {
-          "AWSSDK.Core": "[4.0.102.6, 5.0.0)"
+          "AWSSDK.Core": "[4.1.1.1, 5.0.0)"
         }
       },
       "CommunityToolkit.Aspire.Hosting.SeaweedFS": {
@@ -402,8 +402,17 @@
       },
       "AWSSDK.Core": {
         "type": "Transitive",
-        "resolved": "4.0.102.6",
-        "contentHash": "YwUi9qpz/OHqwEgsf8I5jj1aC/xkkjmF91R8Yx6yD66dhOiORgQJynYQk0fzI4xdhBgUaw8SRGbMkLRrvL+CNA=="
+        "resolved": "4.1.1.1",
+        "contentHash": "paZNy+g/hXMCsEpWvmOFr14x9gVzIY2JRSzSk+nXpKcnaASxEFBMWE4CNBuI/WwGN1ygTwojRTsPRn3yXuhSYQ==",
+        "dependencies": {
+          "AWSSDK.Extensions.Numerics": "[4.1.0, 5.0.0)",
+          "System.IO.Hashing": "11.0.0"
+        }
+      },
+      "AWSSDK.Extensions.Numerics": {
+        "type": "Transitive",
+        "resolved": "4.1.0",
+        "contentHash": "hhoiXT1aUyVgIiQbQoqG3L1EEneqXDh2GKyH5izUlO6Rzi9GAAi8S6mlLiVwow23+EGg77zHjdmUi+ia3RSUTg=="
       },
       "Fractions": {
         "type": "Transitive",
@@ -1016,8 +1025,8 @@
       },
       "System.IO.Hashing": {
         "type": "Transitive",
-        "resolved": "10.0.15",
-        "contentHash": "8dyz8adVemyDILwoEFTCq2NsB6XgqOgVHbnv0XgnttQac76XUR3S5L2qcIkJJqOw97mjQttCTWccyk4DKtfm3Q=="
+        "resolved": "11.0.0",
+        "contentHash": "U+Bv2qCYt6eONi+arSP0QIp4uTO6os6uceBsqiAwruZ+Wo2HrRhO/0tj38M9URJtS+4DhAtT3ka2TGNFYsnhyQ=="
       },
       "YamlDotNet": {
         "type": "Transitive",
