@@ -17,9 +17,12 @@ public sealed class ErpHub(
     public const string ShopSyncUpdated = "ShopSyncUpdated";
     public const string OrderSyncUpdated = "OrderSyncUpdated";
     public const string OrderSyncSnapshot = "OrderSyncSnapshot";
+    private const string OrderPlatform = "TemuPop";
 
     /// <summary>管理员连接的分发组；组员由 SignalR 随连接建立和结束自动维护。</summary>
     internal const string AdministratorGroup = "openerp.administrators";
+
+    internal static string OrderSyncGroup(int sid) => $"openerp.order-sync.{OrderPlatform}.{sid}";
 
     public override async Task OnConnectedAsync()
     {
@@ -43,10 +46,34 @@ public sealed class ErpHub(
             await Clients.Caller.SendAsync(ShopSyncUpdated, status, Context.ConnectionAborted);
         }
 
-        // 订单快照对所有已登录连接可见。
         if (orders is not null)
-            await Clients.Caller.SendAsync(OrderSyncSnapshot, orders.Snapshot(), Context.ConnectionAborted);
+        {
+            var snapshot = await SubscribeAndReadOrderSnapshotAsync(orders, Context.ConnectionAborted);
+            await Clients.Caller.SendAsync(OrderSyncSnapshot, snapshot, Context.ConnectionAborted);
+        }
         await base.OnConnectedAsync();
+    }
+
+    private async Task<OrderSyncSnapshot> SubscribeAndReadOrderSnapshotAsync(
+        OrderSyncJobs jobs, CancellationToken cancellationToken)
+    {
+        if (IsAdministrator())
+            return jobs.Snapshot();
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var sids = await ShopAccess.For(Context.User!).Assignments(db)
+            .Where(assignment => assignment.Platform == OrderPlatform)
+            .Select(assignment => assignment.Sid)
+            .ToHashSetAsync(cancellationToken);
+
+        // 先订阅再读取快照，由事件版本处理加入订阅期间的并发更新。
+        // 连接重新建立时重新读取分配，SignalR 随连接结束移除组成员。
+        foreach (var sid in sids)
+            await SubscribeToOrderSyncAsync(sid, cancellationToken);
+
+        var snapshot = jobs.Snapshot();
+        return snapshot with { Statuses = snapshot.Statuses.Where(status => sids.Contains(status.Sid)).ToArray() };
     }
 
     public async Task<ShopSyncStartResult> StartShopSync()
@@ -70,13 +97,33 @@ public sealed class ErpHub(
         if (sid <= 0)
             return new(false, null, "店铺 SID 必须为正整数");
 
+        var ct = Context.ConnectionAborted;
         await using var scope = scopeFactory.CreateAsyncScope();
+        var access = ShopAccess.For(Context.User!);
+        if (!access.IsAdministrator)
+        {
+            try
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                if (!await access.AllowsAsync(db, OrderPlatform, sid, ct))
+                    return new(false, null, "无权同步该店铺。");
+            }
+            catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+            {
+                return new(false, null, "本地店铺数据暂时不可用。");
+            }
+        }
+
         var tokens = scope.ServiceProvider.GetRequiredService<IErpTokenStore>();
-        var configuration = await tokens.GetConfigurationAsync(Context.ConnectionAborted);
+        var configuration = await tokens.GetConfigurationAsync(ct);
         if (configuration.IsErr)
             return new(false, orders.Latest(sid), configuration.Error.Message);
         if (!configuration.Value.Configured)
             return new(false, orders.Latest(sid), "尚未配置私有 ERP AccessToken");
+
+        // 分配可能在连接建立后新增，先订阅再受理，以免漏掉排队后的进度。
+        if (!access.IsAdministrator)
+            await SubscribeToOrderSyncAsync(sid, ct);
 
         var started = orders.Start(sid);
         return started.IsErr
@@ -100,11 +147,12 @@ public sealed class ErpHub(
             return new(false, 0, 0, "尚未配置私有 ERP AccessToken");
 
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var access = ShopAccess.For(Context.User!);
         int[] sids;
         try
         {
-            sids = await db.Shops
-                .Where(shop => shop.Platform == "TemuPop")
+            sids = await access.Shops(db)
+                .Where(shop => shop.Platform == OrderPlatform)
                 .Select(shop => shop.Sid)
                 .ToArrayAsync(ct);
         }
@@ -113,12 +161,21 @@ public sealed class ErpHub(
             return new(false, 0, 0, "本地店铺数据暂时不可用。");
         }
 
+        if (!access.IsAdministrator)
+        {
+            foreach (var sid in sids)
+                await SubscribeToOrderSyncAsync(sid, ct);
+        }
+
         var started = orders.StartAll(sids);
         if (started.IsErr)
             return new(false, 0, 0, started.Error.Message);
 
         return new(true, started.Value.StartedCount, started.Value.BusyCount, null);
     }
+
+    private Task SubscribeToOrderSyncAsync(int sid, CancellationToken cancellationToken) =>
+        Groups.AddToGroupAsync(Context.ConnectionId, OrderSyncGroup(sid), cancellationToken);
 
     private bool IsAdministrator() =>
         Context.User?.IsInRole(UserAccount.AdministratorRole) == true;

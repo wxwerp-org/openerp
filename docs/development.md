@@ -280,7 +280,7 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 - 浏览器通过 `access_token` 查询参数连接 Hub。JWT 中间件只对 `/api/hubs` 路径读取该参数，其他路径忽略，避免 token 泄漏到普通接口。
 - 管理员方法 `StartShopSync()` 返回 `accepted`、当前状态与错误；服务端事件 `ShopSyncUpdated(ShopSyncStatus)` 在管理员连接建立、同步开始、每 10 家店检查、完成或失败时向管理员推送。状态带单调递增 `version`，客户端据此丢弃迟到的 HTTP/invoke 旧快照。
 - 订单列表通过 `StartOrderSync(sid)` 启动单店同步，返回 `accepted`、该店状态与错误。「全部同步」通过一次 `StartAllOrderSync()` 命令读取本地目录中当前账号可见的 TemuPop 店铺，覆盖所有分页和授权状态，返回本次受理和跳过的店铺数。
-- 单店命令在读取状态或受理前按当前分配检查 TemuPop 和 SID。越权返回 `accepted: false` 和空状态。两个手动订单同步命令均检查 ERP 凭证是否已配置。受理后关闭面板或断开连接，任务继续执行。若凭证无法解密，该店任务在 `shop` 阶段报告失败。
+- 单店命令在读取状态或受理前按当前分配检查 TemuPop 和 SID。越权返回 `accepted: false` 和空状态。两种手动订单同步命令均在受理前检查 ERP 凭证，并为员工的当前连接订阅本次可同步店铺的进度。因此连接建立后新分配的店铺也能在原连接收到终态。受理后关闭面板或断开连接，任务继续执行。若凭证无法解密，该店任务在 `shop` 阶段报告失败。
 - 连接或重连时，`OrderSyncSnapshot` 提供当前进程的 `epoch` 和可见店铺的最近状态。管理员接收全部进度，员工连接按当次分配加入各自的店铺组，重连时重建。手动与定时任务通过 `OrderSyncUpdated` 推送带版本的状态，包含阶段、进度、入库计数和跳过原因。成功或部分成功后，页面按当前筛选刷新本地订单。
 - 客户端使用 `withAutomaticReconnect`；access token 由 `accessTokenFactory` 每次读取最新值，配合会话刷新处理 20 分钟 JWT 到期。连接断开时页面仍可浏览本地数据，但同步按钮不可用。
 - Hub 映射开启 `CloseOnAuthenticationExpiration`：JWT 到期即关闭连接，客户端用刷新后的 access token 重连，避免连接无限期沿用旧凭证。

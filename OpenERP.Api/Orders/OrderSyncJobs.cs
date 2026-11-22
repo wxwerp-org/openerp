@@ -297,7 +297,8 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
             timeout.CancelAfter(NotificationTimeout);
             try
             {
-                await hub.Clients.All.SendAsync(ErpHub.OrderSyncUpdated, status, timeout.Token);
+                await hub.Clients.Groups([ErpHub.AdministratorGroup, ErpHub.OrderSyncGroup(status.Sid)])
+                    .SendAsync(ErpHub.OrderSyncUpdated, status, timeout.Token);
             }
             catch (Exception exception)
             {
