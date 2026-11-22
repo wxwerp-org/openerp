@@ -1,6 +1,7 @@
 using System.Globalization;
 
 using Microsoft.AspNetCore.Http.HttpResults;
+using OpenERP.Api.Authentication;
 
 namespace OpenERP.Api.Orders;
 
@@ -23,11 +24,12 @@ internal static class OrderListEndpoints
                 return TypedResults.Problem(statusCode: 400, title: "创建日期必须使用 yyyy-MM-dd 格式，且起始日期不能晚于结束日期。");
 
             var request = new OrderListRequest(shopSid, platform, status, number, from, to, selectedPage, selectedSize);
-            var result = await query.ReadAsync(request, ct);
+            var (result, responseStatus) = await query.ReadAsync(request, ShopAccess.For(context.User), ct);
             return result.IsErr
-                ? TypedResults.Problem(statusCode: 503, title: result.Error.Message)
+                ? TypedResults.Problem(statusCode: responseStatus, title: result.Error.Message)
                 : TypedResults.Ok(result.Value);
-        }).WithSummary("查询本地订单与关联的平台单号及状态");
+        }).WithSummary("查询本地订单与关联的平台单号及状态")
+            .ProducesProblem(StatusCodes.Status403Forbidden);
     }
 
     private static bool TryParseDate(string? input, out DateOnly? date)
@@ -46,7 +48,7 @@ internal static class OrderListEndpoints
 internal sealed record OrderListRequest(int? ShopSid, string? Platform, string? Status, string? Number,
     DateOnly? CreatedFrom, DateOnly? CreatedTo, int Page, int PageSize);
 
-/// <summary>筛选后的本地订单分页及完整本地订单的筛选选项。</summary>
+/// <summary>筛选后的本地订单分页及可见本地订单的筛选选项。</summary>
 public sealed record OrderListResponse(IReadOnlyList<OrderListItem> Items, long Total, int Page, int PageSize,
     OrderListOptions Options);
 
@@ -57,7 +59,7 @@ public sealed record OrderListItem(string Id, int Sid, string? ShopName, string 
 /// <summary>平台订单号、状态和当前号码及状态条件的命中标记。</summary>
 public sealed record PlatformOrderListItem(string Number, string Status, bool Matched);
 
-/// <summary>完整本地订单中存在的店铺、平台与平台子单状态。</summary>
+/// <summary>可见本地订单中存在的店铺、平台与平台子单状态。</summary>
 public sealed record OrderListOptions(IReadOnlyList<OrderListShop> Shops, IReadOnlyList<string> Platforms,
     IReadOnlyList<string> Statuses);
 

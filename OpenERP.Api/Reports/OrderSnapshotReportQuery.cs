@@ -42,6 +42,8 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
     private async Task<OrderSnapshotReport> ReadAsync(OrderSnapshotReportRequest request, CancellationToken ct)
     {
         var all = db.Orders.AsNoTracking();
+        if (request.AllowedShops is { } allowed)
+            all = FilterByShops(all, allowed);
         var identities = await all.Select(order => new { order.Platform, order.Sid }).Distinct()
             .OrderBy(shop => shop.Platform).ThenBy(shop => shop.Sid).ToArrayAsync(ct);
         var shops = identities.Select(shop => StoredOrderMapping.Shop(shop.Platform, shop.Sid)).ToArray();
@@ -52,9 +54,7 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
         {
             // 键包含来源和平台，不把相同 SID 的不同店铺合并；未知键产生空结果。
             var selectedKeys = request.Shops.ToHashSet(StringComparer.Ordinal);
-            var storeKeys = shops.Where(shop => selectedKeys.Contains(shop.Key))
-                .Select(shop => shop.Platform + "/" + shop.ShopId).ToArray();
-            selected = selected.Where(order => storeKeys.Contains(order.Platform + "/" + order.Sid.ToString()));
+            selected = FilterByShops(selected, shops.Where(shop => selectedKeys.Contains(shop.Key)));
         }
 
         // 分别聚合订单与商品，避免联接多个平台单后把商品数量乘算。
@@ -79,6 +79,12 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
 
         return new(clock.GetUtcNow().UtcDateTime, summary, shops.Select(shop => shop.Platform).Distinct().ToArray(),
             shops, groups, rows.Select(StoredOrderMapping.Snapshot).ToArray(), page, request.PageSize, pageCount);
+    }
+
+    private static IQueryable<OrderRecord> FilterByShops(IQueryable<OrderRecord> orders, IEnumerable<OrderShop> shops)
+    {
+        var keys = shops.Select(shop => shop.Platform + "/" + shop.ShopId).ToArray();
+        return orders.Where(order => keys.Contains(order.Platform + "/" + order.Sid.ToString()));
     }
 }
 

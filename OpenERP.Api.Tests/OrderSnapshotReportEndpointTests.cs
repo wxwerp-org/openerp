@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using OpenERP.Api.Authentication;
 using OpResult;
 using OpenERP.Api.Reports;
 using OpenERP.Core.Reports;
@@ -69,10 +70,12 @@ public sealed class OrderSnapshotReportEndpointTests
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         var query = new TestQuery();
         builder.Services.AddSingleton<IOrderSnapshotReportQuery>(query);
+        builder.Services.AddDbContext<AppDbContext>();
+        ErpEndpointTestAuth.Configure(builder);
         var app = builder.Build();
         app.MapOrderReports();
         await app.StartAsync(TestContext.Current.CancellationToken);
-        return new(app, new HttpClient { BaseAddress = new Uri(app.Urls.Single()) }, query);
+        return new(app, ErpEndpointTestAuth.CreateClient(app, UserAccount.AdministratorRole), query);
     }
 
     private sealed class TestQuery : IOrderSnapshotReportQuery

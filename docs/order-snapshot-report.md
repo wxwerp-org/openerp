@@ -31,17 +31,17 @@
 | `page` | 从1开始，默认1；超出结果页数时返回最后一页 |
 | `pageSize` | 每页1至100条，默认20 |
 
-响应包含 `summary`、当前筛选下的 `groups`、分页 `orders`、全库本地选项 `platforms` / `shops`、分页信息及 `generatedAtUtc`。店铺名称未保存在现有订单库中，标签使用来源店铺编号，不虚构店铺名。空结果仍返回第1页，`pageCount` 为1。
+响应包含 `summary`、当前筛选下的 `groups`、分页 `orders`、可见订单生成的选项 `platforms` / `shops`、分页信息及 `generatedAtUtc`。管理员可读取全量；员工的明细、选项和工作台统计按分配的「平台 + SID」范围计算，包含仍有分配的历史店铺。店铺标签使用来源店铺编号。空结果仍返回第1页，`pageCount` 为1。
 
 `summary.orderCount` 为来源订单数，`summary.itemQuantity` 为商品件数。汇总、分组和当前页来自同一 PostgreSQL 一致读取事务；订单和商品分开聚合，不联接平台子单乘算。明细按平台、店铺编号、来源订单内部标识稳定排序；翻页不会改变汇总范围。
 
-无效查询返回400；数据库读取失败返回503及 ProblemDetails，不以空报表掩盖失败。所有异步读取接收请求取消信号。
+无效查询返回400。员工在 `shops` 中指定未分配的店铺时返回403。数据库读取失败返回503及 ProblemDetails。所有异步读取接收请求取消信号。
 
 ## 代码边界与扩展
 
 `OpenERP.Core` 保存 `Orders` 下的公共订单事实以及 `Reports` 下的 `IOrderSnapshotReportQuery` 契约，不引用 EF Core、ASP.NET 或 ERP 客户端。订单身份需结合来源、平台、店铺和来源订单标识解释，店铺键对各身份片段编码，避免同号碰撞。
 
-API 工程的 `OrderSnapshotReportQuery` 使用现有本地存储；其中 `StoredOrderMapping` 将 ERP 专用记录转换为公共事实。HTTP 层只处理请求和结果，通过 DI 消费接口。其它本地数据来源可实现同一查询契约并在组合根注册，必须保持上述数量含义及身份隔离，前端无需判断具体来源。
+API 工程的 `OrderSnapshotReportQuery` 使用现有本地存储，其中 `StoredOrderMapping` 将 ERP 专用记录转换为公共事实。HTTP 层根据当前账号确定请求的店铺范围，通过 DI 消费接口。其它本地数据来源可实现同一查询契约并在组合根注册，需保持上述数量含义及身份隔离，前端无需判断具体来源。
 
 没有新增报表副本表、同步作业、平台连接器或插件加载机制；现有订单同步与部署方式保持原有边界。需要付款销量、取消拆分或时间趋势时，应先取得相应的来源事实，避免将当前快照包装成未被数据证明的业务指标。
 

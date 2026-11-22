@@ -11,6 +11,9 @@ using OpResult;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Reports;
+using OpenERP.Core.Orders;
+using OpenERP.Core.Reports;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -176,7 +179,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         // Given 本地有 TemuPop 两家、AliExpress 一家，并保存平台展示名。
         var ct = TestContext.Current.CancellationToken;
         await SeedAsync(DateTimeOffset.UtcNow, ct);
-        await using var app = await StartAppAsync(ct);
+        await using var app = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
 
         // When 读取平台目录。
         using var response = await app.Http.GetAsync("/api/erp/platforms", ct);
@@ -258,7 +261,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
     }
 
     [Fact]
-    public async Task Employee_shops_projection_contains_only_minimal_fields_and_no_summary()
+    public async Task Employee_without_assignments_gets_empty_directory_and_platforms()
     {
         // Given 本地有三家不同授权状态的店铺和一条同步结果，调用方是普通员工。
         var ct = TestContext.Current.CancellationToken;
@@ -268,19 +271,159 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         // When 按默认分页读取店铺目录。
         using var response = await app.Http.GetAsync("/api/erp/shops?page=1&pageSize=2", ct);
 
-        // Then 只返回最小投影与分页字段，不含授权、同步字段与 summary。
+        // Then 两个入口都返回空选项，目录仍保留分页字段。
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
         Assert.Equal(1, body.GetProperty("page").GetInt32());
         Assert.Equal(2, body.GetProperty("pageSize").GetInt32());
-        Assert.Equal(3, body.GetProperty("totalCount").GetInt32());
-        Assert.Equal(2, body.GetProperty("pageCount").GetInt32());
+        Assert.Equal(0, body.GetProperty("totalCount").GetInt32());
+        Assert.Equal(0, body.GetProperty("pageCount").GetInt32());
         Assert.False(body.TryGetProperty("summary", out _));
-        var shops = body.GetProperty("items").EnumerateArray().ToArray();
-        Assert.Equal(2, shops.Length);
-        Assert.All(shops, shop => Assert.Equal(
-            ["sid", "name", "platform", "region"],
-            shop.EnumerateObject().Select(property => property.Name)));
+        Assert.Empty(body.GetProperty("items").EnumerateArray());
+        using var platforms = await app.Http.GetAsync("/api/erp/platforms", ct);
+        Assert.Equal(HttpStatusCode.OK, platforms.StatusCode);
+        var catalog = await platforms.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Empty(catalog.GetProperty("items").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Employee_without_assignments_gets_empty_orders_and_options()
+    {
+        // Given 本地已有一张订单，员工尚未分配店铺。
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(DateTimeOffset.UtcNow, ct);
+        await SeedOrderAsync(ct);
+        await using var app = await StartAppAsync(ct);
+
+        // When 查看订单；Then 明细、总数和选项均为空。
+        using var orders = await app.Http.GetAsync("/api/orders", ct);
+        Assert.Equal(HttpStatusCode.OK, orders.StatusCode);
+        var listBody = await orders.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(0, listBody.GetProperty("total").GetInt64());
+        Assert.Empty(listBody.GetProperty("items").EnumerateArray());
+        foreach (var field in new[] { "shops", "platforms", "statuses" })
+            Assert.Empty(listBody.GetProperty("options").GetProperty(field).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Employee_without_assignments_gets_empty_workbench_totals_and_report_options()
+    {
+        // Given 本地已有一张订单，员工尚未分配店铺。
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(DateTimeOffset.UtcNow, ct);
+        await SeedOrderAsync(ct);
+        await using var app = await StartAppAsync(ct);
+
+        // When 查看工作台报表；Then 聚合、明细与选项均为空。
+        using var report = await app.Http.GetAsync("/api/reports/order-snapshot", ct);
+        Assert.Equal(HttpStatusCode.OK, report.StatusCode);
+        var reportBody = await report.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(0, reportBody.GetProperty("summary").GetProperty("orderCount").GetInt64());
+        Assert.Equal(0, reportBody.GetProperty("summary").GetProperty("itemQuantity").GetInt64());
+        foreach (var field in new[] { "orders", "groups", "shops", "platforms" })
+            Assert.Empty(reportBody.GetProperty(field).EnumerateArray());
+    }
+
+    [Theory]
+    [InlineData("/api/orders?shopSid=42")]
+    [InlineData("/api/orders?shopSid=42&platform=TemuPop")]
+    [InlineData("/api/reports/order-snapshot?shops=wxw-erp%2FTemuPop%2F42")]
+    public async Task Employee_explicitly_requesting_an_unassigned_shop_is_forbidden(string url)
+    {
+        // Given 店铺有本地订单，员工未分配到该店；When 使用公开筛选参数指定该店。
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(DateTimeOffset.UtcNow, ct);
+        await SeedOrderAsync(ct);
+        await using var app = await StartAppAsync(ct);
+        using var response = await app.Http.GetAsync(url, ct);
+
+        // Then 返回 403，不能按全量过滤后返回该店资料。
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Employee_directory_and_platform_counts_use_assignments_and_expose_shop_status()
+    {
+        // Given 员工仅负责 Gamma，目录内另有同平台未分配店与其它平台。
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(DateTimeOffset.UtcNow, ct);
+        var userId = await SeedEmployeeAsync(ct, ("TemuPop", 9), ("AliExpress", 42));
+        await using var app = await StartAppAsync(ct, userId: userId);
+
+        // When 读取目录以及筛选选项；Then 只有 Gamma 的授权状态、失败原因和刷新时间可见。
+        using var response = await app.Http.GetAsync("/api/erp/shops?platform=TemuPop&keyword=店", ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var page = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(1, page.GetProperty("totalCount").GetInt32());
+        Assert.False(page.TryGetProperty("summary", out _));
+        var shop = Assert.Single(page.GetProperty("items").EnumerateArray());
+        Assert.Equal("9", shop.GetProperty("sid").GetString());
+        Assert.Equal(JsonValueKind.Null, shop.GetProperty("isTokenOk").ValueKind);
+        Assert.Equal("状态读取失败", shop.GetProperty("tokenError").GetString());
+        Assert.Equal(JsonValueKind.String, shop.GetProperty("syncedAt").ValueKind);
+        Assert.False(shop.TryGetProperty("memberId", out _));
+        using var platforms = await app.Http.GetAsync("/api/erp/platforms", ct);
+        Assert.Equal(HttpStatusCode.OK, platforms.StatusCode);
+        var catalog = await platforms.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var platform = Assert.Single(catalog.GetProperty("items").EnumerateArray());
+        Assert.Equal("TemuPop", platform.GetProperty("name").GetString());
+        Assert.Equal(1, platform.GetProperty("shopCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task Assigned_history_uses_the_composite_shop_key_across_orders_reports_and_revocation()
+    {
+        // Given SID 42 仍在 TemuPop 目录，但员工分配的是 AliExpress 的同 SID 历史店。
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(DateTimeOffset.UtcNow, ct);
+        await SeedOrderAsync(ct);
+        await SeedOrderAsync(ct, "AliExpress", "待处理", 3);
+        var userId = await SeedEmployeeAsync(ct, ("AliExpress", 42));
+        await using var employee = await StartAppAsync(ct, userId: userId);
+        await using var administrator = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
+
+        // When 查看员工订单；Then 历史店可按 SID 查询，订单名称、平台和状态均无其它平台信息。
+        using var orders = await employee.Http.GetAsync("/api/orders?shopSid=42", ct);
+        Assert.Equal(HttpStatusCode.OK, orders.StatusCode);
+        var list = await orders.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(1, list.GetProperty("total").GetInt64());
+        var row = Assert.Single(list.GetProperty("items").EnumerateArray());
+        Assert.Equal("AliExpress", row.GetProperty("platform").GetString());
+        Assert.Equal(JsonValueKind.Null, row.GetProperty("shopName").ValueKind);
+        Assert.Equal("待处理", Assert.Single(list.GetProperty("options").GetProperty("statuses").EnumerateArray()).GetString());
+        Assert.Equal("AliExpress", Assert.Single(list.GetProperty("options").GetProperty("platforms").EnumerateArray()).GetString());
+        Assert.Equal(JsonValueKind.Null,
+            Assert.Single(list.GetProperty("options").GetProperty("shops").EnumerateArray()).GetProperty("name").ValueKind);
+        using var otherPlatform = await employee.Http.GetAsync("/api/orders?shopSid=42&platform=TemuPop", ct);
+        Assert.Equal(HttpStatusCode.Forbidden, otherPlatform.StatusCode);
+
+        // When 读取工作台报表；Then 统计和明细与管理员选择该历史店时一致。
+        const string historicalReport = "/api/reports/order-snapshot?shops=wxw-erp%2FAliExpress%2F42";
+        using var report = await employee.Http.GetAsync("/api/reports/order-snapshot", ct);
+        using var filtered = await administrator.Http.GetAsync(historicalReport, ct);
+        using var selected = await employee.Http.GetAsync(historicalReport, ct);
+        Assert.Equal(HttpStatusCode.OK, report.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, filtered.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, selected.StatusCode);
+        var summary = await report.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var comparison = await filtered.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(comparison.GetProperty("summary").GetRawText(), summary.GetProperty("summary").GetRawText());
+        Assert.Equal(3, summary.GetProperty("summary").GetProperty("itemQuantity").GetInt64());
+        Assert.Equal(comparison.GetProperty("groups").GetRawText(), summary.GetProperty("groups").GetRawText());
+        Assert.Equal(comparison.GetProperty("orders").GetRawText(), summary.GetProperty("orders").GetRawText());
+        var selectedReport = await selected.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(summary.GetProperty("summary").GetRawText(), selectedReport.GetProperty("summary").GetRawText());
+        Assert.Equal("AliExpress", Assert.Single(summary.GetProperty("platforms").EnumerateArray()).GetString());
+        Assert.Equal("wxw-erp/AliExpress/42", Assert.Single(summary.GetProperty("shops").EnumerateArray()).GetProperty("key").GetString());
+        using var mixed = await employee.Http.GetAsync(
+            "/api/reports/order-snapshot?shops=wxw-erp%2FAliExpress%2F42&shops=wxw-erp%2FTemuPop%2F42", ct);
+        Assert.Equal(HttpStatusCode.Forbidden, mixed.StatusCode);
+
+        // When 管理员撤销该分配；Then 下一次查询不再允许指定该店。
+        await using var db = CreateDbContext();
+        await db.UserShopAssignments.Where(item => item.UserId == userId).ExecuteDeleteAsync(ct);
+        using var revoked = await employee.Http.GetAsync(historicalReport, ct);
+        Assert.Equal(HttpStatusCode.Forbidden, revoked.StatusCode);
     }
 
     [Fact]
@@ -315,8 +458,8 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         // Then 不携带 status 时非状态筛选与分页仍然可用。
         Assert.Equal(HttpStatusCode.OK, filtered.StatusCode);
         var body = await filtered.Content.ReadFromJsonAsync<JsonElement>(ct);
-        Assert.Equal(2, body.GetProperty("totalCount").GetInt32());
-        Assert.Equal(2, body.GetProperty("items").GetArrayLength());
+        Assert.Equal(0, body.GetProperty("totalCount").GetInt32());
+        Assert.Empty(body.GetProperty("items").EnumerateArray());
         Assert.False(body.TryGetProperty("summary", out _));
     }
 
@@ -443,12 +586,36 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
     private static DateTimeOffset ToDatabasePrecision(DateTimeOffset value) =>
         value.AddTicks(-(value.Ticks % 10));
 
+    private async Task SeedOrderAsync(CancellationToken ct, string platform = "TemuPop", string status = "已发货", int quantity = 7)
+    {
+        await using var db = CreateDbContext();
+        var store = new OrderStore(db);
+        var snapshot = new OrderSnapshot($"order-42-{platform}", $"order-42-{platform}", 42, platform, "正常", new(null, null, null, null),
+            [new("PO-42", 42, "4", status)], [new(null, null, null, null, quantity, false, false)]);
+        Assert.False((await store.SaveAsync([snapshot], ct)).IsErr);
+    }
+
+    private async Task<Guid> SeedEmployeeAsync(CancellationToken ct, params (string Platform, int Sid)[] shops)
+    {
+        await using var db = CreateDbContext();
+        var user = new UserAccount { Username = "employee", Name = "员工" };
+        db.Users.Add(user);
+        db.UserShopAssignments.AddRange(shops.Select(shop => new UserShopAssignment
+        {
+            UserId = user.Id,
+            Platform = shop.Platform,
+            Sid = shop.Sid
+        }));
+        await db.SaveChangesAsync(ct);
+        return user.Id;
+    }
+
     private AppDbContext CreateDbContext() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
 
     private async Task<TestApp> StartAppAsync(
         CancellationToken cancellationToken, IShopSyncJob? job = null, IErpClient? erp = null,
-        string role = UserAccount.UserRole)
+        string role = UserAccount.UserRole, Guid? userId = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
         builder.Logging.ClearProviders();
@@ -460,11 +627,16 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         builder.Services.AddScoped<IOrderSyncSettingsStore, OrderSyncSettingsStore>();
         builder.Services.AddSingleton<OrderSyncJobs>();
         builder.Services.AddSingleton<OrderSyncScheduler>();
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddScoped<OrderListQuery>();
+        builder.Services.AddScoped<IOrderSnapshotReportQuery, OrderSnapshotReportQuery>();
         ErpEndpointTestAuth.Configure(builder);
         var app = builder.Build();
         app.MapErp();
+        app.MapOrderList();
+        app.MapOrderReports();
         await app.StartAsync(cancellationToken);
-        var http = ErpEndpointTestAuth.CreateClient(app, role);
+        var http = ErpEndpointTestAuth.CreateClient(app, role, userId);
         return new TestApp(app, http);
     }
 
