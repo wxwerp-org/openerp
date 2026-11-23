@@ -184,6 +184,12 @@ python3 deploy/tests/smoke.py --compose ./aspire-output/docker-compose.yaml
 
 默认验收本次构建的 `openerp:local`。已有两个本地版本时，通过 `--image <旧镜像> --upgrade-image <新镜像>` 检查升级后数据能否读回。Release 工作流先验收本次组装的镜像，再推送同一个镜像并上传版本化配置，服务器操作见[部署说明](deployment.md)。
 
+### 发布基础镜像
+
+发布入口是 GitHub Release（含预发布）。[Release 工作流](../.github/workflows/release.yml)根据本次提交的 [base.Dockerfile](../deploy/base.Dockerfile) 计算 SHA-256，在私有 GHCR 包 `openerp-base` 中查找 `linux-amd64-<配方哈希>`。首次使用该配方时，Actions 自动构建、验证并推送基础镜像。之后使用相同配方的 Release 直接取得已有镜像的 digest。组装业务镜像时使用该 digest，Release 部署附件只引用最终的 `openerp` 镜像。
+
+升级 PostgreSQL、ASP.NET Runtime、Redis、SeaweedFS 或 Caddy 时，在基础配方中更新对应的上游标签和 digest，再按平时的流程发布 GitHub Release。操作系统软件包也在构建基础镜像时安装，已发布的 base 保留当次安装结果。API、迁移包、静态页面、Caddy 配置及入口脚本随业务镜像发布。PR 和本地的 `aspire do build-openerp` 直接从工作树中的配方构建本地 base，可在私有包首次创建前完成烟测。
+
 ## 用户、权限与会话
 
 唯一管理员 `admin` 管理用户、系统接入、全局目录与定时同步，并能读取所有店铺。员工使用 `User` 角色，可以从店铺列表去旺销网授权新店。员工的目录、平台选项、订单、报表、工作台和手动同步范围由服务端读取当前分配。

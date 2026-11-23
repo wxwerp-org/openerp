@@ -8,6 +8,28 @@ namespace OpenERP.AppHost;
 
 internal static class SingleContainerArtifacts
 {
+    private const string Platform = "linux/amd64";
+
+    internal static Task BuildBaseImageAsync(string image, string staging, string deploy, CancellationToken cancellationToken)
+    {
+        var context = Directory.CreateDirectory(Path.Combine(staging, "base-context"));
+        return RunDockerAsync(cancellationToken, "build", "--platform", Platform, "--tag", image,
+            "--file", Path.Combine(deploy, "base.Dockerfile"), context.FullName);
+    }
+
+    internal static async Task RemoveBaseImageAsync(ILogger logger, string image)
+    {
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try
+        {
+            await RunDockerAsync(cleanup.Token, "image", "rm", "--no-prune", image);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or OperationCanceledException)
+        {
+            logger.LogWarning(exception, "移除组装用基础镜像 {Image} 失败。", image);
+        }
+    }
+
     public static async Task StageAsync(PipelineStepContext context, string staging, string deploy, string apiImage)
     {
         var web = context.Model.Resources.Single(resource => resource.Name == "web");
@@ -26,15 +48,14 @@ internal static class SingleContainerArtifacts
             ("/app/.", Path.Combine(staging, "api")));
         await CopyFromImageAsync(context.Logger, webImage, context.CancellationToken,
             ("/srv/.", Path.Combine(staging, "web")),
-            ("/etc/caddy/Caddyfile", Path.Combine(staging, "Caddyfile")),
-            ("/usr/bin/caddy", Path.Combine(staging, "caddy")));
+            ("/etc/caddy/Caddyfile", Path.Combine(staging, "Caddyfile")));
     }
 
     private static async Task CopyFromImageAsync(
         ILogger logger, string image, CancellationToken cancellationToken, params (string Source, string Destination)[] files)
     {
         var container = $"openerp-stage-{Guid.NewGuid():N}";
-        await RunDockerAsync(cancellationToken, "create", "--platform", "linux/amd64", "--pull", "never", "--name", container, image);
+        await RunDockerAsync(cancellationToken, "create", "--platform", Platform, "--pull", "never", "--name", container, image);
         try
         {
             foreach (var (source, destination) in files)
