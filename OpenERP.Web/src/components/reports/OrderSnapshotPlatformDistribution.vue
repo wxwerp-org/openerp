@@ -80,8 +80,7 @@ function formatPercentage(percentage: number): string {
           >
             <strong class="block text-20/26 font-medium text-ink tabular-nums">{{
               formatSnapshotQuantity(totalOrders)
-            }}</strong
-            ><span class="mt-1 block text-11/15 text-muted">总订单数</span>
+            }}</strong><span class="mt-1 block text-11/15 text-muted">总订单数</span>
           </div>
         </div>
         <div data-testid="report-platform-legend" class="flex min-w-0 flex-1 flex-col gap-12">
