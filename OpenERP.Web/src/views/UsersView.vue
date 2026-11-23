@@ -377,8 +377,8 @@ onUnmounted(() => detailRequest?.abort())
       >
         <div class="flex flex-col gap-12 px-24 py-20">
           <p id="user-delete-description">
-            确定删除用户 <strong>{{ selectedUser?.username }}</strong
-            >？该用户将无法登录，用户名保留 7 天。
+            确定删除用户 <strong>{{ selectedUser?.username }}</strong>？该用户将无法登录，用户名保留
+            7 天。
           </p>
           <p v-if="dialogError" class="text-danger" role="alert">{{ dialogError }}</p>
         </div>

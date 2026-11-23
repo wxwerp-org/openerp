@@ -110,8 +110,7 @@ onUnmounted(() => document.removeEventListener('click', closeOnOutsideClick))
         class="flex items-center justify-between"
         @click="menuOpen = false"
       >
-        <span>{{ page.label }}</span
-        ><AppIcon name="i-chev-right" class="size-12" />
+        <span>{{ page.label }}</span><AppIcon name="i-chev-right" class="size-12" />
       </RouterLink>
     </div>
   </div>

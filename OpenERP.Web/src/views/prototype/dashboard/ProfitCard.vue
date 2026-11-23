@@ -123,8 +123,7 @@ const period = ref(props.periods[1] ?? props.periods[0] ?? '')
           ></polyline>
         </svg>
         <div class="mt-6 flex justify-between text-11/[16.5px] text-muted">
-          <span>{{ summary.note }}</span
-          ><span>币种：{{ summary.currency }}</span>
+          <span>{{ summary.note }}</span><span>币种：{{ summary.currency }}</span>
         </div>
       </div>
     </div>
