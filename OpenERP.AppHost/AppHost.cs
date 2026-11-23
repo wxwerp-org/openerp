@@ -5,7 +5,7 @@ using OpenERP.AppHost;
 var builder = DistributedApplication.CreateBuilder(args);
 if (builder.ExecutionContext.IsPublishMode)
 {
-    ComposeDeployment.Run(builder);
+    await ComposeDeployment.RunAsync(builder);
     return;
 }
 

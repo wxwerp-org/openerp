@@ -93,8 +93,8 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v7.0.1
 
-      - name: 验证 houqin 实例更新
-        run: python3 deploy/tests/test_houqin_update.py
+      - name: 验证基础镜像发布与 houqin 实例更新
+        run: python3 -m unittest discover -s deploy/tests -p 'test_*.py'
 
       - name: 安装 .NET
         uses: actions/setup-dotnet@v6.1.0

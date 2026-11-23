@@ -3,6 +3,8 @@ using Aspire.Hosting.Docker;
 using Aspire.Hosting.Docker.Resources.ServiceNodes;
 using Aspire.Hosting.EntityFrameworkCore;
 using Aspire.Hosting.Pipelines;
+using Aspire.Hosting.Publishing;
+using Microsoft.Extensions.Logging;
 
 namespace OpenERP.AppHost;
 
@@ -10,27 +12,29 @@ internal static class ComposeDeployment
 {
     private const string Image = "openerp";
     private const string LocalTag = "local";
+    private const string BaseImageArgument = "OPENERP_BASE_IMAGE";
     private const string BundleStep = "migrations-generate-migration-bundle";
 
-    internal static void Run(IDistributedApplicationBuilder builder)
+    internal static async Task RunAsync(IDistributedApplicationBuilder builder)
     {
         var runId = Guid.NewGuid().ToString("N");
         var staging = Path.Combine(builder.AppHostDirectory, "obj", "single-container-build", runId);
         var deploy = Path.GetFullPath("../deploy", builder.AppHostDirectory);
+        var suppliedBaseImage = builder.Configuration[BaseImageArgument];
+        var buildBaseLocally = string.IsNullOrEmpty(suppliedBaseImage);
+        var baseImage = buildBaseLocally ? $"openerp-base:{runId}" : suppliedBaseImage!;
         var compose = builder.AddDockerComposeEnvironment("compose").WithDashboard(false);
 
         var api = builder.AddDotnetProject("api", "../OpenERP.Api/OpenERP.Api.csproj");
         var apiImage = $"api:{runId}";
-#pragma warning disable ASPIREPIPELINES003 // 为本次 API 构建分配独立本地标签。
-        api.WithContainerBuildOptions(options => options.LocalImageTag = runId);
-#pragma warning restore ASPIREPIPELINES003
-        builder.AddViteApp("web", "../OpenERP.Web")
+        var web = builder.AddViteApp("web", "../OpenERP.Web")
             .WithPnpm(installArgs: ["--frozen-lockfile", "--config.confirmModulesPurge=false"]);
         api.AddEFMigrations("migrations")
             .PublishAsMigrationBundle(targetRuntime: "linux-x64", publishContainer: false);
 
         var openerp = builder.AddDockerfile(Image, staging)
             .WithImageTag(LocalTag)
+            .WithBuildArg(BaseImageArgument, baseImage)
             .PublishAsDockerComposeService((_, service) =>
             {
                 service.Ports.Add("127.0.0.1:${WEB_PORT:-8080}:8000");
@@ -41,6 +45,16 @@ internal static class ComposeDeployment
                 service.AddVolume(BindMount("./data/postgres", "/var/lib/postgresql"));
                 service.AddVolume(BindMount("./data", "/var/lib/openerp"));
             });
+
+#pragma warning disable ASPIREPIPELINES003 // 固定发布镜像架构，并为本次 API 构建分配独立本地标签。
+        api.WithContainerBuildOptions(options =>
+        {
+            options.LocalImageTag = runId;
+            options.TargetPlatform = ContainerTargetPlatform.LinuxAmd64;
+        });
+        web.WithContainerBuildOptions(options => options.TargetPlatform = ContainerTargetPlatform.LinuxAmd64);
+        openerp.WithContainerBuildOptions(options => options.TargetPlatform = ContainerTargetPlatform.LinuxAmd64);
+#pragma warning restore ASPIREPIPELINES003
 
         var composeImage = $"{Image}:{LocalTag}";
         if (builder.Configuration["ReleaseTag"] is { Length: > 0 } releaseTag)
@@ -74,6 +88,16 @@ internal static class ComposeDeployment
             env.Remove("OPENERP_IMAGE");
         });
 
+        ILogger? baseBuildLogger = null;
+        if (buildBaseLocally)
+        {
+            openerp.WithPipelineStepFactory("build-openerp-base", async context =>
+            {
+                await SingleContainerArtifacts.BuildBaseImageAsync(baseImage, staging, deploy, context.CancellationToken);
+                baseBuildLogger = context.Logger;
+            }, dependsOn: [WellKnownPipelineSteps.CheckContainerRuntime], requiredBy: ["build-openerp"]);
+        }
+
         openerp.WithPipelineStepFactory(
             "stage-openerp",
             context => SingleContainerArtifacts.StageAsync(context, staging, deploy, apiImage),
@@ -94,10 +118,12 @@ internal static class ComposeDeployment
 
         try
         {
-            builder.Build().Run();
+            await builder.Build().RunAsync();
         }
         finally
         {
+            if (baseBuildLogger is not null)
+                await SingleContainerArtifacts.RemoveBaseImageAsync(baseBuildLogger, baseImage);
             if (Directory.Exists(staging))
                 Directory.Delete(staging, recursive: true);
         }
