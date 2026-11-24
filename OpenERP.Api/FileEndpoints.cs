@@ -1,7 +1,6 @@
-using System.Net;
-using Amazon.S3;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using OpenERP.Api.ObjectStorage;
 
 namespace OpenERP.Api;
 
@@ -16,11 +15,11 @@ public static class FileEndpoints
             {
                 return await next(context);
             }
-            catch (AmazonS3Exception exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+            catch (ObjectStorageException exception) when (exception.NotFound)
             {
                 return TypedResults.NotFound();
             }
-            catch (AmazonS3Exception exception)
+            catch (ObjectStorageException exception)
             {
                 app.Logger.LogError(exception, "File storage request failed");
                 return TypedResults.Problem("文件存储暂时不可用，请稍后重试。", statusCode: 503);
@@ -57,16 +56,15 @@ public static class FileEndpoints
         {
             if (!FileStore.IsValidKey(key)) return TypedResults.NotFound();
             var response = await store.OpenAsync(key, ct);
+            if (response is null) return TypedResults.NotFound();
+            context.Response.RegisterForDispose(response);
             context.Response.Headers.CacheControl = "no-store";
             context.Response.Headers.XContentTypeOptions = "nosniff";
-            context.Response.ContentLength = response.ContentLength;
+            context.Response.ContentLength = response.Size;
             var type = FileStore.ContentType(key)!;
             var attachment = download == true || type.StartsWith("application/vnd.", StringComparison.Ordinal);
-            return TypedResults.Stream(async output =>
-            {
-                using (response)
-                    await response.ResponseStream.CopyToAsync(output, ct);
-            }, type, attachment ? key[33..] : null);
+            return TypedResults.Stream(output => response.Content.CopyToAsync(output, ct),
+                type, attachment ? key[33..] : null);
         });
 
         files.MapDelete("/{key}", async Task<Results<NoContent, NotFound>> (

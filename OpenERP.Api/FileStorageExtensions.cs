@@ -2,12 +2,39 @@ using System.Data.Common;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using OpenERP.Api.ObjectStorage;
 
 namespace OpenERP.Api;
 
 public static class FileStorageExtensions
 {
     public static void AddFileStorage(this WebApplicationBuilder builder)
+    {
+        var provider = builder.Configuration["ObjectStorage:Provider"] ?? "S3";
+        if (provider.Equals("Local", StringComparison.OrdinalIgnoreCase))
+        {
+            var rootPath = builder.Configuration["ObjectStorage:RootPath"];
+            if (string.IsNullOrWhiteSpace(rootPath))
+                throw new InvalidOperationException("本机对象存储需要配置 ObjectStorage:RootPath。");
+            builder.Services.AddSingleton<IObjectStorage>(new LocalObjectStorage(
+                Path.GetFullPath(rootPath, builder.Environment.ContentRootPath)));
+        }
+        else if (provider.Equals("S3", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.AddS3FileStorage();
+        }
+        else
+        {
+            throw new InvalidOperationException("ObjectStorage:Provider 必须为 Local 或 S3。");
+        }
+
+        builder.Services.AddSingleton<FileStore>();
+    }
+
+    public static Task InitializeFileStorageAsync(this IServiceProvider services, CancellationToken ct) =>
+        services.GetRequiredService<IObjectStorage>().InitializeAsync(ct);
+
+    private static void AddS3FileStorage(this WebApplicationBuilder builder)
     {
         var connection = new DbConnectionStringBuilder
         {
@@ -31,6 +58,7 @@ public static class FileStorageExtensions
                 ForcePathStyle = true,
                 AuthenticationRegion = "us-east-1"
             }));
+        builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();
         builder.Services.AddHealthChecks().AddCheck<FileStorageHealthCheck>("seaweedfs");
     }
 }

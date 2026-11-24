@@ -1,6 +1,10 @@
+using System.Data.Common;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using Amazon.S3;
+using Amazon.S3.Model;
+using OpenERP.Api.ObjectStorage;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -14,6 +18,60 @@ public sealed class FileStorageIntegrationTests(AspireIntegrationFixture fixture
         await fixture.EnsureApiStartedAsync(TestContext.Current.CancellationToken);
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    [Fact]
+    public async Task The_API_lists_and_reads_existing_SeaweedFS_objects()
+    {
+        // Given SeaweedFS 存储桶中已有按旧格式写入的对象。
+        var ct = TestContext.Current.CancellationToken;
+        var connection = new DbConnectionStringBuilder
+        {
+            ConnectionString = await fixture.GetStorageConnectionStringAsync(ct)
+        };
+        using var s3 = new AmazonS3Client((string)connection["AccessKey"], (string)connection["SecretKey"],
+            new AmazonS3Config
+            {
+                ServiceURL = (string)connection["Endpoint"],
+                ForcePathStyle = true,
+                AuthenticationRegion = "us-east-1"
+            });
+        const string name = "原有文件.pdf";
+        const string contents = "existing object";
+        var key = $"{Guid.NewGuid():N}_{name}";
+        await s3.PutObjectAsync(new PutObjectRequest
+        {
+            BucketName = "openerp-files",
+            Key = key,
+            ContentBody = contents,
+            ContentType = "application/pdf"
+        }, ct);
+
+        // When 客户端列出文件并用原有对象键下载。
+        using var client = fixture.CreateApiClient();
+        await AuthenticationIntegrationTests.LoginAsync(client, ct, fixture.AdminPassword);
+        var files = await client.GetFromJsonAsync<StoredFileResponse[]>("api/files/", ct);
+        var path = $"api/files/{Uri.EscapeDataString(key)}";
+        using var downloaded = await client.GetAsync(path, ct);
+
+        // Then 原有对象的名称、类型、大小和内容保持不变。
+        Assert.NotNull(files);
+        Assert.Equal(new StoredFileResponse(key, name, "application/pdf", contents.Length),
+            Assert.Single(files, file => file.Key == key));
+        Assert.Equal(HttpStatusCode.OK, downloaded.StatusCode);
+        Assert.Equal(contents, await downloaded.Content.ReadAsStringAsync(ct));
+
+        // 使用 S3 适配器将同一对象键替换为新内容，仍可以用原地址读取。
+        var storage = new S3ObjectStorage(s3);
+        await using var replacement = new MemoryStream("replacement content"u8.ToArray());
+        await storage.PutAsync(key, replacement, "application/pdf", ct);
+        using var replaced = await client.GetAsync(path, ct);
+        Assert.Equal(HttpStatusCode.OK, replaced.StatusCode);
+        Assert.Equal("replacement content", await replaced.Content.ReadAsStringAsync(ct));
+
+        client.DefaultRequestHeaders.Remove(AuthenticationIntegrationTests.CsrfHeader);
+        using var deleted = await client.DeleteAsync(path, ct);
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+    }
 
     [Fact]
     public async Task Files_survive_SeaweedFS_restart_and_support_the_full_lifecycle()
