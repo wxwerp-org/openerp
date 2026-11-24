@@ -17,7 +17,7 @@ internal sealed partial class AccountStore
     internal async Task<OpResult<UserAccount>> CreateUserAsync(
         string username, string password, ProfileChanges changes, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         await LockUserManagementAsync(write, ct);
 
@@ -36,7 +36,7 @@ internal sealed partial class AccountStore
     internal async Task<(OpResult<UserAccount> Result, int Status)> UpdateUserAsync(
         Guid id, string username, ProfileChanges changes, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         await LockUserManagementAsync(write, ct);
         var user = await LockByIdAsync(write, id, ct);
@@ -56,7 +56,7 @@ internal sealed partial class AccountStore
 
     internal async Task<(OpResult.OpResult Result, int Status)> DeleteUserAsync(Guid id, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         await LockUserManagementAsync(write, ct);
         var user = await LockByIdAsync(write, id, ct);

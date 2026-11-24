@@ -5,6 +5,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using OpenERP.Api.Authentication;
+using OpenERP.Api.Persistence;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -94,7 +95,7 @@ public sealed class SqliteAuthenticationStoreTests : IDisposable
     }
 
     private static AccountStore CreateStore(AppDbContext db, DbContextOptions<AppDbContext> options) =>
-        new(db, options, new PasswordHasher<UserAccount>(), TimeProvider.System);
+        new(db, new AccountWriteDbContextFactory(options), new PasswordHasher<UserAccount>(), TimeProvider.System);
 
     private sealed class ConcurrentSaves : SaveChangesInterceptor
     {
