@@ -11,7 +11,9 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.JsonWebTokens;
+using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Authentication;
 
@@ -23,6 +25,7 @@ internal static class AuthenticationEndpoints
     {
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<AccountStore>();
+        services.TryAddScoped<IDbContextFactory<AppDbContext>, AccountWriteDbContextFactory>();
         services.AddSingleton<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
     }
 

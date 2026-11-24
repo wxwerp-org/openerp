@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using OpenERP.Api.Authentication;
+using OpenERP.Api.Persistence;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -155,7 +156,8 @@ public sealed class ShopSyncMigrationTests(AspireIntegrationFixture fixture) : I
         Assert.True(sync.Enabled);
         Assert.Equal([93], sync.ShopSids);
         Assert.Equal("original-token", await ReadScalarAsync("""SELECT "ProtectedAccessToken" FROM "ErpSettings" """, ct));
-        var accounts = new AccountStore(db, CreateOptions(), new PasswordHasher<UserAccount>(), TimeProvider.System);
+        var accounts = new AccountStore(db, new AccountWriteDbContextFactory(CreateOptions()),
+            new PasswordHasher<UserAccount>(), TimeProvider.System);
         var token = Assert.IsType<UserRefreshToken>(await accounts.FindActiveRefreshTokenAsync(new byte[] { 0x12, 0x34 }, ct));
         Assert.Equal("admin", token.User.Username);
         Assert.Equal(token.User.Id, token.UserId);

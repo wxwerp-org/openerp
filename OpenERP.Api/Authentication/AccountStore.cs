@@ -1,13 +1,12 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Authentication;
 
 internal sealed partial class AccountStore(
     AppDbContext db,
-    DbContextOptions<AppDbContext> options,
+    IDbContextFactory<AppDbContext> writes,
     IPasswordHasher<UserAccount> passwords,
     TimeProvider clock)
 {
@@ -17,7 +16,7 @@ internal sealed partial class AccountStore(
 
     internal async Task SeedAsync(CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         var administrators = write.Users.Where(user => user.Username == UserAccount.AdminUsername);
         if (await administrators.AnyAsync(ct))
             return;
@@ -46,7 +45,7 @@ internal sealed partial class AccountStore(
             return false;
 
         var hash = passwords.HashPassword(new UserAccount { Username = UserAccount.AdminUsername }, newPassword);
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         // UPDATE 与登录和 CLI 重置争用同一行，只能在密码仍未设置时写入。
         var updated = await write.Users
             .Where(user => user.Username == UserAccount.AdminUsername && user.PasswordHash == null)
@@ -66,7 +65,7 @@ internal sealed partial class AccountStore(
         if (username is not { Length: >= 1 and <= 20 } || !IsValidPassword(password))
             return null;
 
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var user = await LockByUsernameAsync(write, username, ct);
         if (user is null && username == UserAccount.AdminUsername)
@@ -104,14 +103,14 @@ internal sealed partial class AccountStore(
 
     internal async Task RevokeAsync(byte[] tokenHash, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await MarkRevokedAsync(write.RefreshTokens.Where(token => token.TokenHash == tokenHash), UtcNow(), ct);
     }
 
     internal async Task<PasswordChangeResult> ChangePasswordAsync(
         Guid userId, Guid loginId, string? oldPassword, string newPassword, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var user = await LockByIdAsync(write, userId, ct);
 
@@ -130,7 +129,7 @@ internal sealed partial class AccountStore(
 
     internal async Task<bool> ResetPasswordAsync(string newPassword, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var admin = await LockByUsernameAsync(write, UserAccount.AdminUsername, ct);
         if (admin is null)
@@ -144,7 +143,7 @@ internal sealed partial class AccountStore(
     internal async Task<UserRefreshToken?> UpdateProfileAsync(
         Guid userId, Guid loginId, ProfileChanges changes, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var user = await LockByIdAsync(write, userId, ct);
         if (user?.PasswordHash is null)
@@ -171,15 +170,6 @@ internal sealed partial class AccountStore(
         var now = clock.GetUtcNow();
         return db.RefreshTokens.AsNoTracking().Include(token => token.User)
             .Where(token => token.ExpiresAt > now && token.User.PasswordHash != null);
-    }
-
-    private AppDbContext CreateWriteContext()
-    {
-        // 连接在提交时中断可能已有写入结果，避免自动重放整笔认证事务。
-        var writeOptions = new DbContextOptionsBuilder<AppDbContext>(options)
-            .ReplaceService<IExecutionStrategyFactory, AccountWriteExecutionStrategyFactory>()
-            .Options;
-        return new AppDbContext(writeOptions);
     }
 
     // 登录、改密与重置均先锁账号行，再检查密码或修改会话。
@@ -213,11 +203,6 @@ internal sealed partial class AccountStore(
     {
         var now = clock.GetUtcNow();
         return now.AddTicks(-(now.Ticks % 10));
-    }
-
-    private sealed class AccountWriteExecutionStrategyFactory(ExecutionStrategyDependencies dependencies) : IExecutionStrategyFactory
-    {
-        public IExecutionStrategy Create() => new NonRetryingExecutionStrategy(dependencies);
     }
 }
 
