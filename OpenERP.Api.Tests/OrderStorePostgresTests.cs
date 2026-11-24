@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Persistence;
 using Xunit;
 using Xunit.Sdk;
 
@@ -122,7 +123,8 @@ public sealed class OrderStorePostgresTests(AspireIntegrationFixture fixture) : 
         var cancellationToken = TestContext.Current.CancellationToken;
         await MigrateAsync(cancellationToken);
         var order = CreateOrder("erp-1");
-        order = order with { Lines = [order.Lines[0], order.Lines[1], order.Lines[0]] };
+        // 收入会按分入库，重放同一笔上游金额时也必须保持原行版本。
+        order = order with { IncomeCost = .105m, Lines = [order.Lines[0], order.Lines[1], order.Lines[0]] };
         Assert.Equal(new OrderSaveCounts(1, 0, 0), await SaveAsync([order], cancellationToken));
         var versionsBefore = await ReadRowVersionsAsync(cancellationToken);
         Assert.Equal(6, versionsBefore.Length);
@@ -147,7 +149,7 @@ public sealed class OrderStorePostgresTests(AspireIntegrationFixture fixture) : 
         var ct = TestContext.Current.CancellationToken;
         await MigrateAsync(ct);
         var services = new ServiceCollection();
-        services.AddHybridCache();
+        services.AddOrderFingerprintCache();
         using var provider = useCache ? services.BuildServiceProvider() : null;
         var original = CreateOrder("erp-1");
         Assert.Equal(new OrderSaveCounts(1, 0, 0), await SaveAsync([original], ct, provider));
@@ -196,7 +198,7 @@ public sealed class OrderStorePostgresTests(AspireIntegrationFixture fixture) : 
         await MigrateAsync(cancellationToken);
         var existing = CreateOrder("erp-1");
         var services = new ServiceCollection();
-        services.AddHybridCache();
+        services.AddOrderFingerprintCache();
         using var provider = services.BuildServiceProvider();
         Assert.Equal(new OrderSaveCounts(1, 0, 0), await SaveAsync([existing], cancellationToken, provider));
         var versionsBefore = await ReadRowVersionsAsync(cancellationToken);
@@ -228,7 +230,7 @@ public sealed class OrderStorePostgresTests(AspireIntegrationFixture fixture) : 
         var ct = TestContext.Current.CancellationToken;
         await MigrateAsync(ct);
         var services = new ServiceCollection();
-        services.AddHybridCache();
+        services.AddOrderFingerprintCache();
         using var provider = services.BuildServiceProvider();
         var first = CreateOrder("erp-1");
         var second = CreateOrder("erp-2");
@@ -275,7 +277,7 @@ public sealed class OrderStorePostgresTests(AspireIntegrationFixture fixture) : 
         var ct = TestContext.Current.CancellationToken;
         await MigrateAsync(ct);
         var services = new ServiceCollection();
-        services.AddHybridCache();
+        services.AddOrderFingerprintCache();
         using var provider = services.BuildServiceProvider();
         var orders = Enumerable.Range(0, 257).Select(i => CreateOrder($"erp-{i:D4}")).ToArray();
         await using (var initial = CreateContext())
@@ -304,7 +306,7 @@ public sealed class OrderStorePostgresTests(AspireIntegrationFixture fixture) : 
         var ct = TestContext.Current.CancellationToken;
         await MigrateAsync(ct);
         var services = new ServiceCollection();
-        services.AddHybridCache();
+        services.AddOrderFingerprintCache();
         using var provider = services.BuildServiceProvider();
         var order = CreateOrder("erp-1");
         await using (var first = CreateContext())

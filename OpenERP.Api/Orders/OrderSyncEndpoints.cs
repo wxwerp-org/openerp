@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
+using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Orders;
 
@@ -64,7 +65,7 @@ public static class OrderSyncEndpoints
                     .ToArrayAsync(cancellationToken);
                 return TypedResults.Ok(new OrderSyncShopSelection(shops));
             }
-            catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+            catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
             {
                 return TypedResults.Problem(statusCode: 503, title: "本地店铺数据暂时不可用。");
             }

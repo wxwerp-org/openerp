@@ -7,11 +7,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.HttpResults;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.JsonWebTokens;
-using Npgsql;
+using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Authentication;
 
@@ -24,9 +22,7 @@ internal static class AuthenticationEndpoints
         var services = builder.Services;
         var tokens = new AccessTokens();
         services.AddSingleton(tokens);
-        services.AddSingleton(TimeProvider.System);
-        services.AddScoped<AccountStore>();
-        services.AddSingleton<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
+        services.AddAccountStore();
         services.AddDataProtection().SetApplicationName("OpenERP").PersistKeysToDbContext<AppDbContext>();
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
         {
@@ -95,7 +91,7 @@ internal static class AuthenticationEndpoints
             }
             catch (Exception exception) when (!context.Response.HasStarted &&
                 (exception is AccountStoreUnavailableException ||
-                 IsAccountEndpoint(context) && IsDatabaseFailure(exception)))
+                 IsAccountEndpoint(context) && DatabaseErrors.IsUnavailable(exception)))
             {
                 app.Logger.LogError(exception, "管理员认证数据库暂时不可用。");
                 await Results.Problem("管理员认证暂时不可用，请稍后重试。", statusCode: 503).ExecuteAsync(context);
@@ -115,7 +111,7 @@ internal static class AuthenticationEndpoints
                 {
                     initialized = await store.IsInitializedAsync(context.RequestAborted);
                 }
-                catch (Exception exception) when (IsDatabaseFailure(exception))
+                catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
                 {
                     throw new AccountStoreUnavailableException(exception);
                 }
@@ -283,7 +279,7 @@ internal static class AuthenticationEndpoints
                 ? await store.FindActiveRefreshTokenAsync(loginId, context.HttpContext.RequestAborted)
                 : null;
         }
-        catch (Exception exception) when (IsDatabaseFailure(exception))
+        catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
         {
             throw new AccountStoreUnavailableException(exception);
         }
@@ -301,17 +297,6 @@ internal static class AuthenticationEndpoints
         context.Request.Path.StartsWithSegments("/api/auth") ||
         context.Request.Path.StartsWithSegments("/api/account") ||
         context.Request.Path.StartsWithSegments("/api/users");
-
-    internal static bool IsDatabaseFailure(Exception? exception)
-    {
-        for (var current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is NpgsqlException or DbUpdateException)
-                return true;
-        }
-
-        return false;
-    }
 
     private static UserRefreshToken CurrentLogin(HttpContext context) => context.Features.Get<UserRefreshToken>()!;
 

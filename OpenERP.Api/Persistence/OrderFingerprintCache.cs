@@ -1,11 +1,31 @@
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Hybrid;
+using OpenERP.Api.Orders;
 using StackExchange.Redis;
 
-namespace OpenERP.Api.Orders;
+namespace OpenERP.Api.Persistence;
 
-internal static class OrderFingerprintCache
+internal static class OrderFingerprintCacheRegistration
 {
+    internal static void AddOrderFingerprintCache(this IServiceCollection services)
+    {
+        services.AddHybridCache();
+        services.AddSingleton<IOrderChangeCache, OrderFingerprintCache>();
+    }
+}
+
+internal sealed class OrderFingerprintCache(HybridCache cache, ILogger<OrderFingerprintCache>? logger = null) : IOrderChangeCache
+{
+    private sealed record Page(string Key, IReadOnlyDictionary<string, string> Fingerprints);
+
+    private sealed class ChangeBatch(OrderFingerprintCache owner, IReadOnlyList<OrderSnapshot> candidates,
+        IReadOnlyList<Page> pages) : IOrderChangeBatch
+    {
+        public IReadOnlyList<OrderSnapshot> Candidates => candidates;
+        public Task ConfirmSavedAsync(IReadOnlyDictionary<string, Guid> savedRevisions, CancellationToken ct) =>
+            owner.PublishAsync(pages, savedRevisions, ct);
+    }
+
     // 分块限制单个 Redis 值的大小，一次同步不需要为每张订单往返 Redis。
     private const int PageSize = 256;
     private static readonly HybridCacheEntryOptions ReadOptions = new()
@@ -19,11 +39,8 @@ internal static class OrderFingerprintCache
         LocalCacheExpiration = TimeSpan.FromHours(2)
     };
 
-    internal sealed record Page(string Key, Dictionary<string, string> Fingerprints);
-
-    internal static async Task<(IReadOnlyList<OrderSnapshot> Candidates, List<Page> Pages)> FindChangesAsync(
-        HybridCache cache, IReadOnlyList<OrderSnapshot> orders, Dictionary<string, Guid> revisions,
-        ILogger? logger, CancellationToken ct)
+    public async Task<IOrderChangeBatch> FindChangesAsync(
+        IReadOnlyList<OrderSnapshot> orders, IReadOnlyDictionary<string, Guid> revisions, CancellationToken ct)
     {
         List<OrderSnapshot> candidates = [];
         List<Page> pages = [];
@@ -83,11 +100,10 @@ internal static class OrderFingerprintCache
             }
         }
 
-        return (candidates, pages);
+        return new ChangeBatch(this, candidates, pages);
     }
 
-    internal static async Task PublishAsync(HybridCache cache, List<Page> pages, Dictionary<string, Guid> revisions,
-        ILogger? logger, CancellationToken ct)
+    private async Task PublishAsync(IReadOnlyList<Page> pages, IReadOnlyDictionary<string, Guid> revisions, CancellationToken ct)
     {
         foreach (var page in pages)
         {

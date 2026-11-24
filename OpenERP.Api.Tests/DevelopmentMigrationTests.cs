@@ -1,3 +1,4 @@
+using OpenERP.Api.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -25,9 +26,9 @@ public sealed class DevelopmentMigrationTests(AspireIntegrationFixture fixture)
                 await db.GetService<IRelationalDatabaseCreator>().CreateAsync(ct);
 
             // When 首次启动并在同一数据库上再次启动。
-            await db.MigrateDevelopmentDatabaseAsync(ct);
+            await PostgresDatabase.MigrateAsync(db, ct);
             var first = (await db.Database.GetAppliedMigrationsAsync(ct)).ToArray();
-            await db.MigrateDevelopmentDatabaseAsync(ct);
+            await PostgresDatabase.MigrateAsync(db, ct);
 
             // Then 全部迁移只登记一次，期间没有执行失败的数据库命令。
             Assert.NotEmpty(first);
@@ -54,7 +55,7 @@ public sealed class DevelopmentMigrationTests(AspireIntegrationFixture fixture)
             await db.Database.EnsureCreatedAsync(ct);
 
             // When 开发环境尝试应用初始迁移。Then 原始表冲突向上传播并记录失败命令。
-            var error = await Assert.ThrowsAsync<PostgresException>(() => db.MigrateDevelopmentDatabaseAsync(ct));
+            var error = await Assert.ThrowsAsync<PostgresException>(() => PostgresDatabase.MigrateAsync(db, ct));
             Assert.Equal(PostgresErrorCodes.DuplicateTable, error.SqlState);
             Assert.Contains(failures, command => command.Contains("CREATE TABLE", StringComparison.Ordinal));
             Assert.Empty(await db.Database.GetAppliedMigrationsAsync(ct));

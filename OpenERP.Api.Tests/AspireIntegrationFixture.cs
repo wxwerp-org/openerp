@@ -114,7 +114,7 @@ public sealed class AspireIntegrationFixture : IAsyncLifetime
         // 在测试输出目录直接执行 API，使用与该目录实际复制的程序集相匹配的依赖清单。
         var api = appHost.Resources.OfType<DotnetProjectResource>().Single(resource => resource.Name == "api");
         var depsFile = Path.ChangeExtension(typeof(AspireIntegrationFixture).Assembly.Location, "deps.json");
-        var apiAssembly = typeof(OpenERP.Api.FileStore).Assembly.Location;
+        var apiAssembly = typeof(OpenERP.Api.IFileStore).Assembly.Location;
         var apiBuilder = appHost.CreateResourceBuilder(api)
             .WithBuildEnvironment(context =>
             {

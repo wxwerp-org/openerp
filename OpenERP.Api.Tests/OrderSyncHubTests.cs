@@ -13,6 +13,7 @@ using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using OpResult;
+using OpenERP.Api.Persistence;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -511,6 +512,7 @@ public sealed class OrderSyncHubTests
         if (connectionString is not null)
         {
             builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+            builder.Services.AddPostgresPersistence();
             builder.AddAccountAuthentication();
         }
         else

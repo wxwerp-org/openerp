@@ -1,3 +1,4 @@
+using System.Globalization;
 using Mapster;
 using Microsoft.EntityFrameworkCore;
 using OpResult;
@@ -97,6 +98,18 @@ public sealed class ShopSyncOptions
     public int IntervalMinutes { get; set; } = DefaultIntervalMinutes;
 
     public int InitialDelaySeconds { get; set; } = 5;
+}
+
+/// <summary>在调用方可见的本地店铺中，按编号或名称原文查找。</summary>
+internal interface IShopDirectorySearch
+{
+    IQueryable<Shop> Filter(IQueryable<Shop> visibleShops, ShopKeyword keyword);
+}
+
+internal sealed class ShopKeyword(string text)
+{
+    public string Text { get; } = text;
+    public int? Sid { get; } = int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var sid) ? sid : null;
 }
 
 /// <summary>读取同步状态：运行中取内存进度，空闲时取数据库最近一次结果。</summary>

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpenERP.Api.Authentication;
+using OpenERP.Api.Persistence;
 using OpenERP.Core.Reports;
 
 namespace OpenERP.Api.Reports;
@@ -55,7 +56,7 @@ public static class OrderReportEndpoints
                         return TypedResults.Problem(statusCode: 403, title: "无权查看所选店铺。");
                     request = request with { AllowedShops = allowed };
                 }
-                catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+                catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
                 {
                     return TypedResults.Problem(statusCode: 503, title: "读取本地订单失败，请重试。");
                 }

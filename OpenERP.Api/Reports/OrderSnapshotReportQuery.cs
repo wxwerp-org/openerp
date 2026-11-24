@@ -1,29 +1,18 @@
-using System.Data;
-using System.Data.Common;
 using System.Globalization;
 using Mapster;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using OpResult;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Persistence;
 using OpenERP.Core.Orders;
 using OpenERP.Core.Reports;
 
 namespace OpenERP.Api.Reports;
 
 /// <summary>从现有本地订单存储读取快照报表。</summary>
-public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock,
+internal sealed class OrderSnapshotReportQuery(AppDbContext db, IOrderReadSource source, TimeProvider clock,
     ILogger<OrderSnapshotReportQuery>? logger = null) : IOrderSnapshotReportQuery
 {
-    private static readonly string CreatedDaysSql = $$"""
-        SELECT o."ErpId", parsed.created_at::date - DATE '0001-01-01' AS "DayNumber"
-        FROM "Orders" AS o
-        CROSS JOIN LATERAL (VALUES (btrim(o."CreatedRaw"))) AS source(created)
-        CROSS JOIN LATERAL (VALUES ({{OrderCreatedTimeSql.Normalize("source.created")}})) AS normalized(created)
-        CROSS JOIN LATERAL (SELECT {{OrderCreatedTimeSql.Parse("source.created", "normalized.created")}} AS created_at) AS parsed
-        WHERE o."DeletedAt" IS NULL
-        """;
-
     public async Task<OpResult<OrderSnapshotReport>> QueryAsync(OrderSnapshotReportRequest request, CancellationToken cancellationToken)
     {
         var generatedAt = clock.GetUtcNow().UtcDateTime;
@@ -36,16 +25,11 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
         try
         {
             // 同步可能在查询期间替换商品行；同一事务保证汇总、选项和明细来自同一快照。
-            // 将事务放入既有执行策略内，兼容 Aspire/Npgsql 配置的瞬时故障重试。
-            return await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
-            {
-                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
-                var report = await ReadAsync(request, generatedAt, trendEnd, cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-                return OpResults.Ok(report);
-            });
+            var report = await source.ReadSnapshotAsync(
+                () => ReadAsync(request, generatedAt, trendEnd, cancellationToken), cancellationToken);
+            return OpResults.Ok(report);
         }
-        catch (Exception exception) when (exception is DbException or RetryLimitExceededException)
+        catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
         {
             logger?.LogError(exception, "读取本地订单商品量快照失败。");
             return OpResults.Err("读取本地订单失败，请重试。");
@@ -128,17 +112,17 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
 
     private IQueryable<AmountBucket> QueryAmountBuckets(IQueryable<OrderRecord> selected, int previousFirst, int lastDay)
     {
-        var createdDays = db.Database.SqlQueryRaw<OrderCreatedDay>(CreatedDaysSql, OrderCreatedTimeSql.Parameters());
         return (from order in selected
-                    join created in createdDays on order.ErpId equals created.ErpId
+                    join header in source.ReadHeaders() on order.ErpId equals header.ErpId
+                    let day = header.CreatedDate.HasValue ? (int?)header.CreatedDate.Value.DayNumber : null
                     select new
                     {
                         // 窗口外按前后汇总，供销售额和历史判定使用。
-                        Day = created.DayNumber < previousFirst ? previousFirst - 1
-                            : created.DayNumber > lastDay ? lastDay + 1 : created.DayNumber,
+                        Day = day < previousFirst ? previousFirst - 1
+                            : day > lastDay ? lastDay + 1 : day,
                         Currency = order.IncomeCost != null ? order.IncomeCurrency : null,
                         order.IncomeCost,
-                        Quantity = created.DayNumber >= previousFirst && created.DayNumber <= lastDay
+                        Quantity = day >= previousFirst && day <= lastDay
                             ? order.Lines.Sum(line => (long)line.Quantity) : 0L
                     })
             .GroupBy(row => new { row.Day, row.Currency })
@@ -175,8 +159,6 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
     private static string FormatDay(int day) => day < 0
         ? FormattableString.Invariant($"0000-12-{32 + day:00}")
         : DateOnly.FromDayNumber(day).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-    private sealed record OrderCreatedDay(string ErpId, int? DayNumber);
 
     private sealed record AmountBucket(int? Day, string? Currency, long OrderCount, long KnownCount,
         long ItemQuantity, decimal Amount);

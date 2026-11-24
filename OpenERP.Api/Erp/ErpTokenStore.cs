@@ -1,8 +1,7 @@
-using System.Data.Common;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
+using OpenERP.Api.Persistence;
 using OpResult;
 
 namespace OpenERP.Api.Erp;
@@ -55,10 +54,9 @@ internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider pro
         }
     }
 
-    // Npgsql 未启用重试时会包装瞬时连接错误，重试耗尽时则由 EF Core 包装。
+    // 读取令牌时，连接超时也可能被包装为 InvalidOperationException。
     private static bool IsDatabaseReadFailure(Exception exception) =>
-        exception is DbException or RetryLimitExceededException
-            or InvalidOperationException { InnerException: DbException or TimeoutException };
+        DatabaseErrors.IsUnavailable(exception) || exception is InvalidOperationException { InnerException: TimeoutException };
 
     public async Task<OpResult.OpResult> SaveAsync(string accessToken, CancellationToken cancellationToken)
     {
@@ -72,7 +70,7 @@ internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider pro
                 SET "ProtectedAccessToken" = EXCLUDED."ProtectedAccessToken", "DeletedAt" = NULL
                 """, cancellationToken);
         }
-        catch (Exception exception) when (exception is DbException or CryptographicException)
+        catch (Exception exception) when (exception is CryptographicException || DatabaseErrors.IsUnavailable(exception))
         {
             return OpResults.Err("保存 ERP AccessToken 失败，请重试。");
         }

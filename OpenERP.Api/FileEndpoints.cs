@@ -1,5 +1,3 @@
-using System.Net;
-using Amazon.S3;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,63 +14,61 @@ public static class FileEndpoints
             {
                 return await next(context);
             }
-            catch (AmazonS3Exception exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+            catch (FileNotFoundException)
             {
                 return TypedResults.NotFound();
             }
-            catch (AmazonS3Exception exception)
+            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
             {
                 app.Logger.LogError(exception, "File storage request failed");
                 return TypedResults.Problem("文件存储暂时不可用，请稍后重试。", statusCode: 503);
             }
         });
 
-        files.MapGet("/", async (FileStore store, CancellationToken ct) =>
+        files.MapGet("/", async (IFileStore store, CancellationToken ct) =>
             TypedResults.Ok(await store.ListAsync(ct)));
 
         files.MapPost("/", async Task<Results<Created<StoredFile>, ValidationProblem>> (
-            IFormFile file, FileStore store, CancellationToken ct) =>
+            IFormFile file, IFileStore store, CancellationToken ct) =>
         {
             var name = Path.GetFileName(file.FileName.Replace('\\', '/'));
-            var contentType = FileStore.ContentType(name);
+            var contentType = StoredFile.GetContentType(name);
             if (name.Length is 0 or > 200 || name.Any(char.IsControl) || contentType is null)
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
                     ["file"] = ["请选择图片（JPG、PNG、GIF、WebP）、PDF 或 Excel（XLS、XLSX），文件名不超过 200 个字符。"]
                 });
-            if (file.Length is <= 0 or > FileStore.MaxFileSize)
+            if (file.Length is <= 0 or > StoredFile.MaxFileSize)
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
                     ["file"] = ["文件不能为空，且不能超过 20 MiB。"]
                 });
 
-            var result = await store.UploadAsync(file, name, contentType, ct);
+            await using var input = file.OpenReadStream();
+            var result = await store.UploadAsync(input, name, contentType, file.Length, ct);
             return TypedResults.Created($"/api/files/{Uri.EscapeDataString(result.Key)}", result);
         })
-        .WithMetadata(new RequestSizeLimitAttribute(FileStore.MaxFileSize + 1024 * 1024))
+        .WithMetadata(new RequestSizeLimitAttribute(StoredFile.MaxFileSize + 1024 * 1024))
         .DisableAntiforgery();
 
         files.MapGet("/{key}", async Task<Results<PushStreamHttpResult, NotFound>> (
-            string key, bool? download, FileStore store, HttpContext context, CancellationToken ct) =>
+            string key, bool? download, IFileStore store, HttpContext context, CancellationToken ct) =>
         {
-            if (!FileStore.IsValidKey(key)) return TypedResults.NotFound();
             var response = await store.OpenAsync(key, ct);
+            context.Response.RegisterForDispose(response);
             context.Response.Headers.CacheControl = "no-store";
             context.Response.Headers.XContentTypeOptions = "nosniff";
-            context.Response.ContentLength = response.ContentLength;
-            var type = FileStore.ContentType(key)!;
+            context.Response.ContentLength = response.File.Size;
+            var type = response.File.ContentType;
             var attachment = download == true || type.StartsWith("application/vnd.", StringComparison.Ordinal);
-            return TypedResults.Stream(async output =>
-            {
-                using (response)
-                    await response.ResponseStream.CopyToAsync(output, ct);
-            }, type, attachment ? key[33..] : null);
+            return TypedResults.Stream(output => response.Content.CopyToAsync(output, ct),
+                type, attachment ? response.File.FileName : null);
         });
 
         files.MapDelete("/{key}", async Task<Results<NoContent, NotFound>> (
-            string key, FileStore store, CancellationToken ct) =>
+            string key, IFileStore store, CancellationToken ct) =>
         {
-            if (!FileStore.IsValidKey(key)) return TypedResults.NotFound();
+            if (!StoredFile.IsValidKey(key)) return TypedResults.NotFound();
             await store.DeleteAsync(key, ct);
             return TypedResults.NoContent();
         });

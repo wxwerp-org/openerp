@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Persistence;
 using Xunit;
 using Xunit.Sdk;
 
@@ -60,7 +61,7 @@ public sealed class OrderStoreRedisTests(AspireIntegrationFixture fixture)
         var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { DisableDefaults = true });
         builder.Configuration["ConnectionStrings:redis"] = redis;
         builder.AddRedisDistributedCache("redis");
-        builder.Services.AddHybridCache();
+        builder.Services.AddOrderFingerprintCache();
         using var host = builder.Build();
         var store = ActivatorUtilities.CreateInstance<OrderStore>(host.Services, db);
         var result = await store.SaveAsync([order], cancellationToken);

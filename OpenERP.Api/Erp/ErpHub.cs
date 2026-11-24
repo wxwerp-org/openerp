@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Erp;
 
@@ -108,7 +109,7 @@ public sealed class ErpHub(
                 if (!await access.AllowsAsync(db, OrderPlatform, sid, ct))
                     return new(false, null, "无权同步该店铺。");
             }
-            catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+            catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
             {
                 return new(false, null, "本地店铺数据暂时不可用。");
             }
@@ -156,7 +157,7 @@ public sealed class ErpHub(
                 .Select(shop => shop.Sid)
                 .ToArrayAsync(ct);
         }
-        catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+        catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
         {
             return new(false, 0, 0, "本地店铺数据暂时不可用。");
         }
@@ -209,7 +210,7 @@ public sealed class ErpHub(
             var store = scope.ServiceProvider.GetRequiredService<AccountStore>();
             return await store.FindActiveRefreshTokenAsync(loginId, cancellationToken) is not null;
         }
-        catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+        catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
         {
             throw new HubException("登录会话暂时无法校验，请稍后重试。");
         }

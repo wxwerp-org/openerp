@@ -11,6 +11,7 @@ using OpResult;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Persistence;
 using OpenERP.Api.Reports;
 using OpenERP.Core.Orders;
 using OpenERP.Core.Reports;
@@ -134,11 +135,16 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         Assert.Equal(0, platformBody.GetProperty("summary").GetProperty("invalid").GetInt32());
         Assert.Equal(1, platformBody.GetProperty("summary").GetProperty("unknown").GetInt32());
 
-        // When 按关键词匹配店名。
-        using var nameResponse = await app.Http.GetAsync("/api/erp/shops?keyword=Alpha", ct);
+        // When 查询包含通配符和反斜线的店名片段，大小写不影响匹配。
+        await using var db = CreateDbContext();
+        await db.Shops.Where(shop => shop.Sid == 42).ExecuteUpdateAsync(
+            update => update.SetProperty(shop => shop.Name, @"Alpha_%\店"), ct);
+        await db.Shops.Where(shop => shop.Sid == 9).ExecuteUpdateAsync(
+            update => update.SetProperty(shop => shop.Name, @"AlphaXX\店"), ct);
+        using var nameResponse = await app.Http.GetAsync("/api/erp/shops?keyword=" + Uri.EscapeDataString(@"alpha_%\"), ct);
         var nameBody = await nameResponse.Content.ReadFromJsonAsync<JsonElement>(ct);
         Assert.Equal(1, nameBody.GetProperty("totalCount").GetInt32());
-        Assert.Equal("Alpha 店", Assert.Single(nameBody.GetProperty("items").EnumerateArray())
+        Assert.Equal(@"Alpha_%\店", Assert.Single(nameBody.GetProperty("items").EnumerateArray())
             .GetProperty("name").GetString());
 
         // When 按 SID 匹配。
@@ -621,6 +627,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
+        builder.Services.AddPostgresPersistence();
         builder.Services.AddSingleton<IErpClient>(erp ?? new TestErpClient());
         builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
         builder.Services.AddSingleton(job ?? new FakeShopSyncJob());

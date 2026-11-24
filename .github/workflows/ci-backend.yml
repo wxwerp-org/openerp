@@ -93,3 +93,37 @@ jobs:
           path: test-results/backend
           if-no-files-found: error
           retention-days: 7
+
+  windows-native:
+    name: Windows 原生启动和发布
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      # 即使托管机预装了 Docker，测试也无法连接该引擎。
+      DOCKER_HOST: tcp://127.0.0.1:1
+      NODE_USE_SYSTEM_CA: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-dotnet@v6.1.0
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@v6.1.1
+        with:
+          package_json_file: OpenERP.Web/package.json
+      - run: dotnet tool install --global Aspire.Cli --version ((Get-Content .config/dotnet-tools.json -Raw | ConvertFrom-Json).tools.'aspire.cli'.version)
+      - name: Trust the localhost certificate on the ephemeral Windows runner
+        run: |
+          dotnet dev-certs https --export-path "$env:RUNNER_TEMP/openerp-ci.pem" --format PEM
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          certutil -addstore Root "$env:RUNNER_TEMP/openerp-ci.pem"
+      - name: Start the native AppHost and wait for the app
+        run: |
+          aspire start --isolated --launch-profile native --non-interactive
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          aspire wait web --timeout 180 --non-interactive
+      - run: aspire stop --non-interactive
+      - name: Publish the Windows app
+        run: dotnet publish OpenERP.Api -c Release -r win-x64 -p:RestoreLockedMode=true -p:PublishProfile=NativeLocal -o "${{ runner.temp }}/openerp-published"

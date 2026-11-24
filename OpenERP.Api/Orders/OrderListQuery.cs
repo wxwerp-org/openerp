@@ -1,54 +1,31 @@
-using System.ComponentModel.DataAnnotations.Schema;
-using System.Data;
-using System.Data.Common;
 using System.Globalization;
 
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 
 using OpResult;
 using OpenERP.Api.Authentication;
+using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Orders;
 
-internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> logger)
+internal sealed class OrderListQuery(AppDbContext db, IOrderReadSource source, ILogger<OrderListQuery> logger)
 {
-    private static readonly string OrderHeadersSql = $$"""
-        SELECT o."ErpId", o."Sid", o."Platform",
-               parsed.created_at AS "CreatedAt", parsed.created_at::date AS "CreatedDate",
-               parsed.dispatched_at AS "DispatchedAt",
-               source.created AS "CreatedRaw", source.dispatched AS "DispatchedRaw"
-        FROM "Orders" AS o
-        CROSS JOIN LATERAL (VALUES (btrim(o."CreatedRaw"), btrim(o."DispatchedRaw"))) AS source(created, dispatched)
-        CROSS JOIN LATERAL (VALUES (
-            {{OrderCreatedTimeSql.Normalize("source.created")}},
-            {{OrderCreatedTimeSql.Normalize("source.dispatched")}}
-        )) AS normalized(created, dispatched)
-        CROSS JOIN LATERAL (
-            SELECT {{OrderCreatedTimeSql.Parse("source.created", "normalized.created")}} AS created_at,
-                   {{OrderCreatedTimeSql.Parse("source.dispatched", "normalized.dispatched")}} AS dispatched_at
-        ) AS parsed
-        WHERE o."DeletedAt" IS NULL
-        """;
-
     internal async Task<(OpResult<OrderListResponse> Result, int Status)> ReadAsync(
         OrderListRequest request, ShopAccess access, CancellationToken ct)
     {
         try
         {
             // 订单同步可能同时改变行和子单；选项、总数与明细来自同一个数据库快照。
-            return await db.Database.CreateExecutionStrategy().ExecuteAsync<(OpResult<OrderListResponse>, int)>(async () =>
+            return await source.ReadSnapshotAsync<(OpResult<OrderListResponse>, int)>(async () =>
             {
-                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
                 var platform = string.IsNullOrEmpty(request.Platform) ? null : request.Platform;
                 if (request.ShopSid is { } sid && !await access.AllowsAsync(db, platform, sid, ct))
                     return (OpResults.Err("无权查看该店铺。"), StatusCodes.Status403Forbidden);
                 var response = await ReadSnapshotAsync(request, access, ct);
-                await transaction.CommitAsync(ct);
                 return (OpResults.Ok(response), StatusCodes.Status200OK);
-            });
+            }, ct);
         }
-        catch (Exception exception) when (exception is DbException or RetryLimitExceededException)
+        catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
         {
             logger.LogError(exception, "读取本地订单列表失败。");
             return (OpResults.Err("读取本地订单失败，请重试。"), StatusCodes.Status503ServiceUnavailable);
@@ -60,7 +37,7 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         var orders = access.Orders(db).AsNoTracking();
         var directory = access.Shops(db).AsNoTracking();
         var childOrders = db.Set<PlatformOrderRecord>().AsNoTracking();
-        var selected = ReadHeaders();
+        var selected = source.ReadHeaders();
         if (!access.IsAdministrator)
         {
             // 目录上的 SID 可能对应另一个平台，历史订单只使用同平台的店铺名称。
@@ -141,9 +118,6 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         return new(items, total, page, request.PageSize, options);
     }
 
-    private IQueryable<OrderListHeader> ReadHeaders() =>
-        db.Database.SqlQueryRaw<OrderListHeader>(OrderHeadersSql, OrderCreatedTimeSql.Parameters());
-
     private static string? FormatTime(DateTime? value, string? source)
     {
         if (value is not { } time || source is null)
@@ -155,10 +129,4 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         var date = time.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         return source.Length > 10 ? date + "T" + source[11..] : date;
     }
-
-    private sealed record OrderListHeader(string ErpId, int Sid, string Platform,
-        [property: Column(TypeName = "timestamp without time zone")] DateTime? CreatedAt,
-        DateOnly? CreatedDate,
-        [property: Column(TypeName = "timestamp without time zone")] DateTime? DispatchedAt,
-        string? CreatedRaw, string? DispatchedRaw);
 }

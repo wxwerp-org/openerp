@@ -1,13 +1,12 @@
 using Mapster;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Hybrid;
 using OpResult;
 
 namespace OpenERP.Api.Orders;
 
 public sealed record OrderSaveCounts(int Added, int Updated, int Unchanged);
 
-public sealed class OrderStore(AppDbContext db, HybridCache? cache = null, ILogger<OrderStore>? logger = null)
+public sealed class OrderStore(AppDbContext db, IOrderChangeCache? cache = null)
 {
     private static readonly TypeAdapterConfig SnapshotMapping = CreateSnapshotMapping();
 
@@ -16,10 +15,13 @@ public sealed class OrderStore(AppDbContext db, HybridCache? cache = null, ILogg
         if (orders.Count == 0)
             return new OrderSaveCounts(0, 0, 0);
 
+        // 订单收入按分保存，重放比较与写入使用同一个金额。
+        if (!TryNormalizeIncome(orders, out orders))
+            return OpResults.Err("保存订单失败，收入金额超出可保存的范围。");
+
         var ids = orders.Select(order => order.ErpId).ToArray();
         Dictionary<string, Guid> revisions = [];
-        IReadOnlyList<OrderSnapshot> candidates = orders;
-        List<OrderFingerprintCache.Page> pages = [];
+        IOrderChangeBatch? changes = null;
         if (cache is not null)
         {
             var storedOrders = await db.Orders.IgnoreQueryFilters()
@@ -28,9 +30,8 @@ public sealed class OrderStore(AppDbContext db, HybridCache? cache = null, ILogg
                 .ToDictionaryAsync(order => order.ErpId, cancellationToken);
             revisions = storedOrders.Values.Where(order => !order.IsDeleted)
                 .ToDictionary(order => order.ErpId, order => order.SyncRevision);
-            (candidates, pages) = await OrderFingerprintCache.FindChangesAsync(
-                cache, orders, revisions, logger, cancellationToken);
-            ids = candidates.Select(order => order.ErpId).Where(storedOrders.ContainsKey).ToArray();
+            changes = await cache.FindChangesAsync(orders, revisions, cancellationToken);
+            ids = changes.Candidates.Select(order => order.ErpId).Where(storedOrders.ContainsKey).ToArray();
         }
 
         var existingOrders = ids.Length == 0 ? [] : await db.Orders
@@ -44,7 +45,7 @@ public sealed class OrderStore(AppDbContext db, HybridCache? cache = null, ILogg
         var added = 0;
         var updated = 0;
         var deletedAt = DateTimeOffset.UtcNow;
-        foreach (var order in candidates)
+        foreach (var order in changes?.Candidates ?? orders)
         {
             var desired = CreateRecord(order);
             if (!existingOrders.TryGetValue(order.ErpId, out var existing))
@@ -85,10 +86,32 @@ public sealed class OrderStore(AppDbContext db, HybridCache? cache = null, ILogg
             }
         }
 
-        if (cache is not null)
-            await OrderFingerprintCache.PublishAsync(cache, pages, revisions, logger, cancellationToken);
+        if (changes is not null)
+            await changes.ConfirmSavedAsync(revisions, cancellationToken);
 
         return new OrderSaveCounts(added, updated, orders.Count - added - updated);
+    }
+
+    private static bool TryNormalizeIncome(IReadOnlyList<OrderSnapshot> source, out IReadOnlyList<OrderSnapshot> normalized)
+    {
+        normalized = source;
+        OrderSnapshot[]? changed = null;
+        for (var i = 0; i < source.Count; i++)
+        {
+            if (source[i].IncomeCost is not { } amount)
+                continue;
+            var rounded = decimal.Round(amount, 2, MidpointRounding.AwayFromZero);
+            if (rounded is > 9999999999999999.99m or < -9999999999999999.99m)
+                return false;
+            if (rounded != amount)
+            {
+                changed ??= source.ToArray();
+                changed[i] = source[i] with { IncomeCost = rounded };
+            }
+        }
+
+        normalized = changed ?? source;
+        return true;
     }
 
     private bool ApplyValues<TEntity>(TEntity existing, TEntity desired) where TEntity : Entity

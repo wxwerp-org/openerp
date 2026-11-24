@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OpenERP.Api.Authentication;
+using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Erp;
 
@@ -29,6 +30,7 @@ public static class ShopDirectoryEndpoints
     private static async Task<Results<Ok<ShopDirectoryPage>, Ok<EmployeeShopDirectoryPage>, ProblemHttpResult>>
         GetShopsAsync(
             [FromServices] AppDbContext db,
+            [FromServices] IShopDirectorySearch search,
             ClaimsPrincipal user,
             HttpRequest request,
             CancellationToken cancellationToken)
@@ -73,12 +75,7 @@ public static class ShopDirectoryEndpoints
             if (normalizedPlatform is not null)
                 query = query.Where(shop => shop.Platform == normalizedPlatform);
             if (normalizedKeyword is not null)
-            {
-                var pattern = $"%{EscapeLike(normalizedKeyword)}%";
-                query = int.TryParse(normalizedKeyword, NumberStyles.None, CultureInfo.InvariantCulture, out var sid)
-                    ? query.Where(shop => shop.Sid == sid || EF.Functions.ILike(shop.Name, pattern, "\\"))
-                    : query.Where(shop => EF.Functions.ILike(shop.Name, pattern, "\\"));
-            }
+                query = search.Filter(query, new ShopKeyword(normalizedKeyword));
 
             // 员工仅查看分配店铺的状态，不读取全局汇总与同步状态。
             if (!access.IsAdministrator)
@@ -124,7 +121,7 @@ public static class ShopDirectoryEndpoints
             return TypedResults.Ok(new ShopDirectoryPage(
                 items, currentPage, currentPageSize, totalCount, pageCount, summary));
         }
-        catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+        catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
         {
             return TypedResults.Problem("本地店铺数据暂时不可用。", statusCode: 503);
         }
@@ -178,7 +175,7 @@ public static class ShopDirectoryEndpoints
 
             return TypedResults.Ok(new PlatformCatalog(items));
         }
-        catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+        catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
         {
             return TypedResults.Problem("本地店铺数据暂时不可用。", statusCode: 503);
         }
@@ -193,7 +190,7 @@ public static class ShopDirectoryEndpoints
         {
             return TypedResults.Ok(await ShopSyncStatusQueries.ReadAsync(job, db, cancellationToken));
         }
-        catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+        catch (Exception exception) when (DatabaseErrors.IsUnavailable(exception))
         {
             return TypedResults.Problem("本地同步状态暂时不可用。", statusCode: 503);
         }
@@ -224,11 +221,6 @@ public static class ShopDirectoryEndpoints
         config.NewConfig<ShopPlatform, ErpPlatform>().MapToConstructor(true);
         return config;
     }
-
-    private static string EscapeLike(string value) =>
-        value.Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("%", "\\%", StringComparison.Ordinal)
-            .Replace("_", "\\_", StringComparison.Ordinal);
 
     private enum ShopStatusFilter
     {

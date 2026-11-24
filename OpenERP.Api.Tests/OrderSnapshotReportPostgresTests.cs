@@ -6,6 +6,7 @@ using Npgsql;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Persistence;
 using OpenERP.Api.Reports;
 using OpenERP.Core.Orders;
 using OpenERP.Core.Reports;
@@ -197,7 +198,7 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
             .UseNpgsql(_connection, options => options.EnableRetryOnFailure()).AddInterceptors(interceptor).Options);
 
         // When 并发更新后读取明细、销售额与走势；Then 当前报表保持旧快照，下次查询才反映新值。
-        var result = await new OrderSnapshotReportQuery(reader, new FixedClock()).QueryAsync(new(null, []), TestContext.Current.CancellationToken);
+        var result = await new OrderSnapshotReportQuery(reader, new PostgresOrderReadSource(reader), new FixedClock()).QueryAsync(new(null, []), TestContext.Current.CancellationToken);
         if (result.IsErr) throw new XunitException(result.Error.Message);
         Assert.True(changed, "必须实际触发并发更新，才能证明查询一致性。");
         Assert.Equal(16, result.Value.Summary.ItemQuantity);
@@ -231,7 +232,7 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
         // Given 测试数据库的订单存储不可用；When 查询；Then 返回错误，不冒充无订单。
         await using var db = Context();
         await db.Database.ExecuteSqlRawAsync("DROP TABLE \"OrderLines\"", TestContext.Current.CancellationToken);
-        var result = await new OrderSnapshotReportQuery(db, new FixedClock()).QueryAsync(new(null, []), TestContext.Current.CancellationToken);
+        var result = await new OrderSnapshotReportQuery(db, new PostgresOrderReadSource(db), new FixedClock()).QueryAsync(new(null, []), TestContext.Current.CancellationToken);
         if (!result.IsErr) throw new XunitException("存储不可用时必须返回读取失败。");
         Assert.Equal("读取本地订单失败，请重试。", result.Error.Message);
     }
@@ -260,7 +261,7 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
         var end = new DateOnly(2026, 11, 17);
         var start = end.AddDays(-6);
         await using var db = Context();
-        var list = await new OrderListQuery(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<OrderListQuery>.Instance)
+        var list = await new OrderListQuery(db, new PostgresOrderReadSource(db), Microsoft.Extensions.Logging.Abstractions.NullLogger<OrderListQuery>.Instance)
             .ReadAsync(new(null, null, null, null, start, end, 1, 20), AdministratorAccess(),
                 TestContext.Current.CancellationToken);
 
@@ -450,7 +451,7 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
     private async Task<OrderSnapshotReport> QueryAsync(OrderSnapshotReportRequest request)
     {
         await using var db = Context();
-        var result = await new OrderSnapshotReportQuery(db, new FixedClock()).QueryAsync(request, TestContext.Current.CancellationToken);
+        var result = await new OrderSnapshotReportQuery(db, new PostgresOrderReadSource(db), new FixedClock()).QueryAsync(request, TestContext.Current.CancellationToken);
         if (result.IsErr) throw new XunitException(result.Error.Message);
         return result.Value;
     }

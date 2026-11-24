@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 using OpenERP.Api.Authentication;
+using OpenERP.Api.Persistence;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -237,7 +238,7 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
         new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options;
 
     private AccountStore CreateStore(AppDbContext db, TimeProvider clock) =>
-        new(db, CreateOptions(), new PasswordHasher<UserAccount>(), clock);
+        new(db, new PostgresAccountWrites(CreateOptions()), new PasswordHasher<UserAccount>(), clock);
 
     private Task<(int ExitCode, string Output, bool Started)> RunApiAsync(string? password, CancellationToken ct, params string[] args) =>
         RunApiOnDatabaseAsync(_connectionString, password, args, ct);

@@ -1,18 +1,32 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.ValueGeneration;
 using OpenERP.Api.Orders;
 
 namespace OpenERP.Api.Persistence;
 
 internal sealed class OrderConfiguration : EntityConfiguration<OrderRecord>
 {
+    internal static void ConfigurePostgres(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<OrderSyncSettings>().Property(settings => settings.ShopSids).HasColumnType("integer[]");
+        modelBuilder.Entity<OrderRecord>().Property(order => order.SyncRevision).HasDefaultValueSql("gen_random_uuid()");
+    }
+
+    internal static void ConfigureSqlite(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<OrderSyncSettings>().Property(settings => settings.ShopSids).HasColumnType("TEXT");
+        modelBuilder.Entity<OrderRecord>().Property(order => order.SyncRevision)
+            .HasValueGenerator<GuidValueGenerator>().ValueGeneratedOnAdd();
+    }
+
     public override void Configure(EntityTypeBuilder<OrderRecord> builder)
     {
         base.Configure(builder);
         builder.ToTable("Orders");
         builder.HasAlternateKey(order => order.ErpId);
         builder.Property(order => order.IncomeCost).HasPrecision(18, 2);
-        builder.Property(order => order.SyncRevision).IsConcurrencyToken().HasDefaultValueSql("gen_random_uuid()");
+        builder.Property(order => order.SyncRevision).IsConcurrencyToken();
         builder.HasMany(order => order.PlatformOrders).WithOne()
             .HasForeignKey(platformOrder => platformOrder.ErpId).HasPrincipalKey(order => order.ErpId);
         builder.HasMany(order => order.Lines).WithOne()
@@ -46,6 +60,6 @@ internal sealed class OrderSyncSettingsConfiguration : EntityConfiguration<Order
     {
         base.Configure(builder);
         ConfigureSingleton(builder, "OrderSyncSettings");
-        builder.Property(settings => settings.ShopSids).HasColumnType("integer[]").IsRequired();
+        builder.Property(settings => settings.ShopSids).IsRequired();
     }
 }

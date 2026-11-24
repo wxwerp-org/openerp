@@ -13,6 +13,7 @@ using OpResult;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Persistence;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -399,6 +400,7 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
+        builder.Services.AddPostgresPersistence();
         builder.AddAccountAuthentication();
         builder.Services.AddSignalR();
         builder.Services.AddSingleton<IShopSyncJob>(job);
@@ -432,6 +434,7 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
+        builder.Services.AddPostgresPersistence();
         builder.AddAccountAuthentication();
         builder.Services.AddSignalR();
         builder.Services.AddSingleton<IErpClient>(erp);

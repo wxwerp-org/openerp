@@ -10,9 +10,9 @@
 - Node.js **26**，见 [.node-version](../.node-version)。
 - pnpm **11.16.0**，见 [package.json](../OpenERP.Web/package.json)。
 - PATH 中可直接调用的 Aspire CLI，版本与项目的 **17.0.0** 对齐；安装方式见 [Aspire 官方安装说明](https://aspire.dev/get-started/install-cli/)。
-- 已启动的 Docker Desktop 或 Aspire 支持的兼容容器运行环境。
+- 仅团队容器模式需要已启动的 Docker Desktop 或兼容引擎。
 
-在仓库根目录安装依赖并信任开发证书：
+使用团队容器模式时，在仓库根目录安装依赖并信任开发证书。纯本机试用直接见[本机原生运行](#本机原生运行)。
 
 ```bash
 dotnet tool restore
@@ -22,6 +22,31 @@ pnpm --dir OpenERP.Web install --frozen-lockfile
 ```
 
 本文直接调用 PATH 中的 `aspire`。`dotnet tool restore` 还原仓库本地工具（包括 EF Core 工具），不替代 PATH 中 Aspire CLI 的安装。首次信任证书可能需要系统确认，已信任后无需重复操作。
+
+### 本机原生运行
+
+先准备上述源码构建工具。首次运行时用 `aspire certs trust` 信任本机开发证书，再从仓库根目录启动。Aspire 会准备 API 和前端的依赖。
+
+```sh
+aspire start --isolated --launch-profile native
+```
+
+打开 Web 资源的 HTTPS 地址。普通停止用 `aspire stop`，再次用相同的配置打开。原生方式用 SQLite 保存订单、账号及设置，用本机目录保存附件，用进程内缓存保存可重建的缓存内容。开发数据默认位于当前用户的本地应用数据目录下的 `OpenERP/workspaces/`，按源码工作区路径区分。移动或重新克隆源码前记录原数据位置；也可用环境变量 `OpenERP__DataDirectory` 指定绝对路径（例如另一个有空间的本地磁盘）。一个数据目录同一时间只供一个运行实例使用。
+
+原生和容器模式各有自己的数据。备份原生实例时先正常停止应用，再完整复制数据目录，包括数据库和附件。在同一用户下还原时复制到空目录，并显式指定该路径。备份包含订单、附件及账户和 ERP 凭据，只存放在受控位置。正式 Docker 部署仍按[部署说明](deployment.md)操作。
+
+#### 把改好的版本留在本机用
+
+在一份新的输出目录发布当前源码。Windows x64 用以下命令，Linux x64 将 RID 换为 `linux-x64`。前端会和 API 一起构建。
+
+```sh
+pnpm --dir OpenERP.Web install --frozen-lockfile
+dotnet publish OpenERP.Api -c Release -r win-x64 -p:PublishProfile=NativeLocal -o ./out/native-local
+```
+
+保留整个输出目录。在 Windows 运行其中的 `OpenERP.Api.exe`，在 Linux 运行 `OpenERP.Api`，用浏览器打开 `https://localhost:17083`。发布物自带 .NET 运行时和网页。默认复用当前用户的本机 HTTPS 开发证书；如这台电脑尚未完成本机证书信任，请由助手按前面的环境准备进行设置。需要自定义端口或证书时，使用 `Native__Port` 或 `Kestrel__Certificates__Default__Path`（程序目录之外的 PFX 绝对路径），有口令的证书用 `Kestrel__Certificates__Default__Password`。
+
+日用数据默认在当前用户本地应用数据目录下的 `OpenERP/Local`。如需保留试用时的订单和附件，先正常停止开发实例，再把完整的原生数据目录复制到新的日用数据目录。也可用 `Native__DataDirectory` 明确指定日用目录。以后更新时先停程序并备份日用数据，运行新发布物时沿用这个目录和端口。只有需要让其他人通过网络访问时，才按[部署说明](deployment.md)配置团队站点。
 
 ### 启动与停止
 
@@ -70,6 +95,13 @@ pnpm --dir OpenERP.Web test
 ```
 
 API 的版本信息在构建时注入：`OPENERP_BUILD_VERSION`、`OPENERP_BUILD_COMMIT`、`OPENERP_BUILD_TIME` 三个环境变量由[发布工作流](../.github/workflows/release.yml)在构建 API 前导出，分别写入 `AssemblyInformationalVersion` 与程序集元数据；本地未设置时兜底 `0.1.0-dev`。只读接口 `GET /api/about` 匿名返回 `version`、`commit`（7 位）和 `buildTime`（UTC ISO 8601），前端缺失时显示 `dev`。
+
+修改共享实体模型时，分别为 PostgreSQL 的 `AppDbContext` 和 SQLite 的 `SqliteAppDbContext` 生成迁移。在 `OpenERP.Api` 目录运行下面两条命令，将 `ChangeName` 换成本次变更名，并检查两份迁移。[EF Core 多提供程序迁移指南](https://learn.microsoft.com/ef/core/managing-schemas/migrations/providers)
+
+```sh
+dotnet ef migrations add ChangeName --context AppDbContext --output-dir Migrations
+dotnet ef migrations add ChangeName --context SqliteAppDbContext --output-dir Migrations/Sqlite
+```
 
 ### 后端集成测试资源与失败诊断
 
@@ -312,7 +344,7 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 - 同步任务状态保存在 API 内存中，每店保留最近一次任务。手动和定时同步共用 4 个店铺执行位置，同一店铺同时只接受一个任务。其余已受理店铺在面板显示「等待同步」，获得空位后读取 ERP Token。各店分别保存，写入时串行更新以 ERP 内部 ID 标识的主单。刷新网页可恢复状态，API 重启后状态丢失；手动同步需重新触发，定时同步会在下一周期重跑，已保存的订单仍在数据库中。
 - 订单列表每页读取 500 条，按 ERP ID 排序，并核对前后计数、每页条数及 ID 唯一性。上游使用偏移分页，没有一致性快照：扫描期间若不同订单同时进入和退出可见范围，即使总数不变仍可能漏读。两种页长得到相同结果仅能证明当次扫描一致。
 - wxw 商品详情接口一次接收一个 ERP 订单 ID。所有店铺在一个 API 进程内共享 8 个详情读取位置，单店可以使用全部空位。每单按需补读时间，按原列表顺序汇总进度。单店完整读取并校验后，EF Core 批量写入并一次提交。
-- 本地保存通过 ASP.NET Core `HybridCache`（进程内一级、Redis 二级）复用已落库订单的 SHA-256 指纹。每次先批量读取 PostgreSQL 主单 ID 和版本；当前版本与完整订单内容都命中时，直接计为「未变」。新单和未命中的订单走正常保存或明细比对。所有订单写入入口都须在业务数据变化时于同一事务内更换主单版本，包含仅子单或商品行变化的情况。缓存于保存成功后填充。缓存过期或丢失可从数据库重新比对，订单详情仍逐单实时读取。
+- 订单保存通过 `IOrderChangeCache` 复用已落库订单的 SHA-256 指纹。其 `HybridCache` 实现在两种模式都使用进程内缓存，容器模式还使用 Redis 作为二级缓存。每次先从数据库批量读取主单 ID 和版本。当前版本与完整订单内容都命中时，直接计为「未变」。新单和未命中的订单走正常保存或明细比对。所有订单写入入口都须在业务数据变化时于同一事务内更换主单版本，包含仅子单或商品行变化的情况。缓存于保存成功后填充。缓存过期或丢失可从数据库重新比对，订单详情仍逐单实时读取。
 
 相关实现：[订单读取器](../OpenERP.Api/Erp/WxwErpClient.Orders.cs)、[任务状态](../OpenERP.Api/Orders/OrderSyncJobs.cs)、[订单保存](../OpenERP.Api/Orders/OrderStore.cs)。
 
@@ -357,7 +389,7 @@ aspire logs web-browser-logs --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
 - [AppHost 启动配置](../OpenERP.AppHost/Properties/launchSettings.json) 让 `localhost`、`127.0.0.1`、`::1` 绕过 HTTP 代理，避免本地 gRPC 被系统代理转发，不修改全局代理设置。
 - [Vite 开发代理](../OpenERP.Web/vite.config.ts) 优先将浏览器的 `/api` 请求转发到 Aspire 注入的 `API_HTTPS`，缺失时兼容手工配置的 `API_BASE_URL`。启动 Aspire 前按[环境准备](#环境准备)信任开发证书。单独启动 Vite 并连接私有 CA 或自签 HTTPS 上游时，可在启动 Node 前通过 `NODE_EXTRA_CA_CERTS` 指定受信的公开 PEM 证书。
 - SeaweedFS 的 Master/Volume 健康检查之外，AppHost 另用签名 S3 `ListBuckets` 检查等待存储就绪，再启动 API 建桶。这是项目自定义的启动保护，不保证建桶必然成功；存储后续失去健康也不会自动暂停已运行的 API。
-- Development 环境的 `/health` 检查 PostgreSQL、Redis 和 SeaweedFS S3 连接；`/alive` 只检查进程存活。
+- 容器方式的 Development 环境通过 `/health` 检查 PostgreSQL、Redis 和 SeaweedFS S3 连接。`/alive` 只检查进程存活。
 
 ### 更新运行中的代码
 
