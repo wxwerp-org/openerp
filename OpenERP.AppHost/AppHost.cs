@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Aspire.Hosting.ApplicationModel;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +12,14 @@ if (builder.ExecutionContext.IsPublishMode)
 }
 
 builder.AddDockerComposeEnvironment("compose").WithDashboard(false);
+
+if (builder.Configuration["NativeDataDirectory"] is { Length: > 0 } nativeDataDirectory)
+{
+    var dataDirectory = Directory.CreateDirectory(Path.GetFullPath(nativeDataDirectory, builder.AppHostDirectory));
+    var sqlite = new DbConnectionStringBuilder { ["Data Source"] = Path.Combine(dataDirectory.FullName, "openerp.db") };
+    builder.Configuration["ConnectionStrings:openerp"] = sqlite.ConnectionString;
+    builder.Configuration["ObjectStorage:RootPath"] = Path.Combine(dataDirectory.FullName, "objects");
+}
 
 var api = builder.AddDotnetProject("api", "../OpenERP.Api/OpenERP.Api.csproj")
     .WithHttpsEndpoint()

@@ -10,7 +10,7 @@
 - Node.js **26**，见 [.node-version](../.node-version)。
 - pnpm **11.16.0**，见 [package.json](../OpenERP.Web/package.json)。
 - PATH 中可直接调用的 Aspire CLI，版本与项目的 **17.0.0** 对齐；安装方式见 [Aspire 官方安装说明](https://aspire.dev/get-started/install-cli/)。
-- 已启动的 Docker Desktop 或 Aspire 支持的兼容容器运行环境。
+- 使用默认 `https` profile 时需启动 Docker Desktop 或 Aspire 支持的兼容容器运行环境。无 Docker 开发可使用 `native` profile。
 
 在仓库根目录安装依赖并信任开发证书：
 
@@ -25,7 +25,17 @@ pnpm --dir OpenERP.Web install --frozen-lockfile
 
 ### 启动与停止
 
-在仓库根目录后台启动；Git worktree 或需要与其他本地实例分开运行时使用隔离模式：
+**无 Docker 开发**时，在仓库根目录执行：
+
+```bash
+aspire start --isolated --launch-profile native
+```
+
+`api` 和 `web` 作为本机进程运行，使用 SQLite、进程内 HybridCache 和本机对象存储。首次启动会在当前仓库或 worktree 下自动创建 SQLite 文件 `.openerp/native/openerp.db` 和附件目录 `.openerp/native/objects/`。
+
+隔离模式会动态分配端口。在仓库根目录执行 `aspire describe web` 查看 Web 的 HTTPS 地址，或从启动输出打开 Aspire Dashboard，点击 `web` 的 HTTPS 地址。首次访问时设置管理员密码并登录。在同一仓库根目录执行 `aspire stop` 停止实例，再次执行上面的启动命令可继续使用原账号和附件。
+
+**使用 Docker 开发**时，在仓库根目录启动默认的 `https` profile：
 
 ```bash
 aspire start --isolated
@@ -35,7 +45,7 @@ aspire start --isolated
 
 也可以在安装了 Aspire 扩展的 VS Code 中，选择仓库提供的 `apphost` 启动配置运行；需要 worktree 隔离时使用上面的 CLI 入口。
 
-打开启动输出中的 Aspire Dashboard，在资源列表查看健康状态。等 `api` 通过健康检查、`web` 就绪后，点击 `web` 的 HTTPS 地址打开应用。首次使用见[本地初始化与密码重置](#本地初始化与密码重置)。Dashboard 登录与应用管理员登录相互独立。
+两种 profile 都可在 Dashboard 查看资源状态。管理员账号说明见[本地初始化与密码重置](#本地初始化与密码重置)。Dashboard 登录与应用管理员登录相互独立。
 
 通过 `aspire start` 启动的后台实例，在同一仓库或 worktree 根目录运行 `aspire stop` 停止；关闭启动终端不会停止后台实例。终端前台 `aspire run` 按 `Ctrl+C` 停止；通过 VS Code 启动时使用编辑器的停止按钮。普通停止不要使用 `--force`，它会删除持久资源。
 
@@ -47,6 +57,7 @@ aspire start --isolated
 
 | 配置键 | 取值与默认行为 |
 | --- | --- |
+| `NativeDataDirectory` | `native` profile 使用的数据目录，相对路径以 `OpenERP.AppHost/` 为起点，默认值为 `../.openerp/native`。 |
 | `Database:Provider` | `PostgreSQL`（默认）或 `Sqlite`。 |
 | `ConnectionStrings:openerp` | 所选数据库的连接字符串。PostgreSQL 使用 Npgsql 连接字符串，SQLite 使用 `Data Source=/absolute/path/openerp.db`，数据库文件的父目录须已存在。 |
 | `Cache:Provider` | 开发 AppHost 专用，`Redis`（默认）编排 Redis 并注入连接。`Memory` 让 API 使用进程内缓存。 |
@@ -55,18 +66,7 @@ aspire start --isolated
 | `ObjectStorage:RootPath` | `Local` 模式的必填目录。相对路径以 API 内容根目录为起点，启动时创建该目录。 |
 | `ConnectionStrings:seaweedfs` | `S3` 模式继续使用既有的 `Endpoint`、`AccessKey`、`SecretKey` 配置。单容器部署的凭据目录及轮换方式见[部署说明](deployment.md)。 |
 
-从仓库根目录启动本机存储组合，先将示例中的绝对路径换成自己的目录。
-
-```bash
-Database__Provider=Sqlite \
-ConnectionStrings__openerp='Data Source=/absolute/path/openerp.db' \
-Cache__Provider=Memory \
-ObjectStorage__Provider=Local \
-ObjectStorage__RootPath=/absolute/path/uploads \
-aspire start --isolated
-```
-
-开发 AppHost 按所选 provider 创建资源，保留 API 和 Web 的启动顺序。SQLite 连接和本机对象目录由 AppHost 传给 API。切换 provider 会连接所选数据库或对象存储，跨存储迁移现有数据需另行处理。
+开发 AppHost 按所选 provider 创建资源，保留 API 和 Web 的启动顺序。`native` profile 会按上面的默认位置准备 SQLite 连接和本机对象目录，并传给 API。也可通过表中的配置独立切换任一 provider。切换 provider 会连接所选数据库或对象存储，跨存储迁移现有数据需另行处理。
 
 ### 数据库迁移
 
