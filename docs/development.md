@@ -41,12 +41,60 @@ aspire start --isolated
 
 代码修改后见[更新运行中的代码](#更新运行中的代码)。数据卷与凭据的保留方式见[开发数据与密钥](#开发数据与密钥)。
 
+### API 存储配置
+
+默认 Aspire 启动和单容器发布使用 PostgreSQL、Redis 与 SeaweedFS S3。开发 AppHost 和独立运行的 API 均可选择数据库、缓存和对象存储。配置键可通过环境变量设置，用 `__` 表示层级分隔符。
+
+| 配置键 | 取值与默认行为 |
+| --- | --- |
+| `Database:Provider` | `PostgreSQL`（默认）或 `Sqlite`。 |
+| `ConnectionStrings:openerp` | 所选数据库的连接字符串。PostgreSQL 使用 Npgsql 连接字符串，SQLite 使用 `Data Source=/absolute/path/openerp.db`，数据库文件的父目录须已存在。 |
+| `Cache:Provider` | 开发 AppHost 专用，`Redis`（默认）编排 Redis 并注入连接。`Memory` 让 API 使用进程内缓存。 |
+| `ConnectionStrings:redis` | 独立运行 API 时，设置该连接才启用 Redis 二级缓存。 |
+| `ObjectStorage:Provider` | `S3`（默认）或 `Local`。 |
+| `ObjectStorage:RootPath` | `Local` 模式的必填目录。相对路径以 API 内容根目录为起点，启动时创建该目录。 |
+| `ConnectionStrings:seaweedfs` | `S3` 模式继续使用既有的 `Endpoint`、`AccessKey`、`SecretKey` 配置。单容器部署的凭据目录及轮换方式见[部署说明](deployment.md)。 |
+
+从仓库根目录启动本机存储组合，先将示例中的绝对路径换成自己的目录。
+
+```bash
+Database__Provider=Sqlite \
+ConnectionStrings__openerp='Data Source=/absolute/path/openerp.db' \
+Cache__Provider=Memory \
+ObjectStorage__Provider=Local \
+ObjectStorage__RootPath=/absolute/path/uploads \
+aspire start --isolated
+```
+
+开发 AppHost 按所选 provider 创建资源，保留 API 和 Web 的启动顺序。SQLite 连接和本机对象目录由 AppHost 传给 API。切换 provider 会连接所选数据库或对象存储，跨存储迁移现有数据需另行处理。
+
+### 数据库迁移
+
+修改共享 EF Core 模型时，从仓库根目录为两种数据库各生成一套迁移。将示例中的 `DescribeChange` 换成迁移名。设计时工厂读取环境变量及 `--` 后传入的配置。依据项目布局指定迁移工程与 API 启动工程。[EF Core 多 provider 迁移](https://learn.microsoft.com/ef/core/managing-schemas/migrations/providers)
+
+```bash
+dotnet ef migrations add DescribeChange \
+  --project OpenERP.Migrations.PostgreSQL --startup-project OpenERP.Api \
+  --output-dir Migrations --namespace OpenERP.Api.Migrations \
+  -- --Database:Provider PostgreSQL
+
+dotnet ef migrations add DescribeChange \
+  --project OpenERP.Migrations.Sqlite --startup-project OpenERP.Api \
+  --output-dir Migrations --namespace OpenERP.Migrations.Sqlite \
+  -- --Database:Provider Sqlite
+```
+
+Development 环境启动 API 时会应用所选数据库的迁移。需手动升级到最新版本时，用 `dotnet ef database update` 替换对应命令的 `dotnet ef migrations add DescribeChange`，保留项目与 provider 参数，移除 `--output-dir` 和 `--namespace`，并通过 `ConnectionStrings__openerp` 配置目标数据库。API 在启动时分批补齐旧订单的日期检索值和旧店铺的名称检索值，中断重启后继续处理剩余行。单容器发布由入口脚本运行 PostgreSQL 迁移包，操作见[部署说明](deployment.md)。
+
 ## 代码导航
 
 | 目录                                                   | 内容                              |
 | ------------------------------------------------------ | --------------------------------- |
 | [OpenERP.Web](../OpenERP.Web/)                         | Vue 前端与单元测试                |
-| [OpenERP.Api](../OpenERP.Api/)                         | API、ERP 对接、订单同步与数据存储 |
+| [OpenERP.Api](../OpenERP.Api/)                         | API、ERP 对接、订单同步与存储配置 |
+| [OpenERP.Persistence](../OpenERP.Persistence/)        | 共享 `AppDbContext` 与 EF Core 模型 |
+| [OpenERP.Migrations.PostgreSQL](../OpenERP.Migrations.PostgreSQL/) | PostgreSQL 迁移 |
+| [OpenERP.Migrations.Sqlite](../OpenERP.Migrations.Sqlite/) | SQLite 迁移 |
 | [OpenERP.AppHost](../OpenERP.AppHost/)                 | 本地服务编排                      |
 | [OpenERP.ServiceDefaults](../OpenERP.ServiceDefaults/) | 健康检查、遥测与服务发现          |
 | [OpenERP.Api.Tests](../OpenERP.Api.Tests/)             | 后端单元测试和集成测试            |
@@ -127,7 +175,7 @@ pnpm --dir OpenERP.Web visual:compare artifacts/issue93/before artifacts/issue93
 
 ### 测试环境
 
-后端使用 xUnit v3、原生 .NET 10 Microsoft.Testing.Platform 和 Aspire.Hosting.Testing，配置见 [global.json](../global.json) 与[测试项目](../OpenERP.Api.Tests/OpenERP.Api.Tests.csproj)。订单 PostgreSQL 与文件存储测试共用隔离 Aspire 测试宿主，需要容器环境和受信任的开发证书。宿主自行启动和清理资源，订单用例另建并清理独立数据库，无需 `OPENERP_TEST_POSTGRES`。回归用例见 [OpenERP.Api.Tests](../OpenERP.Api.Tests/)。
+后端使用 xUnit v3、原生 .NET 10 Microsoft.Testing.Platform 和 Aspire.Hosting.Testing，配置见 [global.json](../global.json) 与[测试项目](../OpenERP.Api.Tests/OpenERP.Api.Tests.csproj)。PostgreSQL 与 S3 集成测试共用隔离 Aspire 测试宿主，需要容器环境和受信任的开发证书。宿主自行启动和清理资源，订单用例另建并清理独立数据库，无需 `OPENERP_TEST_POSTGRES`。回归用例见 [OpenERP.Api.Tests](../OpenERP.Api.Tests/)。
 
 前端单元测试位于 [tests/unit](../OpenERP.Web/tests/unit/)，使用 Vitest、Vue Test Utils 和 jsdom。Vite 代理回归测试在环回地址启动临时服务，需要 PATH 中有 `openssl` 生成临时自签证书。依赖和执行脚本以 [package.json](../OpenERP.Web/package.json) 为准。
 
@@ -152,7 +200,7 @@ OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.
 
 ### 真实 ERP 验证
 
-常规后端测试自行准备隔离 PostgreSQL，不需要连接开发数据库。真实 ERP 验收通过进程环境变量启用：
+后端测试自行准备隔离的 PostgreSQL 或 SQLite 数据库。真实 ERP 验收通过进程环境变量启用：
 
 | 变量                     | 用途与前提                                                                                                                                                                                       |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -204,11 +252,11 @@ python3 deploy/tests/smoke.py --compose ./aspire-output/docker-compose.yaml
 
 ### 本地初始化与密码重置
 
-Development 环境启动 API 时自动应用 EF Core 迁移。对于已创建的数据库，启动代码先通过 EF 准备迁移历史表，避免 Npgsql 10.0.3 在空库首次启动时查询缺失的表（[上游问题 #3407](https://github.com/npgsql/efcore.pg/issues/3407)）。API 每次启动生成临时 RS256 签名密钥。空库首次启动后，在应用的 HTTPS 页面设置管理员密码，再使用 `admin` 登录。已有登录的浏览器可以在 API 重启后使用持久刷新 Cookie 静默恢复。正式环境的配置、初始化和升级见[部署说明](deployment.md)。
+Development 环境启动 API 时会应用[所选数据库的迁移](#数据库迁移)。API 每次启动生成临时 RS256 签名密钥。空库首次启动后，在应用的 HTTPS 页面设置管理员密码，再使用 `admin` 登录。已有登录的浏览器可以在 API 重启后使用持久刷新 Cookie 静默恢复。正式环境的配置、初始化和升级见[部署说明](deployment.md)。
 
 启动时只在管理员行缺失时创建占位行。设置密码通过数据库条件更新完成，并发请求只能有一方成功。初始化成功记录 UTC 时间、连接来源 IP 和 User-Agent，不记录密码，也不签发令牌或更新最近登录时间。
 
-本地忘记密码时，构建后从仓库根目录运行下列命令。重置进程通过 `ConnectionStrings__openerp` 连接开发数据库，需要单独提供连接配置。
+本地忘记密码时，构建后从仓库根目录运行下列命令。为重置进程单独配置 `ConnectionStrings__openerp`，使用 SQLite 时还需设置 `Database__Provider=Sqlite`。
 
 ```bash
 dotnet OpenERP.Api/bin/Debug/net10.0/OpenERP.Api.dll reset-admin-password
@@ -218,7 +266,7 @@ dotnet OpenERP.Api/bin/Debug/net10.0/OpenERP.Api.dll reset-admin-password
 
 ### 会话规则与接口
 
-API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 `Administrator` 或 `User`。令牌最长有效期为 20 分钟，且不超过刷新期限。验证时不设时钟宽限。前端只在内存中保存 access token，每 5 分钟主动尝试刷新。刷新期限自登录起固定为 24 小时，刷新不延长期限或轮换凭证。刷新值只通过 `HttpOnly`、`Secure`、`SameSite=Strict` 的持久 Cookie 传递，Cookie 仅发往当前主机的 `/api/auth` 路径。服务端只在 PostgreSQL 的独立 `RefreshTokens` 表中保存刷新值的哈希。浏览器关闭或 API 重启后仍可使用有效的刷新凭证。
+API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 `Administrator` 或 `User`。令牌最长有效期为 20 分钟，且不超过刷新期限。验证时不设时钟宽限。前端只在内存中保存 access token，每 5 分钟主动尝试刷新。刷新期限自登录起固定为 24 小时，刷新不延长期限或轮换凭证。刷新值只通过 `HttpOnly`、`Secure`、`SameSite=Strict` 的持久 Cookie 传递，Cookie 仅发往当前主机的 `/api/auth` 路径。服务端在数据库的 `RefreshTokens` 表中保存刷新值的哈希。浏览器关闭或 API 重启后仍可使用有效的刷新凭证。
 
 普通退出撤销当前刷新凭证。网页修改密码撤销本人所有会话，命令行重置撤销管理员的所有会话。服务器逐请求核验 JWT 对应的登录标识仍有效，因此已签发的 access token 也会随对应刷新凭证撤销而失效。网页修改密码必须提供旧密码；命令行重置直接设置最终密码。已受理的订单同步继续执行。
 
@@ -240,7 +288,7 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 | `GET /api/users/{id}/shops`、`PUT /api/users/{id}/shops` | 管理员读取或整体替换员工的店铺键数组，每项包含 `platform` 和整数 `sid`。提交空数组撤销全部分配 |
 | `PUT /api/users/{id}`、`DELETE /api/users/{id}` | 管理员编辑或软删除员工账号 |
 
-前端通过应用同源的 HTTPS `/api` 地址访问后端。初始化、登录、刷新和退出要求 `X-CSRF-TOKEN` 请求头及对应 CSRF Cookie，先请求 `/api/auth/csrf` 取得令牌。防伪校验继续使用存放于 PostgreSQL 的 Data Protection 密钥。Bearer 认证的业务写请求，包括密码修改、资料保存和文件上传，无需附带 CSRF 令牌。业务 API（包括 `/api/orders`、ERP 与文件）默认需要登录，`/api/about` 与健康检查保持匿名。
+前端通过应用同源的 HTTPS `/api` 地址访问后端。初始化、登录、刷新和退出要求 `X-CSRF-TOKEN` 请求头及对应 CSRF Cookie，先请求 `/api/auth/csrf` 取得令牌。防伪校验使用所配置数据库中的 Data Protection 密钥。Bearer 认证的业务写请求，包括密码修改、资料保存和文件上传，无需附带 CSRF 令牌。业务 API（包括 `/api/orders`、ERP 与文件）默认需要登录，`/api/about` 与健康检查保持匿名。
 
 `account`、`GET /api/auth/me` 和资料保存响应包含 `id`、`role`、`username`、`name`、`phone`、`email`、`lastLoginAt`、`expiresAt`，时间使用 ISO 8601。这里的 `expiresAt` 表示 24 小时刷新期限；access token 的到期时间单独由 `accessTokenExpiresAt` 返回。未初始化时登录及受保护接口返回 `409`，ProblemDetails 顶层 `code` 为 `initialization_required`；初始化重复请求或并发败者返回 `409`、`already_initialized`。前端保留安全的原目标地址，完成初始化和登录后回到有权访问的页面。普通用户访问用户管理、ERP 配置或定时同步设置接口返回 `403`。
 
@@ -250,7 +298,7 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 
 ## ERP 接入与接口
 
-上游地址固定为 `https://v3-api.wxwerp.com`。管理员在账户菜单「系统设置」打开的 ERP 接入页填写或更换 Token。API 使用 ASP.NET Core Data Protection 保护 Token，并保存在 PostgreSQL 中。备份数据库时一并保留 Data Protection 密钥表。页面只显示保存状态。验证凭证与店铺权限时，以实际 ERP 请求的结果为准。
+上游地址固定为 `https://v3-api.wxwerp.com`。管理员在账户菜单「系统设置」打开的 ERP 接入页填写或更换 Token。API 使用 ASP.NET Core Data Protection 保护 Token，并将其保存到所配置的数据库。备份数据库时一并保留 Data Protection 密钥表。页面只显示保存状态。验证凭证与店铺权限时，以实际 ERP 请求的结果为准。
 
 | 接口 | 行为 |
 | --- | --- |
@@ -268,7 +316,7 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 
 `IErpClient` 的每个上游方法都显式接收不可变的 `ErpAccessToken`。同一操作的分页、详情和并发状态查询共用该快照。`WxwErpClient` 只处理 HTTP 和上游响应，并发期间各请求无需访问凭证存储。参见 [EF Core 对 DbContext 并行使用的说明](https://learn.microsoft.com/en-us/ef/core/dbcontext-configuration/#avoiding-dbcontext-threading-issues)。
 
-本地店铺接口只读 PostgreSQL；数据库暂时不可用时返回 `503`，不会回源上游。旧 `/api/erp/authorization/*` 接口、授权快照与事件表已删除。实现见 [ShopDirectoryEndpoints](../OpenERP.Api/Erp/ShopDirectoryEndpoints.cs)、[ShopSyncJob](../OpenERP.Api/Erp/ShopSyncJob.cs)、[ErpHub](../OpenERP.Api/Erp/ErpHub.cs) 和 [OrderSyncEndpoints](../OpenERP.Api/Orders/OrderSyncEndpoints.cs)。
+本地店铺接口查询所配置的数据库，数据库暂时不可用时返回 `503`。旧 `/api/erp/authorization/*` 接口、授权快照与事件表已删除。实现见 [ShopDirectoryEndpoints](../OpenERP.Api/Erp/ShopDirectoryEndpoints.cs)、[ShopSyncJob](../OpenERP.Api/Erp/ShopSyncJob.cs)、[ErpHub](../OpenERP.Api/Erp/ErpHub.cs) 和 [OrderSyncEndpoints](../OpenERP.Api/Orders/OrderSyncEndpoints.cs)。
 
 ### 本地店铺目录与授权状态
 
@@ -300,19 +348,19 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 
 ## 本地订单列表
 
-工作台的订单列表和[商品量报表](order-snapshot-report.md)都读取 PostgreSQL 中的订单快照。订单列表使用已认证的 `GET /api/orders`，支持 `shopSid`、`platform`、`number`、`status`、`createdFrom`、`createdTo` 和分页。它按主单计数和翻页，每页默认 20 条。订单号片段和状态同时指定时，两个条件须命中同一个平台订单；返回整张主单上的全部号码，并标出命中项。行数和件数均按整张主单计算。店铺名称来自本地目录，订单所属店铺已从目录移除时，仍可通过 SID 展示和筛选。
+工作台的订单列表和[商品量报表](order-snapshot-report.md)都读取数据库中的订单快照。订单列表使用已认证的 `GET /api/orders`，支持 `shopSid`、`platform`、`number`、`status`、`createdFrom`、`createdTo` 和分页。它按主单计数和翻页，每页默认 20 条。订单号片段和状态同时指定时，两个条件须命中同一个平台订单；返回整张主单上的全部号码，并标出命中项。行数和件数均按整张主单计算。店铺名称来自本地目录，订单所属店铺已从目录移除时，仍可通过 SID 展示和筛选。
 
 订单列表按来源创建日期（`YYYY-MM-DD`）筛选，含起止日，默认展示全部历史。wxw 可配置年月日的显示顺序，本地保留了时间原值。像 `08-09-2025` 这样有两种有效解释的日期按未知处理。有效的创建时间按倒序排列，缺少有效时间的订单排在末尾，指定日期范围时排除。创建和出库时间按来源的日期和精度显示。筛选及分页无需访问上游。
 
 ## 订单同步边界
 
-- API 在 Development 启动时应用 EF Core 迁移。主单以 ERP 内部 ID 标识，平台 PO 和商品行关联主单；订单时间保留 ERP 显示原值及来源。
+- 主单以 ERP 内部 ID 标识，平台 PO 和商品行关联主单；订单时间保留 ERP 显示原值及来源。
 - 完整读取并校验列表和详情后才写库；读取失败时不保存本批结果，数据库保存失败时整批回滚。
 - 归属异常的订单整单跳过，任务显示部分成功和跳过原因。只刷新本批通过校验的订单，未返回或被跳过的已有订单会保留；已接受订单的子项按本次结果更新。
 - 同步任务状态保存在 API 内存中，每店保留最近一次任务。手动和定时同步共用 4 个店铺执行位置，同一店铺同时只接受一个任务。其余已受理店铺在面板显示「等待同步」，获得空位后读取 ERP Token。各店分别保存，写入时串行更新以 ERP 内部 ID 标识的主单。刷新网页可恢复状态，API 重启后状态丢失；手动同步需重新触发，定时同步会在下一周期重跑，已保存的订单仍在数据库中。
 - 订单列表每页读取 500 条，按 ERP ID 排序，并核对前后计数、每页条数及 ID 唯一性。上游使用偏移分页，没有一致性快照：扫描期间若不同订单同时进入和退出可见范围，即使总数不变仍可能漏读。两种页长得到相同结果仅能证明当次扫描一致。
 - wxw 商品详情接口一次接收一个 ERP 订单 ID。所有店铺在一个 API 进程内共享 8 个详情读取位置，单店可以使用全部空位。每单按需补读时间，按原列表顺序汇总进度。单店完整读取并校验后，EF Core 批量写入并一次提交。
-- 本地保存通过 ASP.NET Core `HybridCache`（进程内一级、Redis 二级）复用已落库订单的 SHA-256 指纹。每次先批量读取 PostgreSQL 主单 ID 和版本；当前版本与完整订单内容都命中时，直接计为「未变」。新单和未命中的订单走正常保存或明细比对。所有订单写入入口都须在业务数据变化时于同一事务内更换主单版本，包含仅子单或商品行变化的情况。缓存于保存成功后填充。缓存过期或丢失可从数据库重新比对，订单详情仍逐单实时读取。
+- 本地保存通过 ASP.NET Core `HybridCache` 复用已落库订单的 SHA-256 指纹。启用 Redis 时它提供二级缓存。每次先从数据库批量读取主单 ID 和版本，当前版本与完整订单内容都命中时，直接计为「未变」。新单和未命中的订单走正常保存或明细比对。所有订单写入入口都须在业务数据变化时于同一事务内更换主单版本，包含仅子单或商品行变化的情况。缓存于保存成功后填充。缓存过期或丢失可从数据库重新比对，订单详情仍逐单实时读取。
 
 相关实现：[订单读取器](../OpenERP.Api/Erp/WxwErpClient.Orders.cs)、[任务状态](../OpenERP.Api/Orders/OrderSyncJobs.cs)、[订单保存](../OpenERP.Api/Orders/OrderStore.cs)。
 
@@ -320,7 +368,7 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 
 - 定时同步与手动同步同样只在 Development / Production 提供。订单列表工具栏「同步历史订单」面板中的「定时同步」卡片只配置是否启用和选择店铺，不提供周期配置。
 - 周期来自 API 配置 `OrderSync:SchedulerIntervalMinutes`（默认 `30`，允许 `1`–`1440` 分钟），启动时校验；修改后需重启 API，保存设置本身不需要重启。每轮受理后等待一个周期再尝试下一轮；若上一轮仍在运行，本轮跳过并等下一周期。启用后首次执行同样等待一个周期。
-- 设置保存在 PostgreSQL 的 `OrderSyncSettings` 单行表，使用 UUIDv7 主键和独立的数据库单行约束。保存后 API 唤醒调度器重新读取设置；启用后首次执行仍等待一个完整周期。
+- 设置保存在数据库的 `OrderSyncSettings` 单行表，使用 UUIDv7 主键和独立的数据库单行约束。保存后 API 唤醒调度器重新读取设置；启用后首次执行仍等待一个完整周期。
 - 启用时必须至少选择一家店铺，空选返回 `400`，前端也会禁用保存。历史空选数据不会触发同步。启用还要求已配置私有 ERP AccessToken；未配置时保存启用状态返回 `503`，前端禁用开关和保存。
 - 选店列表通过 `GET /api/erp/order-sync-settings/shops` 读取最近成功落库的全部 TemuPop 店铺 SID 和名称，独立于本地店铺表格的分页，提供「全选可见店铺」和清空辅助。wxw 离线期间仍可选店和保存设置；本地无店铺时返回空列表。实际同步订单时再向 ERP 校验店铺可见性：Token 权限变化后该店会在定时轮次中记录失败，其他店铺继续，可在卡片中清空或重新选择。
 - 定时批次并行同步选中的空闲店铺，单店失败会记录原因，其他店铺继续执行。可手动补跑失败的店铺，下一周期会重新扫描全部选中店铺。重复同步复用订单记录的幂等 upsert，不会写入重复订单。
@@ -357,7 +405,7 @@ aspire logs web-browser-logs --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
 - [AppHost 启动配置](../OpenERP.AppHost/Properties/launchSettings.json) 让 `localhost`、`127.0.0.1`、`::1` 绕过 HTTP 代理，避免本地 gRPC 被系统代理转发，不修改全局代理设置。
 - [Vite 开发代理](../OpenERP.Web/vite.config.ts) 优先将浏览器的 `/api` 请求转发到 Aspire 注入的 `API_HTTPS`，缺失时兼容手工配置的 `API_BASE_URL`。启动 Aspire 前按[环境准备](#环境准备)信任开发证书。单独启动 Vite 并连接私有 CA 或自签 HTTPS 上游时，可在启动 Node 前通过 `NODE_EXTRA_CA_CERTS` 指定受信的公开 PEM 证书。
 - SeaweedFS 的 Master/Volume 健康检查之外，AppHost 另用签名 S3 `ListBuckets` 检查等待存储就绪，再启动 API 建桶。这是项目自定义的启动保护，不保证建桶必然成功；存储后续失去健康也不会自动暂停已运行的 API。
-- Development 环境的 `/health` 检查 PostgreSQL、Redis 和 SeaweedFS S3 连接；`/alive` 只检查进程存活。
+- 默认 AppHost 配置下，Development 环境的 `/health` 检查 PostgreSQL、Redis 和 SeaweedFS S3 连接。`/alive` 检查进程存活。
 
 ### 更新运行中的代码
 
@@ -370,7 +418,7 @@ aspire logs web-browser-logs --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
 
 ### 开发数据与密钥
 
-PostgreSQL、Redis 和 SeaweedFS 均使用持久容器与数据卷。PostgreSQL 挂载到 `/var/lib/postgresql`，Redis 和 SeaweedFS 挂载到 `/data`。卷名由 Aspire 根据应用身份与资源名生成，以当前环境为准；macOS Docker Desktop 的卷保存在其 Linux 虚拟机内，不在源码目录。
+在默认 AppHost 配置下，PostgreSQL、Redis 和 SeaweedFS 均使用持久容器与数据卷。PostgreSQL 挂载到 `/var/lib/postgresql`，Redis 和 SeaweedFS 挂载到 `/data`。卷名由 Aspire 根据应用身份与资源名生成，以当前环境为准；macOS Docker Desktop 的卷保存在其 Linux 虚拟机内，不在源码目录。
 
 开发密码保存在 .NET User Secrets 中。只查看密钥文件位置、避免打印秘密值时使用：
 
