@@ -414,7 +414,7 @@ aspire logs web-browser-logs --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
 - **自动热重载**：只有对应 IDE Hot Reload 或运行时 watch 已启用时，才依赖它应用后端修改；普通启动不代表自动启用了后端热重载。
 - **AppHost 编排或配置**：需要应用新的资源配置时，在原仓库或 worktree 中重新执行相同的启动命令；隔离实例使用 `aspire start --isolated`。编辑器启动的实例由编辑器管理重启。
 
-仅一个资源的实现发生变化时，优先使用该资源的 Rebuild 或已有热重载流程，不重启整个 AppHost。终端操作可先用 `aspire describe` 查看资源；资源提供重建命令时使用 `aspire resource api rebuild`，随后 `aspire wait api` 等待就绪。若 Dashboard 没有 Rebuild 操作，先确认资源类型和启动方式，不把 Restart 视为等价替代。
+仅一个资源的实现发生变化时，优先使用该资源的 Rebuild 或已有热重载流程，不重启整个 AppHost。终端操作可先用 `aspire resource api --help --apphost OpenERP.AppHost/OpenERP.AppHost.csproj --non-interactive` 查看该资源可用的命令；列出 `rebuild` 时使用 `aspire resource api rebuild --non-interactive --apphost OpenERP.AppHost/OpenERP.AppHost.csproj`，随后 `aspire wait api --non-interactive --apphost OpenERP.AppHost/OpenERP.AppHost.csproj` 等待就绪。若没有重建命令，先确认资源类型和启动方式，不把 Restart 视为等价替代。
 
 ### 开发数据与密钥
 
@@ -435,3 +435,5 @@ PostgreSQL `18-alpine` 和 Redis `8-alpine` 使用浮动大版本标签，小版
 ## 使用 AI 开发工具
 
 仓库代理规则见 [AGENTS.md](../AGENTS.md)。Codex、dsh 和 OpenCode 共用 `.agents/skills/` 中的 Aspire skills，由项目从[微软官方发布版](https://github.com/microsoft/aspire-skills/releases)同步。启动、停止或检查资源时，遵循项目内 [Aspire Skill](../.agents/skills/aspire/SKILL.md) 及其路由的子 Skill，直接调用 PATH 中的 `aspire` CLI。
+
+用户说「帮我把项目跑起来」时，按[助手启动指南](../.agents/skills/openerp-startup/SKILL.md)判断运行方式、准备工具并验证页面。
