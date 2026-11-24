@@ -19,7 +19,6 @@ builder.AddNpgsqlDbContext<AppDbContext>("openerp");
 builder.AddRedisDistributedCache("redis");
 builder.Services.AddHybridCache();
 builder.AddFileStorage();
-builder.Services.AddSingleton<FileStore>();
 builder.AddAccountAuthentication();
 builder.Services.AddScoped<IOrderSnapshotReportQuery, OrderSnapshotReportQuery>();
 builder.Services.AddScoped<OrderListQuery>();
@@ -77,7 +76,7 @@ app.MapUserManagement();
 app.MapAbout();
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
-    await app.Services.GetRequiredService<FileStore>().EnsureBucketAsync(app.Lifetime.ApplicationStopping);
+    await app.Services.InitializeFileStorageAsync(app.Lifetime.ApplicationStopping);
     app.MapFiles();
 }
 app.UseWebSockets();
