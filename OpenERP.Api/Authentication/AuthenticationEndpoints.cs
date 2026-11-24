@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,7 +12,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.JsonWebTokens;
-using Npgsql;
 
 namespace OpenERP.Api.Authentication;
 
@@ -306,7 +306,7 @@ internal static class AuthenticationEndpoints
     {
         for (var current = exception; current is not null; current = current.InnerException)
         {
-            if (current is NpgsqlException or DbUpdateException)
+            if (current is DbException or DbUpdateException)
                 return true;
         }
 

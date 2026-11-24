@@ -1,9 +1,11 @@
+using Microsoft.EntityFrameworkCore;
 using OpenERP.Api;
 using OpenERP.Api.About;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Deployment;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Persistence;
 using OpenERP.Api.Reports;
 using OpenERP.Core.Reports;
 
@@ -15,11 +17,22 @@ if (args is ["initialize-compose-credentials", ..])
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
-builder.AddNpgsqlDbContext<AppDbContext>("openerp");
-builder.AddRedisDistributedCache("redis");
+var nativeRoot = builder.Configuration["Native:DataDirectory"];
+using var nativeLease = nativeRoot is null ? null : NativeDatabase.Acquire(nativeRoot);
+if (nativeRoot is null)
+{
+    builder.AddNpgsqlDbContext<AppDbContext>("openerp");
+    builder.AddRedisDistributedCache("redis");
+    builder.AddFileStorage();
+    builder.Services.AddSingleton<FileStore>();
+}
+else
+{
+    builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(NativeDatabase.ConnectionString(nativeRoot)));
+    builder.Services.AddSingleton(services => new FileStore(
+        new DirectoryInfo(Path.Combine(nativeRoot, "objects")), services.GetRequiredService<ILogger<FileStore>>()));
+}
 builder.Services.AddHybridCache();
-builder.AddFileStorage();
-builder.Services.AddSingleton<FileStore>();
 builder.AddAccountAuthentication();
 builder.Services.AddScoped<IOrderSnapshotReportQuery, OrderSnapshotReportQuery>();
 builder.Services.AddScoped<OrderListQuery>();
@@ -65,8 +78,11 @@ await using var app = builder.Build();
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var stopping = app.Lifetime.ApplicationStopping;
-    if (app.Environment.IsDevelopment())
-        await scope.ServiceProvider.GetRequiredService<AppDbContext>().MigrateDevelopmentDatabaseAsync(stopping);
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    if (nativeRoot is not null)
+        await NativeDatabase.InitializeAsync(db, stopping);
+    else if (app.Environment.IsDevelopment())
+        await db.MigrateDevelopmentDatabaseAsync(stopping);
     await scope.ServiceProvider.GetRequiredService<AccountStore>().SeedAsync(stopping);
 }
 

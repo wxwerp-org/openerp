@@ -1,8 +1,8 @@
 using System.ComponentModel.DataAnnotations.Schema;
-using System.Data;
 using System.Data.Common;
 using System.Globalization;
 
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -37,16 +37,14 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         try
         {
             // 订单同步可能同时改变行和子单；选项、总数与明细来自同一个数据库快照。
-            return await db.Database.CreateExecutionStrategy().ExecuteAsync<(OpResult<OrderListResponse>, int)>(async () =>
+            return await OrderReadSnapshot.ReadAsync<(OpResult<OrderListResponse>, int)>(db, async () =>
             {
-                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
                 var platform = string.IsNullOrEmpty(request.Platform) ? null : request.Platform;
                 if (request.ShopSid is { } sid && !await access.AllowsAsync(db, platform, sid, ct))
                     return (OpResults.Err("无权查看该店铺。"), StatusCodes.Status403Forbidden);
                 var response = await ReadSnapshotAsync(request, access, ct);
-                await transaction.CommitAsync(ct);
                 return (OpResults.Ok(response), StatusCodes.Status200OK);
-            });
+            }, ct);
         }
         catch (Exception exception) when (exception is DbException or RetryLimitExceededException)
         {
@@ -141,8 +139,21 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         return new(items, total, page, request.PageSize, options);
     }
 
-    private IQueryable<OrderListHeader> ReadHeaders() =>
-        db.Database.SqlQueryRaw<OrderListHeader>(OrderHeadersSql, OrderCreatedTimeSql.Parameters());
+    private IQueryable<OrderListHeader> ReadHeaders()
+    {
+        if (db.Database.GetDbConnection() is not SqliteConnection sqlite)
+            return db.Database.SqlQueryRaw<OrderListHeader>(OrderHeadersSql, OrderCreatedTimeSql.Parameters());
+
+        SqliteOrderTime.Register(sqlite);
+        return db.Database.SqlQueryRaw<OrderListHeader>("""
+            SELECT "ErpId", "Sid", "Platform",
+                   openerp_wall_time("CreatedRaw") AS "CreatedAt",
+                   substr(openerp_wall_time("CreatedRaw"), 1, 10) AS "CreatedDate",
+                   openerp_wall_time("DispatchedRaw") AS "DispatchedAt",
+                   trim("CreatedRaw") AS "CreatedRaw", trim("DispatchedRaw") AS "DispatchedRaw"
+            FROM "Orders" WHERE "DeletedAt" IS NULL
+            """);
+    }
 
     private static string? FormatTime(DateTime? value, string? source)
     {

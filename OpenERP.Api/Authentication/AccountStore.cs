@@ -18,9 +18,11 @@ internal sealed partial class AccountStore(
     {
         var admin = new UserAccount { Username = UserAccount.AdminUsername, Name = "管理员", CreatedAt = UtcNow() };
         await using var write = CreateWriteContext();
+        // 手写 INSERT 不经过属性转换器，绑定值需与该 provider 的存储格式一致。
+        object? createdAt = write.Database.IsSqlite() ? (object?)admin.CreatedAt?.UtcTicks : admin.CreatedAt;
         await write.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "Users" ("Id", "Username", "Name", "CreatedAt")
-            VALUES ({admin.Id}, {admin.Username}, {admin.Name}, {admin.CreatedAt})
+            VALUES ({admin.Id}, {admin.Username}, {admin.Name}, {createdAt})
             ON CONFLICT ("Username") WHERE "DeletedAt" IS NULL DO NOTHING
             """, ct);
     }
@@ -166,6 +168,9 @@ internal sealed partial class AccountStore(
     private AppDbContext CreateWriteContext()
     {
         // 连接在提交时中断可能已有写入结果，避免自动重放整笔认证事务。
+        if (db.Database.IsSqlite())
+            return new AppDbContext(options);
+
         var writeOptions = new DbContextOptionsBuilder<AppDbContext>(options)
             .UseNpgsql(npgsql => npgsql.ExecutionStrategy(dependencies => new NonRetryingExecutionStrategy(dependencies)))
             .Options;
@@ -175,6 +180,9 @@ internal sealed partial class AccountStore(
     // 登录、改密与重置均先锁账号行，再检查密码或修改会话。
     private static async Task<UserAccount?> LockByUsernameAsync(AppDbContext write, string username, CancellationToken ct)
     {
+        if (write.Database.IsSqlite())
+            return await write.Users.SingleOrDefaultAsync(user => user.Username == username, ct);
+
         var accounts = await write.Users.FromSqlInterpolated(
             $"""SELECT * FROM "Users" WHERE "Username" = {username} AND "DeletedAt" IS NULL FOR UPDATE""")
             .ToListAsync(ct);
@@ -183,6 +191,10 @@ internal sealed partial class AccountStore(
 
     private static async Task<UserAccount?> LockByIdAsync(AppDbContext write, Guid id, CancellationToken ct)
     {
+        // SQLite 的写事务已独占写入，普通查询仍应用软删除筛选。
+        if (write.Database.IsSqlite())
+            return await write.Users.SingleOrDefaultAsync(user => user.Id == id, ct);
+
         var accounts = await write.Users.FromSqlInterpolated(
             $"""SELECT * FROM "Users" WHERE "Id" = {id} AND "DeletedAt" IS NULL FOR UPDATE""")
             .ToListAsync(ct);

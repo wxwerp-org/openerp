@@ -16,6 +16,10 @@ public sealed class OrderStore(AppDbContext db, HybridCache? cache = null, ILogg
         if (orders.Count == 0)
             return new OrderSaveCounts(0, 0, 0);
 
+        // SQLite 的 TEXT 金额列不执行 numeric(18,2) 的舍入和边界检查；在整批写入和指纹计算前统一。
+        if (db.Database.IsSqlite() && !TryNormalizeIncome(orders, out orders))
+            return OpResults.Err("保存订单失败，收入金额超出可保存的范围。");
+
         var ids = orders.Select(order => order.ErpId).ToArray();
         Dictionary<string, Guid> revisions = [];
         IReadOnlyList<OrderSnapshot> candidates = orders;
@@ -89,6 +93,28 @@ public sealed class OrderStore(AppDbContext db, HybridCache? cache = null, ILogg
             await OrderFingerprintCache.PublishAsync(cache, pages, revisions, logger, cancellationToken);
 
         return new OrderSaveCounts(added, updated, orders.Count - added - updated);
+    }
+
+    private static bool TryNormalizeIncome(IReadOnlyList<OrderSnapshot> source, out IReadOnlyList<OrderSnapshot> normalized)
+    {
+        normalized = source;
+        OrderSnapshot[]? changed = null;
+        for (var i = 0; i < source.Count; i++)
+        {
+            if (source[i].IncomeCost is not { } amount)
+                continue;
+            var rounded = decimal.Round(amount, 2, MidpointRounding.AwayFromZero);
+            if (rounded is > 9999999999999999.99m or < -9999999999999999.99m)
+                return false;
+            if (rounded != amount)
+            {
+                changed ??= source.ToArray();
+                changed[i] = source[i] with { IncomeCost = rounded };
+            }
+        }
+
+        normalized = changed ?? source;
+        return true;
     }
 
     private bool ApplyValues<TEntity>(TEntity existing, TEntity desired) where TEntity : Entity

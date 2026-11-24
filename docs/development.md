@@ -10,7 +10,7 @@
 - Node.js **26**，见 [.node-version](../.node-version)。
 - pnpm **11.16.0**，见 [package.json](../OpenERP.Web/package.json)。
 - PATH 中可直接调用的 Aspire CLI，版本与项目的 **17.0.0** 对齐；安装方式见 [Aspire 官方安装说明](https://aspire.dev/get-started/install-cli/)。
-- 已启动的 Docker Desktop 或 Aspire 支持的兼容容器运行环境。
+- 仅团队容器模式需要已启动的 Docker Desktop 或兼容引擎。
 
 在仓库根目录安装依赖并信任开发证书：
 
@@ -22,6 +22,18 @@ pnpm --dir OpenERP.Web install --frozen-lockfile
 ```
 
 本文直接调用 PATH 中的 `aspire`。`dotnet tool restore` 还原仓库本地工具（包括 EF Core 工具），不替代 PATH 中 Aspire CLI 的安装。首次信任证书可能需要系统确认，已信任后无需重复操作。
+
+### 本机原生运行
+
+在仓库根目录使用同一个 Aspire AppHost。先准备上述源码构建工具，原生配置直接启动 API 和 Vite，无需 Docker、WSL 或独立的数据库服务。
+
+```sh
+aspire start --isolated --launch-profile native
+```
+
+打开 Web 资源的 HTTPS 地址。普通停止用 `aspire stop`，再次用相同的配置打开。原生方式用 SQLite 保存订单、账号及设置，用本机目录保存附件，用进程内缓存保存可重建的缓存内容。开发数据默认位于当前用户的本地应用数据目录下的 `OpenERP/workspaces/`，按源码工作区路径区分。移动或重新克隆源码前记录原数据位置；也可用环境变量 `OpenERP__DataDirectory` 指定绝对路径（例如另一个有空间的本地磁盘）。一个数据目录同一时间只供一个运行实例使用。
+
+原生和容器模式各有自己的数据。备份原生实例时先正常停止应用，再完整复制数据目录，包括数据库和附件。在同一用户下还原时复制到空目录，并显式指定该路径。备份包含订单、附件及账户和 ERP 凭据，只存放在受控位置。正式 Docker 部署仍按[部署说明](deployment.md)操作。
 
 ### 启动与停止
 

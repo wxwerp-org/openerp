@@ -1,7 +1,7 @@
-using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using Mapster;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using OpResult;
@@ -36,14 +36,9 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
         try
         {
             // 同步可能在查询期间替换商品行；同一事务保证汇总、选项和明细来自同一快照。
-            // 将事务放入既有执行策略内，兼容 Aspire/Npgsql 配置的瞬时故障重试。
-            return await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
-            {
-                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
-                var report = await ReadAsync(request, generatedAt, trendEnd, cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-                return OpResults.Ok(report);
-            });
+            var report = await OrderReadSnapshot.ReadAsync(db,
+                () => ReadAsync(request, generatedAt, trendEnd, cancellationToken), cancellationToken);
+            return OpResults.Ok(report);
         }
         catch (Exception exception) when (exception is DbException or RetryLimitExceededException)
         {
@@ -128,7 +123,17 @@ public sealed class OrderSnapshotReportQuery(AppDbContext db, TimeProvider clock
 
     private IQueryable<AmountBucket> QueryAmountBuckets(IQueryable<OrderRecord> selected, int previousFirst, int lastDay)
     {
-        var createdDays = db.Database.SqlQueryRaw<OrderCreatedDay>(CreatedDaysSql, OrderCreatedTimeSql.Parameters());
+        IQueryable<OrderCreatedDay> createdDays;
+        if (db.Database.GetDbConnection() is SqliteConnection sqlite)
+        {
+            SqliteOrderTime.Register(sqlite);
+            createdDays = db.Database.SqlQueryRaw<OrderCreatedDay>(
+                """SELECT "ErpId", openerp_day("CreatedRaw") AS "DayNumber" FROM "Orders" WHERE "DeletedAt" IS NULL""");
+        }
+        else
+        {
+            createdDays = db.Database.SqlQueryRaw<OrderCreatedDay>(CreatedDaysSql, OrderCreatedTimeSql.Parameters());
+        }
         return (from order in selected
                     join created in createdDays on order.ErpId equals created.ErpId
                     select new

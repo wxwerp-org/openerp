@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Authentication;
 
@@ -27,16 +28,33 @@ internal static class ResetAdminPassword
 
         var configuration = WebApplication.CreateBuilder([]).Configuration;
         var connectionString = configuration.GetConnectionString("openerp");
-        if (string.IsNullOrWhiteSpace(connectionString))
+        var nativeRoot = configuration["Native:DataDirectory"];
+        if (nativeRoot is null && string.IsNullOrWhiteSpace(connectionString))
             return Fail("未配置 ConnectionStrings:openerp。");
 
         try
         {
-            var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options;
+            if (nativeRoot is not null && !Directory.Exists(nativeRoot))
+                return Fail("本机数据目录不存在。");
+            using var nativeLease = nativeRoot is null ? null : NativeDatabase.Acquire(nativeRoot, TimeSpan.Zero);
+            var settings = new DbContextOptionsBuilder<AppDbContext>();
+            if (nativeRoot is null)
+                settings.UseNpgsql(connectionString);
+            else
+                settings.UseSqlite(NativeDatabase.ConnectionString(nativeRoot, createIfMissing: false));
+
+            var options = settings.Options;
             await using var db = new AppDbContext(options);
+            if (nativeRoot is not null)
+                await NativeDatabase.InitializeAsync(db, CancellationToken.None, createIfMissing: false);
             var store = new AccountStore(db, options, new PasswordHasher<UserAccount>(), TimeProvider.System);
             if (!await store.ResetPasswordAsync(password!, CancellationToken.None))
                 return Fail("数据库中没有管理员账号。");
+        }
+        catch (Exception exception) when (nativeRoot is not null && (exception is IOException or
+            UnauthorizedAccessException or InvalidOperationException or ArgumentException or Microsoft.Data.Sqlite.SqliteException))
+        {
+            return Fail($"无法重置本机管理员密码：{exception.Message}");
         }
         catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
         {

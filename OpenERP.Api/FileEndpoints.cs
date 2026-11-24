@@ -20,7 +20,11 @@ public static class FileEndpoints
             {
                 return TypedResults.NotFound();
             }
-            catch (AmazonS3Exception exception)
+            catch (FileNotFoundException)
+            {
+                return TypedResults.NotFound();
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or AmazonS3Exception)
             {
                 app.Logger.LogError(exception, "File storage request failed");
                 return TypedResults.Problem("文件存储暂时不可用，请稍后重试。", statusCode: 503);

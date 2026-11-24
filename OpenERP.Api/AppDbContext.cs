@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Microsoft.EntityFrameworkCore.ValueGeneration;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
@@ -35,6 +37,26 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         await Database.MigrateAsync(cancellationToken);
     }
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder) =>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        if (Database.IsSqlite())
+            configurationBuilder.Properties<DateTimeOffset>().HaveConversion<UtcTicksConverter>();
+    }
+
+    private sealed class UtcTicksConverter() : ValueConverter<DateTimeOffset, long>(
+        value => value.UtcTicks, ticks => new DateTimeOffset(ticks, TimeSpan.Zero));
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+        if (Database.IsSqlite())
+        {
+            modelBuilder.Entity<OrderSyncSettings>().Property(settings => settings.ShopSids).HasColumnType("TEXT");
+            // SQLite 的修订号由 EF 在新建订单时生成；并发令牌配置沿用共享模型。
+            modelBuilder.Entity<OrderRecord>().Property(order => order.SyncRevision)
+                .HasDefaultValueSql(null)
+                .HasValueGenerator<GuidValueGenerator>()
+                .ValueGeneratedOnAdd();
+        }
+    }
 }

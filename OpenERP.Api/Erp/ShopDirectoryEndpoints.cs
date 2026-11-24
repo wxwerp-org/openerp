@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Mapster;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using OpenERP.Api.Authentication;
 
@@ -73,12 +74,7 @@ public static class ShopDirectoryEndpoints
             if (normalizedPlatform is not null)
                 query = query.Where(shop => shop.Platform == normalizedPlatform);
             if (normalizedKeyword is not null)
-            {
-                var pattern = $"%{EscapeLike(normalizedKeyword)}%";
-                query = int.TryParse(normalizedKeyword, NumberStyles.None, CultureInfo.InvariantCulture, out var sid)
-                    ? query.Where(shop => shop.Sid == sid || EF.Functions.ILike(shop.Name, pattern, "\\"))
-                    : query.Where(shop => EF.Functions.ILike(shop.Name, pattern, "\\"));
-            }
+                query = FilterByKeyword(db, query, normalizedKeyword);
 
             // 员工仅查看分配店铺的状态，不读取全局汇总与同步状态。
             if (!access.IsAdministrator)
@@ -197,6 +193,26 @@ public static class ShopDirectoryEndpoints
         {
             return TypedResults.Problem("本地同步状态暂时不可用。", statusCode: 503);
         }
+    }
+
+    private static IQueryable<Shop> FilterByKeyword(AppDbContext db, IQueryable<Shop> shops, string keyword)
+    {
+        var hasSid = int.TryParse(keyword, NumberStyles.None, CultureInfo.InvariantCulture, out var sid);
+        if (db.Database.GetDbConnection() is SqliteConnection sqlite)
+        {
+            // SQLite 内置 LIKE 只折叠 ASCII。按原文匹配，避免 %、_ 和反斜线变成通配符。
+            sqlite.CreateFunction<string, string, bool>("openerp_contains_ignore_case",
+                (name, term) => name.Contains(term, StringComparison.OrdinalIgnoreCase), isDeterministic: true);
+            var matched = db.Database.SqlQuery<int>($"""
+                SELECT "Sid" AS "Value" FROM "Shops" WHERE openerp_contains_ignore_case("Name", {keyword})
+                """);
+            return shops.Where(shop => (hasSid && shop.Sid == sid) || matched.Contains(shop.Sid));
+        }
+
+        var pattern = $"%{EscapeLike(keyword)}%";
+        return hasSid
+            ? shops.Where(shop => shop.Sid == sid || EF.Functions.ILike(shop.Name, pattern, "\\"))
+            : shops.Where(shop => EF.Functions.ILike(shop.Name, pattern, "\\"));
     }
 
     private static string? Normalize(string? value) =>
