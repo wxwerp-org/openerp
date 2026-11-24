@@ -161,7 +161,7 @@ async function handleAccountAction(
     />
 
     <div class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-      <header class="relative z-50 flex h-38 flex-none items-stretch bg-topnav">
+      <header class="relative z-50 flex h-38 flex-none items-stretch bg-nav">
         <WorkspaceTabs
           :items="visibleTabs"
           :active-page="activePage ?? ''"

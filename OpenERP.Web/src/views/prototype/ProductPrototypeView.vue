@@ -35,7 +35,7 @@ const fieldBoxInputMuted =
 const searchInput =
   'h-28 min-w-0 flex-1 border-0 border-current bg-transparent px-10 py-0 text-12/18 text-ink outline-none placeholder:text-placeholder'
 const searchButton =
-  'flex h-28 w-30 shrink-0 items-center justify-center text-search-icon hover:bg-search-hover-bg hover:text-primary'
+  'flex h-28 w-30 shrink-0 items-center justify-center text-search-icon hover:bg-page-btn-hover hover:text-primary'
 const sortButton =
   'inline-flex min-h-24 max-w-full items-center gap-3 text-left disabled:cursor-default'
 const caretClass = 'opacity-[0.65]'

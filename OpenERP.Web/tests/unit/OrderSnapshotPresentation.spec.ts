@@ -183,11 +183,11 @@ describe('平台分布', () => {
     const colors = platformDistribution(many, 6).map((row) => row.color)
 
     expect(colors).toEqual([
-      'var(--color-chart-1)',
+      'var(--color-primary)',
       'var(--color-chart-2)',
       'var(--color-chart-3)',
       'var(--color-chart-4)',
-      'var(--color-chart-1)',
+      'var(--color-primary)',
       'var(--color-chart-2)',
     ])
   })

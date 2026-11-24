@@ -235,7 +235,7 @@
         height="14"
         rx="1.3"
         stroke-width="1.4"
-        style="fill: var(--color-guide-product-bg); stroke: var(--color-primary)"
+        style="fill: var(--color-nav-active); stroke: var(--color-primary)"
       />
       <path
         d="M7.2 10.2h5.6M7.2 13.7h5.6M7.2 17.2h3.7M23.2 10.2h5.6M23.2 13.7h5.6M23.2 17.2h3.7"

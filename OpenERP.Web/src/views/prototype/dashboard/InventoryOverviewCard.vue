@@ -82,7 +82,7 @@ const metric = ref(props.metrics[0] ?? '')
         </div>
         <div class="mt-16 flex flex-col gap-8">
           <div
-            class="flex h-50 items-center justify-between rounded-4 border border-line-soft bg-row-soft px-10"
+            class="flex h-50 items-center justify-between rounded-4 border border-line-soft bg-page-soft px-10"
           >
             <span class="text-11/[16.5px] text-muted">在库</span
             ><b class="text-14/[21px] font-semibold text-ink tabular-nums"
@@ -90,7 +90,7 @@ const metric = ref(props.metrics[0] ?? '')
             >
           </div>
           <div
-            class="flex h-50 items-center justify-between rounded-4 border border-line-soft bg-row-soft px-10"
+            class="flex h-50 items-center justify-between rounded-4 border border-line-soft bg-page-soft px-10"
           >
             <span class="text-11/[16.5px] text-muted">在途</span
             ><b class="text-14/[21px] font-semibold text-ink tabular-nums"
@@ -148,7 +148,7 @@ const metric = ref(props.metrics[0] ?? '')
           <tbody class="[&>tr:last-child>td]:border-b-0">
             <tr v-for="warehouse in warehouses" :key="warehouse.name" class="group">
               <td
-                class="h-48 border-b border-line-soft px-12 text-left text-12 text-ink tabular-nums group-hover:bg-row-hover-soft"
+                class="h-48 border-b border-line-soft px-12 text-left text-12 text-ink tabular-nums group-hover:bg-row-hover"
               >
                 <span class="flex items-center gap-6"
                   ><i
@@ -159,22 +159,22 @@ const metric = ref(props.metrics[0] ?? '')
                 >
               </td>
               <td
-                class="h-48 border-b border-line-soft px-12 text-right text-12 text-body tabular-nums group-hover:bg-row-hover-soft"
+                class="h-48 border-b border-line-soft px-12 text-right text-12 text-body tabular-nums group-hover:bg-row-hover"
               >
                 {{ warehouse.inStock }}
               </td>
               <td
-                class="h-48 border-b border-line-soft px-12 text-right text-12 text-body tabular-nums group-hover:bg-row-hover-soft"
+                class="h-48 border-b border-line-soft px-12 text-right text-12 text-body tabular-nums group-hover:bg-row-hover"
               >
                 {{ warehouse.inTransit }}
               </td>
               <td
-                class="h-48 border-b border-line-soft px-12 text-right text-12 text-body tabular-nums group-hover:bg-row-hover-soft"
+                class="h-48 border-b border-line-soft px-12 text-right text-12 text-body tabular-nums group-hover:bg-row-hover"
               >
                 {{ warehouse.days }}
               </td>
               <td
-                class="h-48 border-b border-line-soft px-12 text-right text-12 text-body tabular-nums group-hover:bg-row-hover-soft"
+                class="h-48 border-b border-line-soft px-12 text-right text-12 text-body tabular-nums group-hover:bg-row-hover"
               >
                 {{ warehouse.total }}
               </td>

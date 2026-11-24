@@ -59,7 +59,7 @@ function formatPercentage(percentage: number): string {
               cx="83"
               cy="83"
               r="63"
-              class="fill-none stroke-donut-track [stroke-width:17]"
+              class="fill-none stroke-progress-track [stroke-width:17]"
             ></circle>
             <circle
               v-for="segment in segments"

@@ -8,7 +8,7 @@ import AppEmptyState from '../ui/AppEmptyState.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppIconButton from '../ui/AppIconButton.vue'
 import AppInput from '../ui/AppInput.vue'
-import AppListToolbar from '../ui/AppListToolbar.vue'
+import AppListPage from '../ui/AppListPage.vue'
 import AppTable from '../ui/AppTable.vue'
 import AppTd from '../ui/AppTd.vue'
 import AppTh from '../ui/AppTh.vue'
@@ -190,9 +190,8 @@ onUnmounted(() => detailRequest?.abort())
 </script>
 
 <template>
-  <section id="page-users" class="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white">
-    <h1 class="sr-only">用户管理</h1>
-    <AppListToolbar>
+  <AppListPage id="page-users" title="用户管理">
+    <template #toolbar>
       <AppButton
         ref="addButton"
         variant="primary"
@@ -203,12 +202,12 @@ onUnmounted(() => detailRequest?.abort())
       >
         添加用户
       </AppButton>
-      <template #right>
-        <AppIconButton label="刷新" tone="toolbar" :disabled="loading" @click="loadUsers">
-          <AppIcon name="i-refresh" />
-        </AppIconButton>
-      </template>
-    </AppListToolbar>
+    </template>
+    <template #toolbar-right>
+      <AppIconButton label="刷新" tone="toolbar" :disabled="loading" @click="loadUsers">
+        <AppIcon name="i-refresh" />
+      </AppIconButton>
+    </template>
     <AppTable
       caption="用户管理列表"
       label="用户管理表格"
@@ -478,5 +477,5 @@ onUnmounted(() => detailRequest?.abort())
         </footer>
       </form>
     </AppDialog>
-  </section>
+  </AppListPage>
 </template>

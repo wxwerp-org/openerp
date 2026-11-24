@@ -8,6 +8,7 @@
 - .NET `restore`、`build` 直接在沙箱外执行。`run`、`test` 涉及显式或隐式还原时同样适用。
 - 涉及 Aspire 时，先读并遵循[项目内 Aspire Skill](.agents/skills/aspire/SKILL.md)，按路由名称读取仓库内对应的子 Skill。直接调用 PATH 中的 `aspire`。
 - 用户明确指令优先于 Skill。若 Skill 导致请求确认、暂停、未完成或偏离任务，链接实际读取的 Skill，引用原文并区分其要求与自己的判断。
+- 新增或修改界面前，先对照 [UI 设计规范原型](docs/design/erp-prototype.html)，尽量遵循其设计变量（颜色、圆角、字号、间距）、全局框架、通用控件和列表页的版式。设计值落在 `src/ui/theme.css` 的 token，不在页面里硬编码。与原型冲突或原型未覆盖时，说明取舍后再实施。
 
 ## 验收与 PR
 

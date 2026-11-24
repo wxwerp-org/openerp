@@ -244,9 +244,9 @@ describe('本地订单商品量快照报表', () => {
     expect(wrapper.get('button[aria-label="上一页"] use').attributes('href')).toBe('#i-chev-left')
     expect(wrapper.get('button[aria-label="下一页"] use').attributes('href')).toBe('#i-chev-right')
     const pageSizeSelect = wrapper.get('select[aria-label="每页条数"]')
-    expect(
-      pageSizeSelect.element.closest('label')?.querySelector('use')?.getAttribute('href'),
-    ).toBe('#i-chev-down')
+    expect(pageSizeSelect.element.parentElement?.querySelector('use')?.getAttribute('href')).toBe(
+      '#i-chev-down',
+    )
     expect(wrapper.get('input[aria-label="前往页码"]').attributes('aria-label')).toBe('前往页码')
     const platformFilter = wrapper.get('[data-testid="report-platform-filter"]')
     expect(platformFilter.find('select[aria-label="平台筛选"]').exists()).toBe(true)
@@ -328,12 +328,12 @@ describe('本地订单商品量快照报表', () => {
     expect(requested.at(-1)!.searchParams.get('page')).toBe('3')
 
     await wrapper.get('input[aria-label="前往页码"]').setValue('6')
-    await wrapper.get('input[aria-label="前往页码"]').trigger('keyup.enter')
+    await wrapper.get('input[aria-label="前往页码"]').trigger('keydown.enter')
     await flushPromises()
     expect(requested.at(-1)!.searchParams.get('page')).toBe('6')
 
     await wrapper.get('input[aria-label="前往页码"]').setValue('99')
-    await wrapper.get('input[aria-label="前往页码"]').trigger('keyup.enter')
+    await wrapper.get('input[aria-label="前往页码"]').trigger('keydown.enter')
     await flushPromises()
     expect(requested.at(-1)!.searchParams.get('page')).toBe('7')
   })
@@ -349,7 +349,7 @@ describe('本地订单商品量快照报表', () => {
     wrapper = await mountReport()
 
     await wrapper.get('input[aria-label="前往页码"]').setValue('3')
-    await wrapper.get('input[aria-label="前往页码"]').trigger('keyup.enter')
+    await wrapper.get('input[aria-label="前往页码"]').trigger('keydown.enter')
     // Chromium 在输入框被禁用时触发原生 blur；VTU 的 trigger 会跳过 disabled 元素，故直接派发。
     wrapper.get('input[aria-label="前往页码"]').element.dispatchEvent(new Event('blur'))
     pending.resolve(jsonResponse(reportBody({ page: 3, pageCount: 7 })))

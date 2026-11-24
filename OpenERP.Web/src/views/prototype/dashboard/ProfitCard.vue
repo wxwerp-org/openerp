@@ -84,13 +84,13 @@ const period = ref(props.periods[1] ?? props.periods[0] ?? '')
             <line x1="18" y1="110" x2="352" y2="110" />
             <line x1="18" y1="153" x2="352" y2="153" />
           </g>
-          <g class="fill-chart-axis font-sans" font-size="9">
+          <g class="fill-placeholder font-sans" font-size="9">
             <text x="4" y="27">$2k</text>
             <text x="4" y="70">$1.5k</text>
             <text x="4" y="113">$1k</text>
             <text x="4" y="156">$0</text>
           </g>
-          <g class="fill-chart-line">
+          <g class="fill-primary">
             <rect x="38" y="96" width="20" height="57" rx="2"></rect>
             <rect x="78" y="78" width="20" height="75" rx="2"></rect>
             <rect x="118" y="88" width="20" height="65" rx="2"></rect>
@@ -119,7 +119,7 @@ const period = ref(props.periods[1] ?? props.periods[0] ?? '')
           </g>
           <polyline
             points="48,81 88,67 128,73 168,54 208,61 248,40 288,47"
-            class="fill-none stroke-chart-line [stroke-width:1.5]"
+            class="fill-none stroke-primary [stroke-width:1.5]"
           ></polyline>
         </svg>
         <div class="mt-6 flex justify-between text-11/[16.5px] text-muted">

@@ -106,6 +106,9 @@ pnpm --dir OpenERP.Web format
 - `--spacing: 1px`，因此 `h-54`、`px-16`、`gap-12` 直接等于像素值；字号工具类的斜杠后为行高（`text-14/22`）。
 - 优先复用 [src/ui](../OpenERP.Web/src/ui/) 的组件及其 props 表达上下文差异（尺寸档、色调、变体），页面和卡片只组合工具类，不复制组件内部结构。
 - 类名必须是可静态扫描的字面量：不要在模板里拼接类名，按状态用互斥分支选择字面量。同一元素避免出现同属性冲突的工具类（如 `h-32` 与 `h-40` 并存），把公共部分与状态差异拆开。
+- 表单控件只通过 `src/ui` 的组件使用：下拉用 `AppSelect`，文本与日期输入用 `AppInput`，列表分页（总数、翻页、每页条数、前往页码）用 `AppPagination`。页面不得直接写原生 `<select>` 或 `<input type="date">`，也不要在页面里声明控件的边框、高度、箭头等局部样式常量，由 `tests/unit/ControlConsistency.spec.ts` 约束。需要完整键盘遍历的页面给控件加 `focus-ring`。
+- 列表类页面用 `AppListPage` 搭建「提示区、筛选条、工具条、通栏表格」，由 `tests/unit/ListPageConsistency.spec.ts` 约束。
+- 设计 token 只在 `theme.css` 定义，并保持精简：没有引用的 token 要删除，取值相同的颜色只保留一个，所有 `var(--…)` 必须指向已定义的 token，由 `tests/unit/ThemeTokens.spec.ts` 约束。需要新颜色时，先看是否已有相差不超过 3/255 的同类色，有就直接复用，不要为单个页面再起一个新名字。
 - 不使用 `!important`。Tailwind 的 `max-[…]:` 变体是严格小于，需要“小于等于”语义时使用 `[@media(max-width:…)]:` 任意变体。
 - `<style scoped>` 仅用于工具类无法干净表达的场景：伪元素、滚动条、粘性表格、复杂组合选择器、图表内部、原生 `<dialog>` 定位、几何形状（如工作台引导卡的箭头切角 `clip-path`）。颜色必须引用 token，尺寸同样优先使用 token 或在注释中说明实测来源；其余样式一律走工具类。
 - 需要影响 `body` 等全局节点的布局例外（如登录页解除桌面最小宽度、报表页窄屏收缩）用 SFC 内的 `:global(...)` 保持未分层（unlayered），以便压过 `@layer base` 的 reset。

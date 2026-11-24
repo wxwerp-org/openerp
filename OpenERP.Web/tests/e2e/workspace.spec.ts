@@ -843,9 +843,7 @@ test('Given 独立页面路由 When 从侧栏导航 Then 授权店铺可达且�
   }
 })
 
-test('Given 桌面端授权店铺 When 打开 Then 沿用 Dashboard 卡片语言且无横向溢出', async ({
-  page,
-}) => {
+test('Given 桌面端授权店铺 When 打开 Then 沿用列表页标准版式且无横向溢出', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await prepare(page)
   await mockShops(page)
@@ -853,23 +851,27 @@ test('Given 桌面端授权店铺 When 打开 Then 沿用 Dashboard 卡片语言
 
   const shopsHeader = page.locator('[data-testid="shops-head"]')
   await expect(shopsHeader).toHaveCSS('display', 'flex')
-  await expect(shopsHeader).toHaveCSS('height', '62px')
   await expect(shopsHeader).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(shopsHeader).toHaveCSS('box-shadow', 'none')
 
-  const shopsCard = page.locator('[data-testid="shops-card"]')
-  await expect(shopsCard).toBeVisible()
-  await expect(shopsCard).toHaveCSS('border-top-width', '1px')
-  await expect(shopsCard).toHaveCSS('border-top-left-radius', '6px')
-  await expect(shopsCard).toHaveCSS('border-bottom-left-radius', '6px')
+  // 筛选条、工具条与通栏表格依次排列，表头为白底，没有外层卡片。
+  const filters = page.getByRole('search', { name: '店铺筛选' })
+  await expect(filters).toBeVisible()
+  await expect(filters).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+  const filtersBox = await filters.boundingBox()
+  const tableBox = await shopsTable(page).boundingBox()
+  expect(filtersBox!.y).toBeLessThan(tableBox!.y)
   await expect(shopsTable(page).getByRole('columnheader').first()).toHaveCSS(
     'background-color',
-    'rgb(242, 245, 250)',
+    'rgb(255, 255, 255)',
   )
 
-  const shopsTitle = page.getByRole('heading', { name: '授权店铺' })
-  await expect(shopsTitle).toHaveCSS('font-size', '20px')
-  await expect(shopsTitle).toHaveCSS('font-weight', '600')
+  // 页面标题只对读屏器可见，由页签承担视觉标题。
+  const shopsTitle = page.getByRole('heading', { level: 1, name: '授权店铺' })
+  await expect(shopsTitle).toHaveCount(1)
+  const titleBox = await shopsTitle.boundingBox()
+  expect(titleBox!.width).toBeLessThanOrEqual(1)
+  expect(titleBox!.height).toBeLessThanOrEqual(1)
   await expect(page.locator('[data-testid="upstream-tag"]')).toHaveCSS('height', '18px')
   await expect(page.getByRole('button', { name: '刷新本地数据' })).toBeVisible()
   await expect(page.locator('[data-testid="shop-summary-card"]')).toHaveCount(4)

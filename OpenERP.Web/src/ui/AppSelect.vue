@@ -12,10 +12,13 @@ const props = withDefaults(
     options: { value: SelectValue; label: string }[]
     size?: 'md' | 'sm'
     disabled?: boolean
+    /** 键盘聚焦时显示 2px 焦点环；报表等需要完整键盘遍历的页面开启。 */
+    focusRing?: boolean
   }>(),
   {
     size: 'md',
     disabled: false,
+    focusRing: false,
     modelValue: undefined,
   },
 )
@@ -41,6 +44,9 @@ const shellClass = computed(() => [
 const selectClass = computed(() => [
   'h-full w-full appearance-none border-0 bg-transparent text-12 text-ink outline-none disabled:cursor-default disabled:text-muted',
   props.size === 'md' ? 'pl-11 pr-29' : 'pl-10 pr-29',
+  props.focusRing
+    ? 'focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
+    : '',
 ])
 
 function onChange(event: Event): void {

@@ -181,18 +181,18 @@ function headLayout(): string[] {
 function linkState(active: boolean): string[] {
   return active
     ? ['bg-nav-active font-semibold text-primary']
-    : ['text-nav-text hover:bg-nav-hover hover:text-ink']
+    : ['text-nav-text hover:bg-toolbar hover:text-ink']
 }
 
 function headState(active: boolean): string[] {
   if (props.collapsed) {
     return active
       ? ['bg-nav-active text-primary']
-      : ['text-nav-text hover:bg-nav-hover hover:text-ink']
+      : ['text-nav-text hover:bg-toolbar hover:text-ink']
   }
   return active
-    ? ['bg-nav-hover font-semibold text-ink']
-    : ['text-nav-text hover:bg-nav-hover hover:text-ink']
+    ? ['bg-toolbar font-semibold text-ink']
+    : ['text-nav-text hover:bg-toolbar hover:text-ink']
 }
 
 function headIconState(active: boolean): string[] {
@@ -207,13 +207,13 @@ function subItemState(active: boolean, disabled = false): string[] {
   if (disabled) return ['cursor-default text-muted']
   return active
     ? ['bg-nav-active font-semibold text-primary']
-    : ['text-body hover:bg-nav-hover hover:text-ink']
+    : ['text-body hover:bg-toolbar hover:text-ink']
 }
 </script>
 
 <template>
   <aside
-    class="relative z-[60] flex h-full flex-none flex-col border-r border-border-nav bg-nav transition-[width] duration-180 ease-[ease]"
+    class="relative z-[60] flex h-full flex-none flex-col border-r border-hover-bg bg-nav transition-[width] duration-180 ease-[ease]"
     :class="isRail ? 'w-56' : 'w-200'"
     aria-label="主导航"
     data-testid="sidebar"
@@ -254,7 +254,7 @@ function subItemState(active: boolean, disabled = false): string[] {
         />
       </svg>
       <span
-        class="whitespace-nowrap text-14/[21px] font-semibold tracking-[0.3px] text-ink"
+        class="whitespace-nowrap text-14/[21px] font-semibold tracking-brand text-ink"
         :class="isRail ? 'hidden' : ''"
       >
         Open ERP
@@ -347,7 +347,7 @@ function subItemState(active: boolean, disabled = false): string[] {
           :style="{ top: `${flyoutTop}px` }"
           data-testid="nav-flyout"
         >
-          <div class="px-8 pb-6 pt-2 text-12 font-semibold text-sidebar-foot">
+          <div class="px-8 pb-6 pt-2 text-12 font-semibold text-title-caret">
             {{ group.label }}
           </div>
           <button
@@ -367,7 +367,7 @@ function subItemState(active: boolean, disabled = false): string[] {
     </nav>
 
     <div
-      class="flex h-48 w-full flex-none items-center text-sidebar-foot"
+      class="flex h-48 w-full flex-none items-center text-title-caret"
       :class="isRail ? 'justify-center pr-0' : 'justify-end pr-14'"
     >
       <button

@@ -16,7 +16,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
       </div>
       <div class="flex min-w-0 flex-nowrap items-center gap-10">
         <label class="flex items-center gap-6 whitespace-nowrap text-body"
-          ><input type="checkbox" class="size-[13px] accent-primary" />仅看我关注</label
+          ><input type="checkbox" class="size-13 accent-primary" />仅看我关注</label
         >
         <AppButton>全部<AppIcon name="i-chev-down" :size="10" class="opacity-65" /></AppButton>
       </div>
@@ -24,7 +24,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
     <div class="flex min-h-0 flex-1 flex-col px-16 pb-16">
       <div class="mt-1 mb-10 flex items-center gap-8 whitespace-nowrap">
         <span
-          class="inline-flex h-20 items-center justify-center rounded-2 border border-tag-red-border bg-tag-red-bg px-5 text-11/16 text-danger"
+          class="inline-flex h-20 items-center justify-center rounded-2 border border-tag-red-border bg-danger-faint px-5 text-11/16 text-danger"
           >断货风险 2</span
         ><span
           class="inline-flex h-20 items-center justify-center rounded-2 border border-tag-amber-border bg-tag-amber-bg px-5 text-11/16 text-warning"
@@ -170,7 +170,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
             </td>
             <td class="h-47 border-b border-line-soft px-8 text-12 text-body">
               <span
-                class="inline-flex h-20 items-center rounded-2 bg-urgency-high-bg px-6 text-11/[16.5px] text-warning"
+                class="inline-flex h-20 items-center rounded-2 bg-notice-amber-bg px-6 text-11/[16.5px] text-warning"
                 >加急</span
               >
             </td>
@@ -214,7 +214,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
             </td>
             <td class="h-47 border-b border-line-soft px-8 text-12 text-body">
               <span
-                class="inline-flex h-20 items-center rounded-2 bg-urgency-normal-bg px-6 text-11/[16.5px] text-success"
+                class="inline-flex h-20 items-center rounded-2 bg-tag-green-bg px-6 text-11/[16.5px] text-success"
                 >正常</span
               >
             </td>
@@ -258,7 +258,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
             </td>
             <td class="h-47 border-b border-line-soft px-8 text-12 text-body">
               <span
-                class="inline-flex h-20 items-center rounded-2 bg-urgency-normal-bg px-6 text-11/[16.5px] text-success"
+                class="inline-flex h-20 items-center rounded-2 bg-tag-green-bg px-6 text-11/[16.5px] text-success"
                 >充足</span
               >
             </td>

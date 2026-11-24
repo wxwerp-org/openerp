@@ -29,7 +29,7 @@
   body {
     min-width: 1440px;
     overflow: hidden;
-    background: var(--color-surface);
+    background: var(--color-white);
     color: var(--color-body);
     font-family: var(--font-sans);
     font-size: 12px;
@@ -96,21 +96,21 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: var(--color-scroll-track);
+    background: var(--color-page);
   }
 
   ::-webkit-scrollbar-thumb {
-    background: var(--color-scroll-thumb-root);
-    border: 2px solid var(--color-scroll-track);
+    background: var(--color-scroll-thumb);
+    border: 2px solid var(--color-page);
     border-radius: 8px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-scroll-thumb-root-hover);
+    background: var(--color-scroll-thumb-hover);
   }
 
   ::-webkit-scrollbar-corner {
-    background: var(--color-scroll-track);
+    background: var(--color-page);
   }
 }
 
@@ -133,12 +133,14 @@
     BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
+  /* 品牌名（侧栏与登录页 logo 旁的 Open ERP）的字距。 */
+  --tracking-brand: 0.3px;
+
   --color-white: #fff;
   --color-primary: #005bf5;
   /* 品牌标识（侧栏与登录页 logo）沿用旧品牌蓝，与交互主色不同。 */
   --color-brand: #0968ff;
   /* 初始化引导卡插画的浅蓝底，属于固定图标 artwork 的设计值。 */
-  --color-guide-product-bg: #e8f1ff;
   --color-primary-hover: #0047c7;
   --color-primary-soft: rgba(0, 91, 245, 0.1);
   --color-primary-faint: rgba(0, 91, 245, 0.06);
@@ -149,16 +151,12 @@
   --color-body-alt: #333b4a;
   --color-muted: #888c94;
   --color-placeholder: #a6abb4;
-  --color-surface: #fff;
   --color-page: #f2f5fa;
   --color-page-soft: #f7f9fd;
-  --color-page-alt: #f5f6f9;
   --color-toolbar: #f0f2f5;
   --color-nav: #f8f9fb;
-  --color-topnav: #f6f7f9;
   --color-line: #e6e8eb;
   --color-line-soft: #ebedf0;
-  --color-border-nav: #e8eaed;
   --color-input: #cad2e0;
   --color-input-hover: #aeb9c9;
   --color-danger: #e52e2e;
@@ -166,7 +164,6 @@
   --color-warning: #b96800;
   --color-accent: #209ff4;
 
-  --color-tag-red-bg: #fff3f3;
   --color-tag-red-border: #ffd4d4;
   --color-tag-green-bg: #f3fdf5;
   --color-tag-green-border: #b9e6c4;
@@ -176,7 +173,6 @@
   --color-tag-amber-border: #f6deb5;
   --color-tag-gray-bg: #f7f8fa;
   --color-tag-gray-border: #e1e4e9;
-  --color-status-off-border: #e3e6eb;
   --color-status-unknown: #606a78;
   --color-danger-deep: #b42318;
   /* 店铺详情里的失效提示是旧页面自定的琥珀强调色，与通用 tag amber 不同。 */
@@ -184,12 +180,10 @@
   --color-notice-amber-bg: #fff8ea;
   --color-notice-amber-border: #f5d9a8;
 
-  --color-nav-hover: #eff1f4;
   --color-nav-active: #eaf2ff;
   --color-nav-text: #3c424b;
   --color-nav-icon: #7a818b;
   --color-nav-icon-muted: #a2a8b1;
-  --color-sidebar-foot: #8a9099;
   /* 布局壳（AppShell / 侧栏 / 页签 / 账户菜单）实测色值 */
   --color-hover-bg: #e8eaed;
   --color-tab: #5b6068;
@@ -198,11 +192,9 @@
   --color-avatar-bg: #dce8ff;
   --color-danger-faint: #fff2f2;
   --color-scroll-thumb: #cbd5e1;
+  --color-scroll-thumb-hover: #aebdd0;
   --color-scroll-thumb-nav: #d5dae1;
-  --color-scroll-track: #f2f5fa;
   /* 页面级滚动条沿用的旧全局值，与 AppTable/侧栏的自定义滚动条分开维护。 */
-  --color-scroll-thumb-root: #c8d4e3;
-  --color-scroll-thumb-root-hover: #aebdd0;
 
   --color-soft-bg: rgba(11, 16, 25, 0.1);
   --color-soft-bg-hover: rgba(11, 16, 25, 0.16);
@@ -210,11 +202,9 @@
   --color-caret: #a9b0ba;
   --color-toolbar-icon: #4d5968;
   --color-search-icon: #586474;
-  --color-search-hover-bg: #f5f8fd;
   --color-sort-icon: #bfc7d2;
   --color-order-mark-bg: #fff2cc;
   --color-order-mark-text: #654200;
-  --color-notice-bg: #fafbfc;
   --color-progress-track: #eef3fa;
   --color-page-btn-hover: #f5f8ff;
   --color-page-num-border: #d7e4ff;
@@ -222,39 +212,20 @@
   --color-empty-icon-strong: #c9d2dd;
   --color-empty-icon-muted: #cbd3df;
   --color-radio-border: #c6cfdc;
-  --color-radio-check: #65a6ff;
-  --color-radio-border-disabled: #d5dbe4;
   --color-radio-check-disabled: #afc9f3;
-  --color-radio-bg-disabled: #f7f9fc;
-  --color-btn-hover-bg: #f8fafd;
-  --color-btn-disabled-bg: #f7f9fc;
   --color-btn-disabled-text: #c7cdd6;
   --color-row-hover: #fafcff;
-  --color-row-hover-alt: #f9fbff;
-  --color-row-hover-soft: #fbfcfe;
-  --color-row-soft: #f8fafd;
   --color-check-border: #c3cbd8;
   --color-num-muted: #b0b7c3;
   --color-shop-card-hover-border: #b7d1ff;
-  --color-shop-card-active: #f4f8ff;
 
   --color-chart-grid: #ecf0f5;
-  --color-chart-axis: #a6abb4;
-  --color-chart-line: #005bf5;
   --color-chart-line-alt: #8fc0ff;
-  --color-chart-fill: #f0f6ff;
   --color-chart-point-border: #c9d9ef;
-  --color-chart-tooltip-border: #e6e8eb;
-  --color-chart-tooltip-title: #888c94;
-  --color-chart-tooltip-value: #0b1019;
-  --color-donut-track: #eff4fb;
-  --color-chart-1: #005bf5;
   --color-chart-2: #65a6ff;
   --color-chart-3: #a8cbff;
   --color-chart-4: #d5e5ff;
   --color-star: #f3ad27;
-  --color-review-bar-track: #f0f3f8;
-  --color-review-bar-fill: #8fc0ff;
 
   /* 工作台顶部工具条与 14 张卡片实测色值 */
   --color-title-caret: #8b929c;
@@ -263,20 +234,13 @@
   /* 时间胶囊与物流激活卡边框共用同一实测色。 */
   --color-hover-pill: #eaf0f8;
   --color-divider: rgba(0, 0, 0, 0.12);
-  --color-init-step-hover: #ebf2fe;
-  --color-init-must-bg: #fff0f0;
   --color-init-must-text: #e44242;
   --color-init-more: #606873;
   --color-todo-hover-border: #dce5f2;
   --color-todo-warn: #e98c00;
-  --color-todo-warn-bg: #fff7e8;
-  --color-week-active-bg: #f0f5ff;
-  --color-trend-divider: #f2f4f7;
   --color-legend-alt: #7bb3ff;
   --color-chart-order-bar: #bfd8ff;
   --color-thumb-icon: #728197;
-  --color-urgency-high-bg: #fff8ec;
-  --color-urgency-normal-bg: #f2faf4;
   --color-stock-track: #eaf1fb;
   --color-stock-segment-4: #d8e7ff;
   --color-black: #000;
@@ -284,7 +248,6 @@
   --color-mask: rgba(16, 24, 40, 0.45);
   --color-mask-strong: rgba(11, 16, 25, 0.38);
   --color-mask-notice: rgba(15, 23, 42, 0.52);
-  --color-mask-overlay: rgba(0, 0, 0, 0.46);
   --color-toast-bg: #303741;
   --color-scrim: rgba(0, 0, 0, 0.1);
 
@@ -340,9 +303,6 @@
 
   --shadow-header: 0 4px 14px rgba(177, 199, 226, 0.2);
   --shadow-card-hover: 0 4px 8px rgba(81, 133, 192, 0.11);
-  --shadow-card-hover-lg: 0 6px 12px rgba(81, 133, 192, 0.09);
-  --shadow-shop-card-hover: 0 4px 10px rgba(81, 133, 192, 0.1);
-  --shadow-stat: 0 4px 10px rgba(81, 133, 192, 0.11);
   --shadow-menu: 0 2px 8px rgba(16, 24, 40, 0.1);
   --shadow-menu-lg: 0 4px 12px rgba(16, 24, 40, 0.12);
   --shadow-account-menu: 0 6px 18px rgba(16, 24, 40, 0.14);
@@ -356,31 +316,11 @@
   --shadow-layer: 0 0 0 100vmax var(--color-page), 0 4px 18px rgba(30, 48, 75, 0.08);
 
   /* 业务配置页（settings 三栏）实测色值 */
-  --color-settings-help-border: #d9dee7;
-  --color-settings-help-icon: #6d7785;
-  --color-settings-user-icon: #7d8795;
-  --color-config-desc: #707987;
 
   /* 业务配置内容切换时的旧入场动效（0.16s 淡入+2px 上移）。 */
-  --animate-config-fade: configFade 0.16s ease;
 
   /* 表单/公告/账户弹窗实测值 */
   /* 弹窗标题 15px 与旧页面的行高继承比一致（1.5 -> 22.5px），因此不设 --line-height。 */
   --text-dialog-title: 15px;
-  --color-dialog-notice-header: #0e5fe9;
-  --color-dialog-notice-footer-line: #ebebeb;
-  --color-dialog-notice-btn-hover: #f5f9ff;
   --color-dialog-editor-border: #c9d8db;
-  --color-dialog-image-hover-bg: #fbfdff;
-  @keyframes configFade {
-    from {
-      opacity: 0.35;
-      transform: translateY(2px);
-    }
-
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
 }

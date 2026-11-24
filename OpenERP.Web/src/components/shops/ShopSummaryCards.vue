@@ -39,9 +39,9 @@ const cards = computed(() => [
 const cardBaseClass =
   'flex min-w-0 flex-col items-start gap-4 rounded-6 border px-16 py-14 text-left'
 const cardIdleClass = 'border-line bg-white'
-const cardActiveClass = 'border-primary bg-shop-card-active'
+const cardActiveClass = 'border-primary bg-page-btn-hover'
 const interactiveClass =
-  'cursor-pointer transition duration-150 ease-[ease] hover:border-shop-card-hover-border hover:shadow-shop-card-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary'
+  'cursor-pointer transition duration-150 ease-[ease] hover:border-shop-card-hover-border hover:shadow-card-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary'
 const valueClass: Record<'valid' | 'invalid' | 'unknown', string> = {
   valid: 'text-success',
   invalid: 'text-danger',

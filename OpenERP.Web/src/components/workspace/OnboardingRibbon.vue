@@ -21,7 +21,7 @@ function select(step: OnboardingStep): void {
 
 function stepClass(step: OnboardingStep): string[] {
   if (step.done) return ['bg-page-soft text-muted']
-  if (step.executable) return ['bg-guide-product-bg hover:bg-init-step-hover']
+  if (step.executable) return ['bg-nav-active hover:bg-nav-active']
   return ['bg-page text-muted']
 }
 </script>
@@ -95,7 +95,7 @@ function stepClass(step: OnboardingStep): string[] {
               </svg>
               <span
                 v-else-if="step.executable"
-                class="h-16 flex-none rounded-2 bg-init-must-bg px-4 text-11/16 font-normal text-init-must-text"
+                class="h-16 flex-none rounded-2 bg-danger-faint px-4 text-11/16 font-normal text-init-must-text"
                 >必做</span
               >
             </span>

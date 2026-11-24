@@ -228,7 +228,7 @@ const period = ref(props.periods[0] ?? '')
         <tbody class="[&>tr:last-child>td]:border-b-0">
           <tr v-for="row in rows" :key="row.rank" class="group">
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 align-middle whitespace-nowrap text-12 text-body group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 align-middle whitespace-nowrap text-12 text-body group-hover:bg-row-hover"
             >
               <div class="flex min-w-0 items-center gap-9">
                 <span
@@ -264,63 +264,60 @@ const period = ref(props.periods[0] ?? '')
               </div>
             </td>
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 align-middle whitespace-nowrap text-12 text-body group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 align-middle whitespace-nowrap text-12 text-body group-hover:bg-row-hover"
             >
               {{ row.sku }}
             </td>
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover"
             >
               {{ row.sales }}
             </td>
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover"
             >
               {{ row.orders }}
             </td>
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover"
             >
               {{ row.revenue }}
             </td>
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover"
             >
               {{ row.netRevenue }}
             </td>
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover"
             >
               {{ row.fba }}
             </td>
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover"
             >
               {{ row.dailyAverage }}
             </td>
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover"
             >
               {{ row.margin }}
             </td>
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover"
             >
               {{ row.refund }}
             </td>
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 text-right align-middle whitespace-nowrap text-12 text-body tabular-nums group-hover:bg-row-hover"
             >
               {{ row.acos }}
             </td>
             <td
-              class="h-48 border-b border-b-line-soft bg-white px-10 align-middle whitespace-nowrap text-12 text-body group-hover:bg-row-hover-alt"
+              class="h-48 border-b border-b-line-soft bg-white px-10 align-middle whitespace-nowrap text-12 text-body group-hover:bg-row-hover"
             >
               <svg class="h-22 w-54" viewBox="0 0 54 22" aria-hidden="true">
-                <path
-                  :d="row.sparkPath"
-                  class="fill-none stroke-chart-line [stroke-width:1.4]"
-                ></path>
+                <path :d="row.sparkPath" class="fill-none stroke-primary [stroke-width:1.4]"></path>
               </svg>
             </td>
           </tr>

@@ -39,7 +39,7 @@ const toolButtonClass =
 const infoDotClass = 'relative -top-1 ml-1 text-placeholder'
 const footerButtonClass =
   'inline-flex h-32 w-50 shrink-0 items-center justify-center rounded-4 border text-12/28'
-const footerDefaultClass = `${footerButtonClass} border-input bg-white text-ink hover:border-input-hover hover:bg-btn-hover-bg`
+const footerDefaultClass = `${footerButtonClass} border-input bg-white text-ink hover:border-input-hover hover:bg-page-soft`
 const footerPrimaryClass = `${footerButtonClass} border-primary bg-primary text-white hover:border-primary-hover hover:bg-primary-hover`
 
 const sections = [
@@ -100,7 +100,7 @@ function save(): void {
         >
           <div class="px-20 py-16">
             <div
-              class="flex h-152 w-full cursor-pointer items-center justify-center rounded-2 border border-dashed border-input bg-white text-12/18 text-body-strong hover:border-primary hover:bg-dialog-image-hover-bg hover:text-primary"
+              class="flex h-152 w-full cursor-pointer items-center justify-center rounded-2 border border-dashed border-input bg-white text-12/18 text-body-strong hover:border-primary hover:bg-row-hover hover:text-primary"
               role="button"
               tabindex="0"
             >

@@ -43,7 +43,7 @@ function onChange(): void {
   >
     <input
       v-bind="$attrs"
-      class="app-radio relative m-0 h-16 w-16 shrink-0 cursor-pointer appearance-none rounded-full border border-radio-border bg-white checked:border-radio-check disabled:cursor-default disabled:border-radio-border-disabled disabled:bg-radio-bg-disabled disabled:checked:border-radio-check-disabled"
+      class="app-radio relative m-0 h-16 w-16 shrink-0 cursor-pointer appearance-none rounded-full border border-radio-border bg-white checked:border-chart-2 disabled:cursor-default disabled:border-scroll-thumb-nav disabled:bg-page-soft disabled:checked:border-radio-check-disabled"
       type="radio"
       :name="name"
       :checked="checked"
@@ -57,7 +57,7 @@ function onChange(): void {
   <input
     v-else
     v-bind="$attrs"
-    class="app-radio relative m-0 h-16 w-16 shrink-0 cursor-pointer appearance-none rounded-full border border-radio-border bg-white checked:border-radio-check disabled:cursor-default disabled:border-radio-border-disabled disabled:bg-radio-bg-disabled disabled:checked:border-radio-check-disabled"
+    class="app-radio relative m-0 h-16 w-16 shrink-0 cursor-pointer appearance-none rounded-full border border-radio-border bg-white checked:border-chart-2 disabled:cursor-default disabled:border-scroll-thumb-nav disabled:bg-page-soft disabled:checked:border-radio-check-disabled"
     type="radio"
     :name="name"
     :checked="checked"
@@ -75,7 +75,7 @@ function onChange(): void {
   width: 8px;
   height: 8px;
   border-radius: 9999px;
-  background: var(--color-radio-check);
+  background: var(--color-chart-2);
 }
 
 .app-radio:disabled:checked::after {

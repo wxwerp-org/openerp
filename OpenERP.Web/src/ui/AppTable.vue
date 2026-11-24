@@ -10,9 +10,9 @@ const props = withDefaults(
     scrollY?: boolean
     width?: number | string
     minWidth?: number
-    /** 旧列表页外壳（下承圆角）与订单卡片外壳（整块圆角、内缩一圈）两种几何。 */
-    variant?: 'list' | 'card' | 'plain'
-    /** 订单卡片内的聚焦环落在滚动区上：2px 主色、内缩 2px。 */
+    /** `list` 是列表页标准外壳；`plain` 只提供滚动区，用于弹窗等已有外框的容器。 */
+    variant?: 'list' | 'plain'
+    /** 聚焦环落在滚动区上：2px 主色、内缩 2px。 */
     focusRing?: boolean
   }>(),
   {
@@ -30,8 +30,6 @@ provide(
   computed(() => props.wrap),
 )
 
-const isCard = computed(() => props.variant === 'card')
-/** 店铺页把边框/圆角放在外层卡片上，表格本身只负责滚动区域与分页槽位。 */
 const isPlain = computed(() => props.variant === 'plain')
 
 const tableStyle = computed(() => {
@@ -44,15 +42,10 @@ const tableStyle = computed(() => {
 </script>
 
 <template>
-  <div
-    class="min-h-0 flex-1 bg-white"
-    :class="isCard ? 'px-16 pt-12 pb-16' : isPlain ? '' : 'px-12 pb-18'"
-  >
+  <div class="min-h-0 flex-1 bg-white" :class="isPlain ? '' : 'px-12 pb-18'">
     <div
       class="flex h-full min-h-0 flex-col overflow-hidden bg-white"
-      :class="
-        isCard ? 'rounded-4 border border-line' : isPlain ? '' : 'rounded-b-4 border border-line'
-      "
+      :class="isPlain ? '' : 'rounded-b-4 border border-line'"
     >
       <div class="relative min-h-0 flex-1 overflow-hidden bg-white">
         <div
@@ -97,12 +90,12 @@ const tableStyle = computed(() => {
 }
 
 .app-table-scroll::-webkit-scrollbar-track {
-  background: var(--color-scroll-track);
+  background: var(--color-page);
 }
 
 .app-table-scroll::-webkit-scrollbar-thumb {
   background: var(--color-scroll-thumb);
-  border: 2px solid var(--color-scroll-track);
+  border: 2px solid var(--color-page);
   border-radius: 8px;
 }
 

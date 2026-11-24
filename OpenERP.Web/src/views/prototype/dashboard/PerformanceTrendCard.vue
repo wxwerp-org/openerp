@@ -78,7 +78,7 @@ const period = ref(props.periods[0] ?? '')
         class="flex min-w-0 cursor-pointer flex-col justify-between rounded-4 py-10 pr-16"
         :class="
           index === 0
-            ? 'border-l-4 border-accent bg-white pl-12 shadow-card-hover-lg'
+            ? 'border-l-4 border-accent bg-white pl-12 shadow-card-hover'
             : 'bg-page-soft pl-16 hover:bg-white hover:shadow-card-hover'
         "
       >
@@ -108,7 +108,7 @@ const period = ref(props.periods[0] ?? '')
         </div>
       </div>
     </div>
-    <div class="relative mx-16 mb-16 mt-10 min-h-0 flex-1 border-t border-trend-divider pt-8">
+    <div class="relative mx-16 mb-16 mt-10 min-h-0 flex-1 border-t border-page pt-8">
       <div class="flex h-20 items-center justify-end gap-16 text-12 text-muted">
         <span class="flex items-center gap-5 whitespace-nowrap"
           ><span class="h-2 w-14 rounded-1 bg-primary"></span>销售额</span
@@ -133,7 +133,7 @@ const period = ref(props.periods[0] ?? '')
           <line x1="54" y1="164" x2="1518" y2="164"></line>
           <line x1="54" y1="205" x2="1518" y2="205"></line>
         </g>
-        <g class="fill-chart-axis font-sans text-11">
+        <g class="fill-placeholder font-sans text-11">
           <text x="8" y="24">$40k</text>
           <text x="8" y="72">$30k</text>
           <text x="8" y="120">$20k</text>
@@ -148,12 +148,12 @@ const period = ref(props.periods[0] ?? '')
           <text x="1490" y="222">24:00</text>
         </g>
         <path
-          class="fill-chart-fill"
+          class="fill-tag-blue-bg"
           d="M54 186 C110 178 144 160 198 163 S280 142 335 146 S414 161 470 149 S552 121 610 128 S690 146 744 128 S826 100 884 110 S966 134 1020 111 S1100 83 1160 92 S1246 108 1300 78 S1400 58 1454 52 S1500 42 1518 36 L1518 205 L54 205 Z"
           stroke="none"
         ></path>
         <path
-          class="fill-none stroke-chart-line [stroke-width:2] [stroke-linecap:round] [stroke-linejoin:round]"
+          class="fill-none stroke-primary [stroke-width:2] [stroke-linecap:round] [stroke-linejoin:round]"
           d="M54 186 C110 178 144 160 198 163 S280 142 335 146 S414 161 470 149 S552 121 610 128 S690 146 744 128 S826 100 884 110 S966 134 1020 111 S1100 83 1160 92 S1246 108 1300 78 S1400 58 1454 52 S1500 42 1518 36"
         ></path>
         <path
@@ -168,29 +168,23 @@ const period = ref(props.periods[0] ?? '')
           y2="205"
         ></line>
         <circle
-          class="fill-white stroke-chart-line [stroke-width:2]"
+          class="fill-white stroke-primary [stroke-width:2]"
           cx="1020"
           cy="111"
           r="3.5"
         ></circle>
         <g>
           <rect
-            class="fill-white stroke-chart-tooltip-border drop-shadow-chart-tooltip [stroke-width:1]"
+            class="fill-white stroke-line drop-shadow-chart-tooltip [stroke-width:1]"
             x="1018"
             y="44"
             width="156"
             height="54"
             rx="4"
           ></rect>
-          <text class="fill-chart-tooltip-title font-sans text-11" x="1030" y="62">
-            11-12 16:00
-          </text>
-          <text class="fill-chart-tooltip-value font-sans text-12 font-semibold" x="1030" y="82">
-            $24,860.00
-          </text>
-          <text class="fill-chart-tooltip-title font-sans text-11" x="1030" y="95">
-            较昨日同时段 +18.2%
-          </text>
+          <text class="fill-muted font-sans text-11" x="1030" y="62">11-12 16:00</text>
+          <text class="fill-ink font-sans text-12 font-semibold" x="1030" y="82">$24,860.00</text>
+          <text class="fill-muted font-sans text-11" x="1030" y="95">较昨日同时段 +18.2%</text>
         </g>
       </svg>
     </div>

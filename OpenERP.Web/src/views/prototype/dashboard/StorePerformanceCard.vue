@@ -19,11 +19,11 @@ import AppIcon from '../../../ui/AppIcon.vue'
     <div class="min-h-0 flex-1 px-16 pb-16">
       <div class="mb-8 text-12 text-muted">报表日期：2026-11-11</div>
       <div class="mt-2 mb-12 grid grid-cols-2 gap-8">
-        <div class="rounded-4 border border-line-soft bg-row-soft px-10 py-8">
+        <div class="rounded-4 border border-line-soft bg-page-soft px-10 py-8">
           <label class="block text-11/[16.5px] text-muted">异常店铺数</label>
           <strong class="mt-1 block text-20/26 font-medium text-ink tabular-nums">2</strong>
         </div>
-        <div class="rounded-4 border border-line-soft bg-row-soft px-10 py-8">
+        <div class="rounded-4 border border-line-soft bg-page-soft px-10 py-8">
           <label class="block text-11/[16.5px] text-muted">平均目标达成</label>
           <strong class="mt-1 block text-20/26 font-medium text-ink tabular-nums">96.4%</strong>
         </div>

@@ -13,7 +13,7 @@ const emit = defineEmits<{ select: [platform: string]; open: [] }>()
 
 /** 与原型订单分布卡一致：主蓝与图表辅助色共用同一调色板。 */
 const colors = [
-  'var(--color-chart-1)',
+  'var(--color-primary)',
   'var(--color-chart-2)',
   'var(--color-chart-3)',
   'var(--color-chart-4)',
@@ -79,7 +79,7 @@ function color(index: number): string {
             cx="83"
             cy="83"
             r="63"
-            class="fill-none stroke-donut-track [stroke-width:17]"
+            class="fill-none stroke-progress-track [stroke-width:17]"
           ></circle>
           <g transform="rotate(-90 83 83)">
             <circle

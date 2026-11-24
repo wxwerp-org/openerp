@@ -67,7 +67,7 @@ function barWidth(itemQuantity: number): number {
                 class="block h-full rounded-3"
                 :style="{
                   width: `${barWidth(row.itemQuantity)}%`,
-                  background: index === 0 ? 'var(--color-chart-1)' : 'var(--color-chart-2)',
+                  background: index === 0 ? 'var(--color-primary)' : 'var(--color-chart-2)',
                 }"
               ></span>
             </span>

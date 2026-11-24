@@ -11,6 +11,8 @@ const props = withDefaults(
     invalid?: boolean
     readonly?: boolean
     disabled?: boolean
+    /** 键盘聚焦时显示 2px 焦点环；报表等需要完整键盘遍历的页面开启。 */
+    focusRing?: boolean
   }>(),
   {
     type: 'text',
@@ -18,6 +20,7 @@ const props = withDefaults(
     invalid: false,
     readonly: false,
     disabled: false,
+    focusRing: false,
     modelValue: undefined,
   },
 )
@@ -48,9 +51,12 @@ const shellClass = computed(() => [
 const inputClass = computed(() => [
   props.size === 'md'
     ? 'h-[calc(var(--control-h-lg)-2px)] w-full min-w-0 rounded-4 border-0 border-current bg-transparent px-11 py-0 text-12/30 outline-none'
-    : 'h-[calc(var(--control-h)-2px)] min-w-0 border-0 border-current bg-transparent px-10 py-0 text-12/28 outline-none',
+    : 'h-[calc(var(--control-h)-2px)] w-full min-w-0 border-0 border-current bg-transparent px-10 py-0 text-12/28 outline-none',
   props.readonly ? 'cursor-default text-muted' : 'text-ink',
   'placeholder:text-placeholder',
+  props.focusRing
+    ? 'focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
+    : '',
 ])
 
 let composing = false

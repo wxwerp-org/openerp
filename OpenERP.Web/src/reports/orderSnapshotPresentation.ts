@@ -64,7 +64,7 @@ export function shopRanking(
 // 平台序列色引用主题 token，避免与 theme.css 的 --color-chart-* 双写；
 // SVG 描边在组件里通过 style 绑定，`var()` 在 presentation attribute 中不生效。
 const platformColors = [
-  'var(--color-chart-1)',
+  'var(--color-primary)',
   'var(--color-chart-2)',
   'var(--color-chart-3)',
   'var(--color-chart-4)',

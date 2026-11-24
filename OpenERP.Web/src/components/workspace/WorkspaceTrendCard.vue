@@ -382,15 +382,13 @@ const summaryText = computed(() => {
       </span>
     </div>
 
-    <div
-      class="relative mx-16 mt-8 mb-2 flex min-h-0 flex-1 flex-col border-t border-trend-divider"
-    >
+    <div class="relative mx-16 mt-8 mb-2 flex min-h-0 flex-1 flex-col border-t border-page">
       <div
         v-if="state !== 'empty'"
         class="flex h-20 flex-none items-center justify-end gap-16 px-2 text-12 text-muted"
       >
         <span v-if="showSales" class="flex items-center gap-5 whitespace-nowrap">
-          <span class="h-2 w-14 rounded-1" style="background: var(--color-chart-line)"></span>销售额
+          <span class="h-2 w-14 rounded-1" style="background: var(--color-primary)"></span>销售额
         </span>
         <span class="flex items-center gap-5 whitespace-nowrap">
           <span class="h-2 w-14 rounded-1" style="background: var(--color-chart-line-alt)"></span
@@ -436,7 +434,7 @@ const summaryText = computed(() => {
               :y2="tick.y"
             ></line>
           </g>
-          <g v-if="showSales" class="fill-chart-axis font-sans text-11">
+          <g v-if="showSales" class="fill-placeholder font-sans text-11">
             <text
               v-for="tick in geometry.sales.ticks"
               :key="`sales-${tick.y}`"
@@ -447,7 +445,7 @@ const summaryText = computed(() => {
               {{ tick.label }}
             </text>
           </g>
-          <g class="fill-chart-axis font-sans text-11">
+          <g class="fill-placeholder font-sans text-11">
             <text
               v-for="tick in geometry.orders.ticks"
               :key="`orders-${tick.y}`"
@@ -470,13 +468,13 @@ const summaryText = computed(() => {
             <path
               v-for="(segment, index) in geometry.sales.areaSegments"
               :key="`area-${index}`"
-              class="fill-chart-fill"
+              class="fill-tag-blue-bg"
               :d="segment"
             ></path>
             <path
               v-for="(segment, index) in geometry.sales.lineSegments"
               :key="`sales-${index}`"
-              class="fill-none stroke-chart-line [stroke-width:2] [stroke-linecap:round] [stroke-linejoin:round]"
+              class="fill-none stroke-primary [stroke-width:2] [stroke-linecap:round] [stroke-linejoin:round]"
               :d="segment"
             ></path>
           </g>
@@ -484,7 +482,7 @@ const summaryText = computed(() => {
             <circle
               v-for="marker in geometry.sales.markers"
               :key="`marker-${marker.x}`"
-              class="fill-chart-line stroke-white [stroke-width:1]"
+              class="fill-primary stroke-white [stroke-width:1]"
               :cx="marker.x"
               :cy="marker.y"
               r="2.5"
@@ -514,7 +512,7 @@ const summaryText = computed(() => {
             ></line>
             <circle
               v-if="hovered.chart.ySales !== null"
-              class="fill-white stroke-chart-line [stroke-width:2]"
+              class="fill-white stroke-primary [stroke-width:2]"
               :cx="hovered.chart.x"
               :cy="hovered.chart.ySales"
               r="3.5"
@@ -529,7 +527,7 @@ const summaryText = computed(() => {
         </svg>
         <div
           v-if="tooltip"
-          class="pointer-events-none absolute z-[2] rounded-4 border border-chart-tooltip-border bg-white px-10 py-6 drop-shadow-chart-tooltip"
+          class="pointer-events-none absolute z-[2] rounded-4 border border-line bg-white px-10 py-6 drop-shadow-chart-tooltip"
           :style="{
             left: `${tooltip.left}px`,
             top: `${tooltip.top}px`,
@@ -537,16 +535,16 @@ const summaryText = computed(() => {
           }"
           data-testid="trend-tooltip"
         >
-          <div class="text-11/16 text-chart-tooltip-title tabular-nums">{{ tooltip.date }}</div>
+          <div class="text-11/16 text-muted tabular-nums">{{ tooltip.date }}</div>
           <div
             v-if="showSales"
-            class="mt-2 text-12 font-semibold whitespace-nowrap text-chart-tooltip-value tabular-nums"
+            class="mt-2 text-12 font-semibold whitespace-nowrap text-ink tabular-nums"
           >
             {{ tooltip.sales }}
           </div>
-          <div class="mt-1 text-11/16 text-chart-tooltip-title">
+          <div class="mt-1 text-11/16 text-muted">
             订单
-            <b class="font-medium text-chart-tooltip-value tabular-nums">{{ tooltip.orders }}</b> 单
+            <b class="font-medium text-ink tabular-nums">{{ tooltip.orders }}</b> 单
           </div>
         </div>
       </div>

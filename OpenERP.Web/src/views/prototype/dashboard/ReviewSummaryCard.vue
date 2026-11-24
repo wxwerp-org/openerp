@@ -32,41 +32,41 @@ import AppTag from '../../../ui/AppTag.vue'
       <div class="flex flex-col gap-5">
         <div class="grid grid-cols-[24px_1fr_28px] items-center gap-8 text-11/[16.5px] text-muted">
           <span>5 星</span>
-          <div class="h-6 overflow-hidden rounded-3 bg-review-bar-track">
-            <span class="block h-full rounded-3 bg-review-bar-fill" style="width: 82%"></span>
+          <div class="h-6 overflow-hidden rounded-3 bg-progress-track">
+            <span class="block h-full rounded-3 bg-chart-line-alt" style="width: 82%"></span>
           </div>
           <b class="text-right font-normal text-body">82%</b>
         </div>
         <div class="grid grid-cols-[24px_1fr_28px] items-center gap-8 text-11/[16.5px] text-muted">
           <span>4 星</span>
-          <div class="h-6 overflow-hidden rounded-3 bg-review-bar-track">
-            <span class="block h-full rounded-3 bg-review-bar-fill" style="width: 12%"></span>
+          <div class="h-6 overflow-hidden rounded-3 bg-progress-track">
+            <span class="block h-full rounded-3 bg-chart-line-alt" style="width: 12%"></span>
           </div>
           <b class="text-right font-normal text-body">12%</b>
         </div>
         <div class="grid grid-cols-[24px_1fr_28px] items-center gap-8 text-11/[16.5px] text-muted">
           <span>3 星</span>
-          <div class="h-6 overflow-hidden rounded-3 bg-review-bar-track">
-            <span class="block h-full rounded-3 bg-review-bar-fill" style="width: 3.5%"></span>
+          <div class="h-6 overflow-hidden rounded-3 bg-progress-track">
+            <span class="block h-full rounded-3 bg-chart-line-alt" style="width: 3.5%"></span>
           </div>
           <b class="text-right font-normal text-body">4%</b>
         </div>
         <div class="grid grid-cols-[24px_1fr_28px] items-center gap-8 text-11/[16.5px] text-muted">
           <span>2 星</span>
-          <div class="h-6 overflow-hidden rounded-3 bg-review-bar-track">
-            <span class="block h-full rounded-3 bg-review-bar-fill" style="width: 1.5%"></span>
+          <div class="h-6 overflow-hidden rounded-3 bg-progress-track">
+            <span class="block h-full rounded-3 bg-chart-line-alt" style="width: 1.5%"></span>
           </div>
           <b class="text-right font-normal text-body">1%</b>
         </div>
         <div class="grid grid-cols-[24px_1fr_28px] items-center gap-8 text-11/[16.5px] text-muted">
           <span>1 星</span>
-          <div class="h-6 overflow-hidden rounded-3 bg-review-bar-track">
-            <span class="block h-full rounded-3 bg-review-bar-fill" style="width: 1%"></span>
+          <div class="h-6 overflow-hidden rounded-3 bg-progress-track">
+            <span class="block h-full rounded-3 bg-chart-line-alt" style="width: 1%"></span>
           </div>
           <b class="text-right font-normal text-body">1%</b>
         </div>
       </div>
-      <div class="mt-10 rounded-4 bg-row-soft px-10 py-8 text-11/17 text-muted">
+      <div class="mt-10 rounded-4 bg-page-soft px-10 py-8 text-11/17 text-muted">
         <strong class="font-medium text-body">买家反馈高频词：</strong>质量好 · 发货快 · 便携 ·
         包装精致
       </div>

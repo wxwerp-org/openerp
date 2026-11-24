@@ -185,7 +185,7 @@ test('Given 本地店铺目录 When 打开授权页 Then 汇总、表格与最�
   await expect(shopRows(page).nth(2)).toContainText('状态读取失败')
   await expect(page.locator('#page-shops')).not.toContainText('同步历史订单')
   await expect(page.locator('#page-shops')).not.toContainText('定时同步')
-  await expect(page.locator('[data-testid="shops-card"]')).toBeInViewport()
+  await expect(page.getByRole('table', { name: '授权店铺列表' })).toBeInViewport()
   await expect(page.getByRole('navigation', { name: '授权店铺分页' })).toBeInViewport()
 
   const hasOverflow = await page.evaluate(

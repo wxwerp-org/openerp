@@ -6,7 +6,7 @@ const props = withDefaults(
   defineProps<{
     numeric?: boolean
     sticky?: 'none' | 'left' | 'right'
-    /** 少数字段（如用户名）沿用旧 `color: var(--text)` 而非正文色。 */
+    /** 少数字段（如用户名）使用深色文字色，而不是正文色。 */
     tone?: 'body' | 'ink'
     /** 展开行等需要整格换底色时沿用旧 `--page-soft`。 */
     surface?: 'white' | 'page-soft'

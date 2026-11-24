@@ -80,7 +80,7 @@ describe('订单列表', () => {
       '7',
     ])
     expect(row.text()).not.toContain('internal-key')
-    expect(wrapper.text()).toContain('共1条')
+    expect(wrapper.text()).toContain('共 1 条')
   })
 
   it('Given 已加载筛选选项 When 用店铺、平台、状态、订单号和日期组合搜索 Then 保留整单并突出命中的平台订单', async () => {
@@ -195,7 +195,7 @@ describe('订单列表', () => {
 
     expect(orderNumber.element.value).toBe('')
     expect(wrapper.get('tbody tr').text()).toContain('PO-001')
-    expect(wrapper.text()).toContain('共1条')
+    expect(wrapper.text()).toContain('共 1 条')
   })
 
   it('Given 订单接口暂时失败 When 用户重试 Then 失败状态消失并显示订单', async () => {

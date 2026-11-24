@@ -10,7 +10,7 @@ withDefaults(
 
 const toneClass: Record<'default' | 'red' | 'green' | 'blue' | 'amber' | 'gray', string> = {
   default: 'border-transparent',
-  red: 'border-tag-red-border bg-tag-red-bg text-danger',
+  red: 'border-tag-red-border bg-danger-faint text-danger',
   green: 'border-tag-green-border bg-tag-green-bg text-success',
   blue: 'border-tag-blue-border bg-tag-blue-bg text-primary',
   amber: 'border-tag-amber-border bg-tag-amber-bg text-warning',

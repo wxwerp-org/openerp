@@ -24,7 +24,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
     </div>
     <div class="mx-16 mt-9 mb-16 flex h-78 min-w-0 gap-4">
       <div
-        class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-init-step-hover first:pl-16"
+        class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-nav-active first:pl-16"
       >
         <svg aria-hidden="true" class="mr-10 size-36 flex-none text-primary">
           <use href="#i-guide-shield" />
@@ -33,7 +33,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
           <div class="flex items-center gap-4 text-14/20 font-bold whitespace-nowrap text-ink">
             基础数据授权
             <span
-              class="h-16 rounded-2 bg-init-must-bg px-4 text-11/16 font-normal text-init-must-text"
+              class="h-16 rounded-2 bg-danger-faint px-4 text-11/16 font-normal text-init-must-text"
               >必做</span
             >
           </div>
@@ -43,7 +43,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
         </div>
       </div>
       <div
-        class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-init-step-hover"
+        class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-nav-active"
       >
         <svg aria-hidden="true" class="mr-10 size-36 flex-none text-primary">
           <use href="#i-guide-account" />
@@ -58,7 +58,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
         </div>
       </div>
       <div
-        class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-init-step-hover"
+        class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-nav-active"
       >
         <svg aria-hidden="true" class="mr-10 size-36 flex-none text-primary">
           <use href="#i-guide-product" />
@@ -73,7 +73,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
         </div>
       </div>
       <div
-        class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-init-step-hover"
+        class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-26 hover:bg-nav-active"
       >
         <svg aria-hidden="true" class="mr-10 size-36 flex-none text-primary">
           <use href="#i-guide-supply" />
@@ -88,7 +88,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
         </div>
       </div>
       <div
-        class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-28 hover:bg-init-step-hover"
+        class="guide-step flex h-78 min-w-0 flex-1 items-center bg-page pr-20 pl-28 hover:bg-nav-active"
       >
         <svg aria-hidden="true" class="mr-8 size-30 flex-none text-init-more">
           <use href="#i-guide-more" />

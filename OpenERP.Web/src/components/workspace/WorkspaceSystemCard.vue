@@ -47,7 +47,7 @@ function statusLabel(value: boolean | null, yes: string, no: string): string {
         <dd class="m-0 flex items-center gap-4 font-medium text-body-strong">
           <span
             class="size-6 rounded-full"
-            :class="configured ? 'bg-success' : 'bg-status-off-border'"
+            :class="configured ? 'bg-success' : 'bg-tag-gray-border'"
             aria-hidden="true"
           ></span>
           {{ statusLabel(configured, '已配置', '未配置') }}
@@ -58,7 +58,7 @@ function statusLabel(value: boolean | null, yes: string, no: string): string {
         <dd class="m-0 flex items-center gap-4 font-medium text-body-strong">
           <span
             class="size-6 rounded-full"
-            :class="orderSyncEnabled ? 'bg-success' : 'bg-status-off-border'"
+            :class="orderSyncEnabled ? 'bg-success' : 'bg-tag-gray-border'"
             aria-hidden="true"
           ></span>
           {{ statusLabel(orderSyncEnabled, '可用', '不可用') }}

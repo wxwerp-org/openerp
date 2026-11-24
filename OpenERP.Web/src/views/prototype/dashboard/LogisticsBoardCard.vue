@@ -23,7 +23,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
     <div class="flex min-h-0 flex-1 flex-col px-16 pb-16">
       <div class="grid flex-none grid-cols-4 gap-8">
         <div
-          class="flex h-92 flex-col justify-between rounded-4 border border-hover-pill bg-white px-14 py-12 shadow-stat"
+          class="flex h-92 flex-col justify-between rounded-4 border border-hover-pill bg-white px-14 py-12 shadow-card-hover"
         >
           <div class="flex items-center gap-4 text-12 text-body">运输途中</div>
           <div class="flex items-baseline gap-4 text-20/26 font-medium text-ink tabular-nums">
@@ -61,31 +61,31 @@ import AppIcon from '../../../ui/AppIcon.vue'
             <tr>
               <th
                 scope="col"
-                class="h-32 border-b border-line-soft bg-row-soft px-10 text-left text-12 font-normal whitespace-nowrap text-muted"
+                class="h-32 border-b border-line-soft bg-page-soft px-10 text-left text-12 font-normal whitespace-nowrap text-muted"
               >
                 物流单号
               </th>
               <th
                 scope="col"
-                class="h-32 border-b border-line-soft bg-row-soft px-10 text-left text-12 font-normal whitespace-nowrap text-muted"
+                class="h-32 border-b border-line-soft bg-page-soft px-10 text-left text-12 font-normal whitespace-nowrap text-muted"
               >
                 渠道
               </th>
               <th
                 scope="col"
-                class="h-32 border-b border-line-soft bg-row-soft px-10 text-left text-12 font-normal whitespace-nowrap text-muted"
+                class="h-32 border-b border-line-soft bg-page-soft px-10 text-left text-12 font-normal whitespace-nowrap text-muted"
               >
                 目的仓
               </th>
               <th
                 scope="col"
-                class="h-32 border-b border-line-soft bg-row-soft px-10 text-left text-12 font-normal whitespace-nowrap text-muted"
+                class="h-32 border-b border-line-soft bg-page-soft px-10 text-left text-12 font-normal whitespace-nowrap text-muted"
               >
                 预计到达
               </th>
               <th
                 scope="col"
-                class="h-32 border-b border-line-soft bg-row-soft px-10 text-left text-12 font-normal whitespace-nowrap text-muted"
+                class="h-32 border-b border-line-soft bg-page-soft px-10 text-left text-12 font-normal whitespace-nowrap text-muted"
               >
                 状态
               </th>

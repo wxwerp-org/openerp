@@ -18,9 +18,9 @@ const props = withDefaults(
 )
 
 const toneClass: Record<'default' | 'amber' | 'red', string> = {
-  default: 'border-line bg-notice-bg',
+  default: 'border-line bg-row-hover',
   amber: 'border-tag-amber-border bg-tag-amber-bg',
-  red: 'border-tag-red-border bg-tag-red-bg',
+  red: 'border-tag-red-border bg-danger-faint',
 }
 
 const iconClass = computed(

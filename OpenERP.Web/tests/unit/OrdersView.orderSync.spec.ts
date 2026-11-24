@@ -141,7 +141,7 @@ function deferred<T>() {
 }
 
 async function openPanel(wrapper: VueWrapper): Promise<void> {
-  await wrapper.get('[data-testid="orders-toolbar"] [aria-haspopup="dialog"]').trigger('click')
+  await wrapper.get('button[aria-controls="order-sync-panel"]').trigger('click')
   await flushPromises()
 }
 

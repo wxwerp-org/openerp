@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import OrderSnapshotOrdersPanel from '../components/reports/OrderSnapshotOrdersPanel.vue'
 import OrderSnapshotPlatformDistribution from '../components/reports/OrderSnapshotPlatformDistribution.vue'
+import { reportTableScrollClass } from '../components/reports/reportTable'
 import OrderSnapshotShopRanking from '../components/reports/OrderSnapshotShopRanking.vue'
 import { apiRequest } from '../account/session'
-import { platformLabel, type ReportOrder, type ReportShop } from '../reports/orderSnapshot'
+import { platformLabel, type ReportShop } from '../reports/orderSnapshot'
 import { parseShopDirectory, shopNameMap } from '../workspace/workspaceData'
 import {
   averageItemsPerOrder,
@@ -18,9 +20,8 @@ import AppCheckbox from '../ui/AppCheckbox.vue'
 import AppEmptyState from '../ui/AppEmptyState.vue'
 import AppIcon from '../ui/AppIcon.vue'
 import AppIconButton from '../ui/AppIconButton.vue'
-import AppPager from '../ui/AppPager.vue'
+import AppSelect from '../ui/AppSelect.vue'
 import AppTag from '../ui/AppTag.vue'
-import AppTd from '../ui/AppTd.vue'
 import AppTh from '../ui/AppTh.vue'
 import { tableWrapKey } from '../ui/tableContext'
 
@@ -165,25 +166,15 @@ watch(
   { deep: true },
 )
 
-const pageSizeOptions = [20, 50, 100]
-const jumpPage = ref(String(currentPage.value))
-
-/** 旧样式里的控件几何按实测值显式书写，避免组合类互相覆盖。 */
-const pageSizeClass =
-  'inline-flex h-28 min-w-100 shrink-0 cursor-pointer items-center justify-between gap-10 rounded-4 border border-input bg-white px-9 text-ink focus-within:border-primary'
-const pageSizeClassDisabled =
-  'inline-flex h-28 min-w-100 shrink-0 cursor-default items-center justify-between gap-10 rounded-4 border border-input bg-btn-disabled-bg px-9 text-muted'
-const jumpInputClass =
-  'h-28 w-46 rounded-4 border border-input bg-white px-4 py-0 text-center text-12/18 text-ink outline-none focus:border-primary focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default disabled:bg-btn-disabled-bg disabled:text-muted disabled:focus:border-input'
+const platformOptions = computed(() => [
+  { value: '', label: '全部平台' },
+  ...availablePlatforms.value.map((item) => ({ value: item, label: platformLabel(item) })),
+])
 
 /** 分店汇总表沿用旧 `.grid-table td` 的非换行密度。 */
 const groupCellClass =
   'h-48 overflow-hidden border-r border-b border-r-line-soft border-b-line-soft bg-white px-8 text-12/18 text-body text-ellipsis whitespace-nowrap group-hover:bg-row-hover last:border-r-0'
 const groupNumericCellClass = `${groupCellClass} text-right tabular-nums`
-
-/** 表格滚动区沿用列表页表格的 10px 滚动条几何（旧 `.table-scroll` 覆写）。 */
-const tableScrollClass =
-  'overflow-auto bg-white focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary [&::-webkit-scrollbar]:h-10 [&::-webkit-scrollbar]:w-10 [&::-webkit-scrollbar-track]:bg-scroll-track [&::-webkit-scrollbar-thumb]:rounded-8 [&::-webkit-scrollbar-thumb]:border-2 [&::-webkit-scrollbar-thumb]:border-scroll-track [&::-webkit-scrollbar-thumb]:bg-scroll-thumb'
 
 const selectedShopLabel = computed(() =>
   selectedShopKeys.value.length ? `已选 ${selectedShopKeys.value.length} 家店铺` : '全部店铺',
@@ -207,41 +198,14 @@ const averageItemsText = computed(() => {
 const pageCount = computed(() => Math.max(report.value?.pageCount ?? 1, 1))
 const paginationDisabled = computed(() => status.value === 'loading')
 
-watch(currentPage, (page) => {
-  jumpPage.value = String(page)
-})
-
-function orderIdentity(order: ReportOrder): string {
-  return JSON.stringify([order.shop.key, order.id])
-}
-
 function onShopToggle(value: boolean | Array<string | number>): void {
   selectedShopKeys.value = Array.isArray(value) ? value.map(String) : []
   applyFilters()
 }
 
-function changePageSize(event: Event): void {
-  const size = Number((event.target as HTMLSelectElement).value)
-  if (pageSizeOptions.includes(size)) void load(1, size)
-}
-
-function submitJumpPage(): void {
-  // Chromium 在加载期间禁用聚焦的输入框会触发 blur；此时 pageCount 已回退为 1，
-  // 若继续提交会把刚发出的跳页请求收敛回第 1 页，因此加载中忽略失焦提交。
-  if (paginationDisabled.value) {
-    jumpPage.value = String(currentPage.value)
-    return
-  }
-
-  const requested = Number.parseInt(jumpPage.value, 10)
-  if (!Number.isInteger(requested)) {
-    jumpPage.value = String(currentPage.value)
-    return
-  }
-
-  const target = Math.min(Math.max(requested, 1), pageCount.value)
-  jumpPage.value = String(target)
-  if (target !== currentPage.value) changePage(target)
+function onPlatformChange(value: string | number): void {
+  platform.value = String(value)
+  applyFilters()
 }
 </script>
 
@@ -257,22 +221,16 @@ function submitJumpPage(): void {
       data-testid="report-searchbar"
       class="relative z-[5] flex h-52 min-w-0 flex-none flex-nowrap items-center gap-6 overflow-visible bg-white px-20 shadow-header [@media(max-width:768px)]:h-auto [@media(max-width:768px)]:min-h-52 [@media(max-width:768px)]:flex-wrap [@media(max-width:768px)]:py-8"
     >
-      <span
-        data-testid="report-platform-filter"
-        class="inline-flex h-30 w-160 flex-none items-center rounded-4 border border-input bg-white focus-within:border-primary"
-      >
-        <select
-          v-model="platform"
+      <span data-testid="report-platform-filter" class="inline-flex w-160 flex-none">
+        <AppSelect
+          :model-value="platform"
+          :options="platformOptions"
+          size="sm"
+          focus-ring
           aria-label="平台筛选"
-          class="h-28 min-w-0 flex-1 cursor-pointer appearance-none border-0 border-current bg-transparent px-10 text-12 text-ink outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary pointer-coarse:min-h-44"
-          @change="applyFilters"
-        >
-          <option value="">全部平台</option>
-          <option v-for="item in availablePlatforms" :key="item" :value="item">
-            {{ platformLabel(item) }}
-          </option>
-        </select>
-        <AppIcon name="i-chev-down" />
+          class="w-full"
+          @update:model-value="onPlatformChange"
+        />
       </span>
 
       <details class="group relative min-w-180 flex-none text-12 text-ink">
@@ -351,7 +309,7 @@ function submitJumpPage(): void {
       >
         <div
           v-if="status === 'error'"
-          class="col-span-12 flex min-w-0 items-center gap-8 rounded-4 border border-tag-red-border bg-tag-red-bg px-12 py-10 text-12/18 text-ink"
+          class="col-span-12 flex min-w-0 items-center gap-8 rounded-4 border border-tag-red-border bg-danger-faint px-12 py-10 text-12/18 text-ink"
           role="alert"
         >
           <AppIcon name="i-warning" :size="16" class="mt-1 shrink-0 text-danger" />
@@ -465,12 +423,12 @@ function submitJumpPage(): void {
               role="region"
               tabindex="0"
               aria-label="分店汇总表格"
-              :class="tableScrollClass"
+              :class="reportTableScrollClass"
               class="max-h-[min(240px,32dvh)]"
             >
               <table
                 data-testid="report-groups-table"
-                class="w-full min-w-full table-fixed border-separate border-spacing-0 bg-white @max-[640px]:min-w-[480px]"
+                class="w-full min-w-full table-fixed border-separate border-spacing-0 bg-white @max-[640px]:min-w-480"
               >
                 <caption class="sr-only">
                   分店订单与商品件数汇总
@@ -507,238 +465,19 @@ function submitJumpPage(): void {
           </div>
         </AppCard>
 
-        <AppCard data-testid="report-orders-panel" class="col-span-12">
-          <header class="flex h-46 flex-none items-start justify-between gap-12 px-16 pt-12">
-            <div class="flex min-w-0 items-center gap-8">
-              <h2
-                id="report-orders-title"
-                class="flex items-center gap-4 text-14/22 font-bold whitespace-nowrap text-ink"
-              >
-                订单明细
-              </h2>
-            </div>
-            <p
-              class="m-0 min-w-0 overflow-hidden text-12/22 text-muted text-ellipsis whitespace-nowrap"
-            >
-              一行对应一条本地来源订单；展开查看当前商品行和平台订单参考号。
-            </p>
-          </header>
-          <div data-testid="report-orders-area" class="relative min-h-96 overflow-hidden bg-white">
-            <div
-              role="region"
-              tabindex="0"
-              aria-label="订单明细表格"
-              :class="tableScrollClass"
-              class="max-h-[min(520px,62dvh)]"
-            >
-              <table
-                data-testid="report-orders-table"
-                class="w-full min-w-full table-fixed border-separate border-spacing-0 bg-white @max-[640px]:min-w-[720px]"
-              >
-                <caption class="sr-only">
-                  本地来源订单分页明细
-                </caption>
-                <colgroup>
-                  <col style="width: 10%" />
-                  <col style="width: 14%" />
-                  <col style="width: 16%" />
-                  <col style="width: 22%" />
-                  <col style="width: 10%" />
-                  <col style="width: 8%" />
-                  <col style="width: 9%" />
-                  <col style="width: 11%" />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <AppTh>平台</AppTh>
-                    <AppTh>店铺</AppTh>
-                    <AppTh>本地订单号</AppTh>
-                    <AppTh>平台订单参考号</AppTh>
-                    <AppTh>本地订单状态</AppTh>
-                    <AppTh numeric>商品行</AppTh>
-                    <AppTh numeric>商品件数</AppTh>
-                    <AppTh>明细</AppTh>
-                  </tr>
-                </thead>
-                <tbody v-if="report?.orders.length">
-                  <template v-for="order in report.orders" :key="orderIdentity(order)">
-                    <tr class="group">
-                      <AppTd class="group-hover:bg-row-hover">{{
-                        platformLabel(order.shop.platform)
-                      }}</AppTd>
-                      <AppTd class="group-hover:bg-row-hover">{{ shopName(order.shop) }}</AppTd>
-                      <AppTd class="group-hover:bg-row-hover">{{ order.number }}</AppTd>
-                      <AppTd class="group-hover:bg-row-hover">
-                        <span v-if="order.platformOrders.length">
-                          {{
-                            order.platformOrders
-                              .map((platformOrder) => platformOrder.number)
-                              .join('、')
-                          }}
-                        </span>
-                        <span v-else>—</span>
-                      </AppTd>
-                      <AppTd class="group-hover:bg-row-hover">{{ order.status || '—' }}</AppTd>
-                      <AppTd numeric class="group-hover:bg-row-hover">{{
-                        formatQuantity(order.items.length)
-                      }}</AppTd>
-                      <AppTd numeric class="group-hover:bg-row-hover">{{
-                        formatQuantity(order.itemQuantity)
-                      }}</AppTd>
-                      <AppTd class="group-hover:bg-row-hover">
-                        <button
-                          class="inline-flex items-center gap-4 whitespace-nowrap text-12 text-primary hover:text-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary pointer-coarse:min-h-44"
-                          type="button"
-                          :aria-label="`${expandedOrderIds.has(orderIdentity(order)) ? '收起' : '展开'}订单 ${order.number} 商品明细`"
-                          :aria-expanded="expandedOrderIds.has(orderIdentity(order))"
-                          @click="toggleOrder(orderIdentity(order))"
-                        >
-                          {{ expandedOrderIds.has(orderIdentity(order)) ? '收起' : '展开' }}
-                        </button>
-                      </AppTd>
-                    </tr>
-                    <tr
-                      v-if="expandedOrderIds.has(orderIdentity(order))"
-                      data-testid="report-order-details"
-                    >
-                      <AppTd :colspan="8" surface="page-soft">
-                        <div class="grid grid-cols-2 gap-x-22 gap-y-14 @max-[480px]:grid-cols-1">
-                          <section>
-                            <h3 class="mb-8 text-12/18 font-semibold text-ink">
-                              平台订单参考号（不分配商品行）
-                            </h3>
-                            <ul v-if="order.platformOrders.length" class="grid gap-6">
-                              <li
-                                v-for="platformOrder in order.platformOrders"
-                                :key="platformOrder.number"
-                                class="flex flex-wrap items-center gap-x-12 gap-y-6 text-body"
-                              >
-                                <strong>{{ platformOrder.number }}</strong>
-                                <span v-if="platformOrder.statusCode"
-                                  >状态码：{{ platformOrder.statusCode }}</span
-                                >
-                                <span v-if="platformOrder.statusText"
-                                  >状态：{{ platformOrder.statusText }}</span
-                                >
-                              </li>
-                            </ul>
-                            <p v-else class="m-0 text-muted">无平台订单参考号</p>
-                          </section>
-                          <section>
-                            <h3 class="mb-8 text-12/18 font-semibold text-ink">当前商品行</h3>
-                            <ul v-if="order.items.length" class="grid gap-6">
-                              <li
-                                v-for="item in order.items"
-                                :key="item.lineId"
-                                class="flex flex-wrap items-center gap-x-12 gap-y-6 text-body"
-                              >
-                                <span>{{
-                                  item.skuCode || item.skuId || item.productId || '未提供商品编码'
-                                }}</span>
-                                <strong>{{ formatQuantity(item.quantity) }} 件</strong>
-                                <AppTag
-                                  :tone="
-                                    item.disabled === true
-                                      ? 'gray'
-                                      : item.disabled === false
-                                        ? 'green'
-                                        : 'amber'
-                                  "
-                                >
-                                  {{
-                                    item.disabled === true
-                                      ? '禁用'
-                                      : item.disabled === false
-                                        ? '未禁用'
-                                        : '禁用状态未知'
-                                  }}
-                                </AppTag>
-                                <AppTag
-                                  :tone="
-                                    item.appended === true
-                                      ? 'amber'
-                                      : item.appended === false
-                                        ? 'gray'
-                                        : 'amber'
-                                  "
-                                >
-                                  {{
-                                    item.appended === true
-                                      ? '追加'
-                                      : item.appended === false
-                                        ? '未追加'
-                                        : '追加状态未知'
-                                  }}
-                                </AppTag>
-                              </li>
-                            </ul>
-                            <p v-else class="m-0 text-muted">无商品行</p>
-                          </section>
-                          <p class="col-span-full font-semibold text-ink">
-                            本地订单件数 {{ formatQuantity(order.itemQuantity) }}
-                          </p>
-                        </div>
-                      </AppTd>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-            <AppEmptyState v-if="!report?.orders.length" data-testid="report-orders-empty">
-              <span>
-                {{
-                  status === 'loading'
-                    ? '正在加载…'
-                    : status === 'error'
-                      ? '报表加载失败'
-                      : '暂无符合条件的本地订单'
-                }}
-              </span>
-            </AppEmptyState>
-          </div>
-          <AppPager
-            as="footer"
-            data-testid="report-pagination"
-            class="pointer-coarse:h-auto pointer-coarse:[&_button]:min-h-44 pointer-coarse:[&_input]:min-h-44 pointer-coarse:[&_select]:min-h-44 pointer-coarse:min-h-44 pointer-coarse:flex-wrap pointer-coarse:py-4 @max-[640px]:h-auto @max-[640px]:min-h-30 @max-[640px]:flex-wrap @max-[640px]:py-4"
-            :page="currentPage"
-            :page-count="pageCount"
-            :disabled="paginationDisabled"
-            :padding-x="8"
-            focus-ring
-            @update:page="changePage"
-          >
-            <template #prefix>
-              <span>共 {{ pageCount }} 页</span>
-            </template>
-            <template #suffix>
-              <label :class="paginationDisabled ? pageSizeClassDisabled : pageSizeClass">
-                <select
-                  :value="pageSize"
-                  :disabled="paginationDisabled"
-                  aria-label="每页条数"
-                  class="h-26 min-w-0 cursor-[inherit] appearance-none border-0 border-current bg-transparent p-0 text-12 text-inherit outline-none focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                  @change="changePageSize"
-                >
-                  <option v-for="size in pageSizeOptions" :key="size" :value="size">
-                    {{ size }}条/页
-                  </option>
-                </select>
-                <AppIcon name="i-chev-down" :size="10" class="text-placeholder" />
-              </label>
-              <span class="inline-flex items-center gap-7 pl-3 text-body">
-                前往<input
-                  v-model="jumpPage"
-                  :disabled="paginationDisabled"
-                  aria-label="前往页码"
-                  inputmode="numeric"
-                  :class="jumpInputClass"
-                  @keyup.enter="submitJumpPage"
-                  @blur="submitJumpPage"
-                />页
-              </span>
-            </template>
-          </AppPager>
-        </AppCard>
+        <OrderSnapshotOrdersPanel
+          :orders="report?.orders ?? []"
+          :status="status"
+          :expanded-ids="expandedOrderIds"
+          :shop-name="shopName"
+          :page="currentPage"
+          :page-count="pageCount"
+          :page-size="pageSize"
+          :pagination-disabled="paginationDisabled"
+          @toggle="toggleOrder"
+          @update:page="changePage"
+          @update:page-size="(size: number) => load(1, size)"
+        />
 
         <AppCard class="col-span-12 px-16 py-12">
           <p

@@ -170,7 +170,7 @@ test('Given 商品量报表有平台店铺和订单样本 When 从统计导航�
   )
   await expect(page.getByLabel('每页条数')).toBeVisible()
   await expect(page.getByLabel('前往页码')).toBeVisible()
-  await expect(page.locator('label:has(select[aria-label="每页条数"]) use')).toHaveAttribute(
+  await expect(page.locator('span:has(> select[aria-label="每页条数"]) use')).toHaveAttribute(
     'href',
     '#i-chev-down',
   )

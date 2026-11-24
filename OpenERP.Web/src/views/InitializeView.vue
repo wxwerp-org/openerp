@@ -15,7 +15,7 @@ const labelClass = 'text-13/20 font-semibold text-ink'
 const errorClass =
   'm-0 rounded-4 border border-tag-red-border bg-danger-faint px-12 py-10 text-13/20 text-danger'
 const inputClass =
-  'min-h-[42px] w-full min-w-0 rounded-4 border bg-white px-12 py-10 text-14/20 text-ink outline-none outline-0 transition-[border-color,box-shadow] duration-150 ease-[ease] focus-visible:[box-shadow:0_0_0_3px_var(--color-primary-soft)] disabled:cursor-not-allowed disabled:bg-page-soft disabled:text-muted'
+  'min-h-42 w-full min-w-0 rounded-4 border bg-white px-12 py-10 text-14/20 text-ink outline-none outline-0 transition-[border-color,box-shadow] duration-150 ease-[ease] focus-visible:[box-shadow:0_0_0_3px_var(--color-primary-soft)] disabled:cursor-not-allowed disabled:bg-page-soft disabled:text-muted'
 const validBorderClass =
   'border-input hover:border-input-hover hover:focus-visible:border-input-hover focus-visible:border-primary disabled:hover:border-input'
 const invalidBorderClass = 'border-danger'
@@ -110,7 +110,7 @@ async function submit(): Promise<void> {
       <p v-if="error" :class="errorClass" role="alert">{{ error }}</p>
       <button
         type="submit"
-        class="mt-4 inline-flex min-h-[42px] w-full items-center justify-center whitespace-nowrap rounded-4 border border-primary bg-primary px-10 text-14/24 font-semibold text-white hover:border-primary-hover hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-primary disabled:cursor-not-allowed disabled:border-primary-disabled disabled:bg-primary-disabled disabled:opacity-65 disabled:hover:border-primary-disabled disabled:hover:bg-primary-disabled"
+        class="mt-4 inline-flex min-h-42 w-full items-center justify-center whitespace-nowrap rounded-4 border border-primary bg-primary px-10 text-14/24 font-semibold text-white hover:border-primary-hover hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-primary disabled:cursor-not-allowed disabled:border-primary-disabled disabled:bg-primary-disabled disabled:opacity-65 disabled:hover:border-primary-disabled disabled:hover:bg-primary-disabled"
         :disabled="initializationPending"
       >
         {{ initializationPending ? '正在初始化…' : '设置管理员密码' }}

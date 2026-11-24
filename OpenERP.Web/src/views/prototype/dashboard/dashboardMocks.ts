@@ -246,7 +246,7 @@ export interface DistributionSegment {
 export const orderTypes = ['销售', '退货']
 export const orderPeriods = ['前7天', '前14天', '前28天']
 export const distributionSegments: DistributionSegment[] = [
-  { name: 'Amazon US', percentage: 46, count: 387, color: 'var(--color-chart-1)', offset: 0 },
+  { name: 'Amazon US', percentage: 46, count: 387, color: 'var(--color-primary)', offset: 0 },
   { name: 'Amazon DE', percentage: 27, count: 228, color: 'var(--color-chart-2)', offset: -46 },
   { name: 'Amazon JP', percentage: 17, count: 143, color: 'var(--color-chart-3)', offset: -73 },
   { name: '其他站点', percentage: 10, count: 84, color: 'var(--color-chart-4)', offset: -90 },
@@ -265,7 +265,7 @@ export const inventoryMetrics = ['数量', '货值']
 export const warehouseStocks: WarehouseStock[] = [
   {
     name: 'FBA仓',
-    color: 'var(--color-chart-1)',
+    color: 'var(--color-primary)',
     inStock: '5,482',
     inTransit: '638',
     days: '42.6',

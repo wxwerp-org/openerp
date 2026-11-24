@@ -12,7 +12,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
       </div>
       <div class="flex items-center gap-10">
         <label class="flex items-center gap-6 whitespace-nowrap text-body"
-          ><input type="checkbox" class="size-[13px] accent-primary" />仅看自己</label
+          ><input type="checkbox" class="size-13 accent-primary" />仅看自己</label
         >
         <button
           type="button"
@@ -25,43 +25,43 @@ import AppIcon from '../../../ui/AppIcon.vue'
     </div>
     <div class="mx-16 mt-2 grid grid-cols-7 border-b border-line-soft">
       <div
-        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-row-soft"
+        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-page-soft"
       >
         <span class="text-11/[16.5px]">日</span>
         <span class="text-12 text-body">11-08</span>
       </div>
       <div
-        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-row-soft"
+        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-page-soft"
       >
         <span class="text-11/[16.5px]">一</span>
         <span class="text-12 text-body">11-09</span>
       </div>
       <div
-        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-row-soft"
+        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-page-soft"
       >
         <span class="text-11/[16.5px]">二</span>
         <span class="text-12 text-body">11-10</span>
       </div>
       <div
-        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-row-soft"
+        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-page-soft"
       >
         <span class="text-11/[16.5px]">三</span>
         <span class="text-12 text-body">11-11</span>
       </div>
       <div
-        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 border-b-2 border-primary bg-week-active-bg text-primary"
+        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 border-b-2 border-primary bg-tag-blue-bg text-primary"
       >
         <span class="text-11/[16.5px]">四</span>
         <span class="text-12 font-semibold text-primary">11-12</span>
       </div>
       <div
-        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-row-soft"
+        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-page-soft"
       >
         <span class="text-11/[16.5px]">五</span>
         <span class="text-12 text-body">11-13</span>
       </div>
       <div
-        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-row-soft"
+        class="flex h-46 cursor-pointer flex-col items-center justify-center gap-2 text-muted hover:bg-page-soft"
       >
         <span class="text-11/[16.5px]">六</span>
         <span class="text-12 text-body">11-14</span>

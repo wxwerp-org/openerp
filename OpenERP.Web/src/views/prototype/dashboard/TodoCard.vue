@@ -41,7 +41,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
             class="flex h-56 min-w-0 items-center gap-8 rounded-4 border border-line-soft bg-page-soft px-10 hover:border-todo-hover-border hover:bg-white"
           >
             <span
-              class="inline-flex size-24 flex-none items-center justify-center rounded-full bg-todo-warn-bg text-todo-warn"
+              class="inline-flex size-24 flex-none items-center justify-center rounded-full bg-notice-amber-bg text-todo-warn"
             >
               <AppIcon name="i-warning" />
             </span>
@@ -74,7 +74,7 @@ import AppIcon from '../../../ui/AppIcon.vue'
             class="flex h-56 min-w-0 items-center gap-8 rounded-4 border border-line-soft bg-page-soft px-10 hover:border-todo-hover-border hover:bg-white"
           >
             <span
-              class="inline-flex size-24 flex-none items-center justify-center rounded-full bg-todo-warn-bg text-todo-warn"
+              class="inline-flex size-24 flex-none items-center justify-center rounded-full bg-notice-amber-bg text-todo-warn"
             >
               <AppIcon name="i-chev-down" />
             </span>

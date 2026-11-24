@@ -15,7 +15,7 @@
 
 缩进与 C# 命名、命名空间遵循 [.editorconfig](.editorconfig)。.NET 后端统一使用 `OpResult` 表达可预期的失败。
 
-前端格式遵循 Vue 官方脚手架的 [Prettier 预设](https://github.com/vuejs/create-vue/tree/v3.24.0/template/formatting/prettier)。Vue 组件沿用 PascalCase 文件名和 `<script setup lang="ts">`。前端样式统一使用 Tailwind CSS v4 工具类与 `src/ui` 组件，设计值只在 `src/ui/theme.css` 定义 token，详见[前端样式架构](docs/development.md#前端样式架构)。检查入口见[前端静态检查](docs/development.md#前端静态检查)。
+前端格式遵循 Vue 官方脚手架的 [Prettier 预设](https://github.com/vuejs/create-vue/tree/v3.24.0/template/formatting/prettier)。Vue 组件沿用 PascalCase 文件名和 `<script setup lang="ts">`。前端样式统一使用 Tailwind CSS v4 工具类与 `src/ui` 组件，设计值只在 `src/ui/theme.css` 定义 token，详见[前端样式架构](docs/development.md#前端样式架构)。界面的视觉与版式尽量遵循[UI 设计规范原型](docs/design/erp-prototype.html)，可直接用浏览器打开查看。检查入口见[前端静态检查](docs/development.md#前端静态检查)。
 
 ## 测试与验证要求
 

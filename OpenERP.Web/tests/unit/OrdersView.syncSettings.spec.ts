@@ -123,7 +123,7 @@ async function mountPanel(): Promise<VueWrapper> {
   const { default: OrdersView } = await import('../../src/views/OrdersView.vue')
   installNativeDialogShim()
   const wrapper = mount(OrdersView, { global: { stubs: { RouterLink: RouterLinkStub } } })
-  await wrapper.get('[data-testid="orders-toolbar"] [aria-haspopup="dialog"]').trigger('click')
+  await wrapper.get('button[aria-controls="order-sync-panel"]').trigger('click')
   await flushPromises()
   return wrapper
 }
@@ -417,7 +417,7 @@ describe('订单同步面板定时同步设置', () => {
     await setScheduleEnabled(wrapper, false)
     wrapper.get<HTMLDialogElement>('dialog[open]').element.close()
     await flushPromises()
-    await wrapper.get('[data-testid="orders-toolbar"] [aria-haspopup="dialog"]').trigger('click')
+    await wrapper.get('button[aria-controls="order-sync-panel"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get<HTMLInputElement>('input[aria-label="启用定时同步"]').element.checked).toBe(
