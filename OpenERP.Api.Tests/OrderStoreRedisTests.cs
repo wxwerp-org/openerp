@@ -27,7 +27,7 @@ public sealed class OrderStoreRedisTests(AspireIntegrationFixture fixture)
         var order = new OrderSnapshot(Guid.NewGuid().ToString("N"), "order-1", sid, "TemuPop", "pending",
             new(new("1700000000", "addTime"), null, null, null),
             [new("po-1", sid, "1", "待发货")], [new("product-1", "oguid-1", "sku-id-1", "sku-1", 3, false, false)]);
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(postgres.ConnectionString).Options;
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(postgres.ConnectionString).Options;
         await using var initial = new AppDbContext(options);
         try
         {
@@ -36,7 +36,7 @@ public sealed class OrderStoreRedisTests(AspireIntegrationFixture fixture)
 
             // When 原服务容器已释放，新容器的内存缓存为空。
             var commands = new List<string>();
-            var replayOptions = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(postgres.ConnectionString)
+            var replayOptions = new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(postgres.ConnectionString)
                 .LogTo(commands.Add, [DbLoggerCategory.Database.Command.Name], LogLevel.Information).Options;
             await using var replay = new AppDbContext(replayOptions);
             var result = await SaveAsync(replay, redis, order, ct);
@@ -59,8 +59,7 @@ public sealed class OrderStoreRedisTests(AspireIntegrationFixture fixture)
     {
         var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { DisableDefaults = true });
         builder.Configuration["ConnectionStrings:redis"] = redis;
-        builder.AddRedisDistributedCache("redis");
-        builder.Services.AddHybridCache();
+        builder.AddApplicationCache();
         using var host = builder.Build();
         var store = ActivatorUtilities.CreateInstance<OrderStore>(host.Services, db);
         var result = await store.SaveAsync([order], cancellationToken);

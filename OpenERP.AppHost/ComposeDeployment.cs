@@ -30,6 +30,7 @@ internal static class ComposeDeployment
         var web = builder.AddViteApp("web", "../OpenERP.Web")
             .WithPnpm(installArgs: ["--frozen-lockfile", "--config.confirmModulesPurge=false"]);
         api.AddEFMigrations("migrations")
+            .WithMigrationsProject("../OpenERP.Migrations.PostgreSQL/OpenERP.Migrations.PostgreSQL.csproj")
             .PublishAsMigrationBundle(targetRuntime: "linux-x64", publishContainer: false);
 
         var openerp = builder.AddDockerfile(Image, staging)

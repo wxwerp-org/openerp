@@ -146,7 +146,7 @@ public sealed class UserManagementTests(AspireIntegrationFixture fixture) : IAsy
 
         // Given PostgreSQL 中保留了原用户及指向原用户的已撤销会话。
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(await fixture.GetPostgresConnectionStringAsync(ct)).Options;
+            .UseOpenErpPostgres(await fixture.GetPostgresConnectionStringAsync(ct)).Options;
         await using var db = new AppDbContext(options);
         var original = await db.Users.IgnoreQueryFilters().AsNoTracking().SingleAsync(account => account.Id == id, ct);
         Assert.Equal(after, original.Username);

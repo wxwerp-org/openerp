@@ -126,7 +126,7 @@ public sealed class ComposeCredentialsTests : IDisposable
         {
             ArgumentList =
             {
-                typeof(AppDbContext).Assembly.Location,
+                typeof(FileStore).Assembly.Location,
                 "initialize-compose-credentials",
                 Directory.CreateDirectory(Path.Combine(root, "postgres")).FullName,
                 Directory.CreateDirectory(Path.Combine(root, "s3")).FullName

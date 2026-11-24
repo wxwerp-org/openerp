@@ -234,7 +234,7 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
     private AppDbContext CreateContext() => new(CreateOptions());
 
     private DbContextOptions<AppDbContext> CreateOptions() =>
-        new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options;
+        new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(_connectionString).Options;
 
     private AccountStore CreateStore(AppDbContext db, TimeProvider clock) =>
         new(db, CreateOptions(), new PasswordHasher<UserAccount>(), clock);
@@ -255,7 +255,7 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
-        start.ArgumentList.Add(typeof(AppDbContext).Assembly.Location);
+        start.ArgumentList.Add(typeof(FileStore).Assembly.Location);
         foreach (var arg in args)
             start.ArgumentList.Add(arg);
         start.Environment["DOTNET_ENVIRONMENT"] = "Production";
@@ -274,10 +274,11 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
                 ?? "Endpoint=http://127.0.0.1:1;AccessKey=test;SecretKey=test";
         }
 
-        var secrets = new List<string?> { password, connectionString, storageConnectionString };
-        secrets.Add(new NpgsqlConnectionStringBuilder(connectionString).Password);
-
         configureStart?.Invoke(start);
+        var secrets = new List<string?> { password, connectionString, storageConnectionString };
+        if (!start.Environment.TryGetValue("Database__Provider", out var provider)
+            || !string.Equals(provider, "SQLite", StringComparison.OrdinalIgnoreCase))
+            secrets.Add(new NpgsqlConnectionStringBuilder(connectionString).Password);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(processBudget ?? AuthenticationConcurrency.ProcessBudget);
         timeout.Token.ThrowIfCancellationRequested();

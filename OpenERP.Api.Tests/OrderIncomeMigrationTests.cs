@@ -13,7 +13,7 @@ public sealed class OrderIncomeMigrationScriptTests
     public void Adds_two_nullable_columns_after_the_sync_revision_migration()
     {
         // Given 已升级到同步版本迁移的数据库模型。
-        using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql().Options);
+        using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres().Options);
 
         // When 生成从该版本升级的脚本。
         var script = db.GetService<IMigrator>().GenerateScript("20261120055817_AddOrderSyncRevision");
@@ -39,7 +39,7 @@ public sealed class OrderIncomeMigrationTests(AspireIntegrationFixture fixture)
             Pooling = false
         };
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(connection.ConnectionString).Options);
+            .UseOpenErpPostgres(connection.ConnectionString).Options);
         try
         {
             await db.GetService<IMigrator>().MigrateAsync("20261120055817_AddOrderSyncRevision", ct);

@@ -11,6 +11,7 @@ internal sealed class ShopConfiguration : EntityConfiguration<Shop>
         base.Configure(builder);
         builder.ToTable("Shops");
         builder.Property(shop => shop.Name).HasMaxLength(200);
+        builder.Property(shop => shop.SearchName).HasMaxLength(200);
         builder.Property(shop => shop.Platform).HasMaxLength(64);
         builder.Property(shop => shop.Region).HasMaxLength(64);
         builder.Property(shop => shop.MemberId).HasMaxLength(128);

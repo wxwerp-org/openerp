@@ -47,7 +47,7 @@
 
 响应包含 `summary`、当前筛选下的 `groups`、分页 `orders`、可见订单生成的选项 `platforms` / `shops`、分页信息、`generatedAtUtc`、`sales` 和 `trend`。管理员可读取全量；员工的明细、选项和工作台统计按分配的「平台 + SID」范围计算，包含仍有分配的历史店铺。店铺名称未保存在现有订单库中，标签使用来源店铺编号，不虚构店铺名。空结果仍返回第1页，`pageCount` 为1。
 
-`summary.orderCount` 为来源订单数，`summary.itemQuantity` 为商品件数。金额、走势、数量汇总、分组和当前页来自同一 PostgreSQL 可重复读事务；订单和商品分开聚合，不联接平台子单乘算。明细按平台、店铺编号、来源订单内部标识稳定排序；翻页不会改变汇总范围。
+`summary.orderCount` 为来源订单数，`summary.itemQuantity` 为商品件数。金额、走势、数量汇总、分组和当前页来自同一数据库事务的快照。订单和商品各自聚合，明细按平台、店铺编号、来源订单内部标识稳定排序。汇总覆盖当前筛选匹配的全部订单。
 
 | 响应字段 | 含义 |
 | --- | --- |
@@ -72,6 +72,6 @@ API 工程的 `OrderSnapshotReportQuery` 使用现有本地存储，其中 `Stor
 
 ## 验证
 
-`OrderSnapshotContractTests` 验证公共数量及身份规则；`OrderSnapshotReportEndpointTests` 验证 HTTP 契约；`OrderSnapshotReportPostgresTests` 使用隔离数据库验证筛选、聚合、分页、趋势窗口、未知金额及存量订单重同步；`OrderSnapshotReportAuthenticationTests` 验证实际应用注册和认证。
+`OrderSnapshotContractTests` 验证公共数量及身份规则。`OrderSnapshotReportEndpointTests` 验证 HTTP 契约，`OrderSnapshotReportAuthenticationTests` 验证实际应用注册和认证。`OrderSnapshotReportPostgresTests` 验证筛选、聚合、分页、趋势窗口、未知金额及存量订单重同步。`PortableReadQueryTests` 验证 SQLite 的日期、分页和金额聚合，`ReadModelMigrationTests` 验证升级后可继续查询旧版 PostgreSQL 数据。
 
 设置既有 `OPENERP_TEST_ERP_TOKEN` 后，`Real_source_orders_match_report_totals_and_every_paged_detail` 只读获取 SID 30 的真实订单，写入测试专用数据库并重复同步、逐单核对报表。它不写上游或开发数据库；无凭证时明确跳过，不能计作真实数据验收通过。前端交互和浏览器用例分别位于 `OpenERP.Web/tests/unit` 与 `OpenERP.Web/tests/e2e`。

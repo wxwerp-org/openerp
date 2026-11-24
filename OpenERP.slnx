@@ -4,4 +4,7 @@
   <Project Path="OpenERP.ServiceDefaults/OpenERP.ServiceDefaults.csproj" />
   <Project Path="OpenERP.Api/OpenERP.Api.csproj" />
   <Project Path="OpenERP.Api.Tests/OpenERP.Api.Tests.csproj" />
+  <Project Path="OpenERP.Persistence/OpenERP.Persistence.csproj" />
+  <Project Path="OpenERP.Migrations.PostgreSQL/OpenERP.Migrations.PostgreSQL.csproj" />
+  <Project Path="OpenERP.Migrations.Sqlite/OpenERP.Migrations.Sqlite.csproj" />
 </Solution>

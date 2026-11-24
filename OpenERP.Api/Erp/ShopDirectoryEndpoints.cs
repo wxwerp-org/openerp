@@ -74,10 +74,10 @@ public static class ShopDirectoryEndpoints
                 query = query.Where(shop => shop.Platform == normalizedPlatform);
             if (normalizedKeyword is not null)
             {
-                var pattern = $"%{EscapeLike(normalizedKeyword)}%";
+                var searchName = normalizedKeyword.ToUpperInvariant();
                 query = int.TryParse(normalizedKeyword, NumberStyles.None, CultureInfo.InvariantCulture, out var sid)
-                    ? query.Where(shop => shop.Sid == sid || EF.Functions.ILike(shop.Name, pattern, "\\"))
-                    : query.Where(shop => EF.Functions.ILike(shop.Name, pattern, "\\"));
+                    ? query.Where(shop => shop.Sid == sid || shop.SearchName!.Contains(searchName))
+                    : query.Where(shop => shop.SearchName!.Contains(searchName));
             }
 
             // 员工仅查看分配店铺的状态，不读取全局汇总与同步状态。
@@ -224,11 +224,6 @@ public static class ShopDirectoryEndpoints
         config.NewConfig<ShopPlatform, ErpPlatform>().MapToConstructor(true);
         return config;
     }
-
-    private static string EscapeLike(string value) =>
-        value.Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("%", "\\%", StringComparison.Ordinal)
-            .Replace("_", "\\_", StringComparison.Ordinal);
 
     private enum ShopStatusFilter
     {

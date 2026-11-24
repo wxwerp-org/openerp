@@ -227,7 +227,7 @@ public sealed class OrderSyncBatchTests
         var services = new ServiceCollection();
         services.AddSingleton<IErpClient>(erp);
         services.AddSingleton(tokens ?? new TestErpTokenStore("test-token"));
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql().Options;
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres().Options;
         services.AddScoped(_ => new OrderStore(new AppDbContext(options)));
         return services.BuildServiceProvider();
     }

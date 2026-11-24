@@ -20,7 +20,7 @@ public sealed class OrderSyncRevisionMigrationTests(AspireIntegrationFixture fix
             Pooling = false
         };
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(connection.ConnectionString).Options);
+            .UseOpenErpPostgres(connection.ConnectionString).Options);
         try
         {
             await db.GetService<IMigrator>().MigrateAsync("20261118092128_AddLocalShopDirectory", ct);
