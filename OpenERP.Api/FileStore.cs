@@ -33,20 +33,27 @@ internal sealed class FileStore(IObjectStorage storage)
         foreach (var item in objects)
         {
             if (IsValidKey(item.Key))
-                files.Add(new(item.Key, item.Key[33..], ContentType(item.Key)!, item.Size));
+                files.Add(Describe(item.Key, item.Size));
         }
         return files;
     }
 
-    public async Task<StoredFile> UploadAsync(IFormFile file, string fileName, string contentType, CancellationToken ct)
+    public async Task<StoredFile> UploadAsync(Stream input, string fileName, string contentType, long size, CancellationToken ct)
     {
         var key = $"{Guid.NewGuid():N}_{fileName}";
-        await using var input = file.OpenReadStream();
         await storage.PutAsync(key, input, contentType, ct);
-        return new(key, fileName, contentType, file.Length);
+        return new(key, fileName, contentType, size);
     }
 
-    public Task<OpenedObject?> OpenAsync(string key, CancellationToken ct) => storage.OpenAsync(key, ct);
+    public async Task<(StoredFile Metadata, OpenedObject Object)?> OpenAsync(string key, CancellationToken ct)
+    {
+        if (!IsValidKey(key))
+            return null;
+        var opened = await storage.OpenAsync(key, ct);
+        return opened is null ? null : (Describe(key, opened.Size), opened);
+    }
 
     public Task DeleteAsync(string key, CancellationToken ct) => storage.DeleteAsync(key, ct);
+
+    private static StoredFile Describe(string key, long size) => new(key, key[33..], ContentType(key)!, size);
 }
