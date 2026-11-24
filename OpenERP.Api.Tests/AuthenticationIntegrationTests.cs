@@ -320,7 +320,7 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
 
         // Given 在独立旧版数据库中保留管理员资料、旧会话和用于验证匿名 CSRF 的密钥。
         var sourceConnectionString = await fixture.GetPostgresConnectionStringAsync(ct);
-        await using var source = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(sourceConnectionString).Options);
+        await using var source = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(sourceConnectionString).Options);
         var admin = await source.Users.AsNoTracking().SingleAsync(user => user.Username == "admin", ct);
         var keys = await source.DataProtectionKeys.AsNoTracking().ToListAsync(ct);
         Assert.NotEmpty(keys);
@@ -328,7 +328,7 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
         await using var legacyFixture = new AspireIntegrationFixture(initializeAdmin: false);
         await legacyFixture.InitializeAsync();
         var connectionString = await legacyFixture.GetPostgresConnectionStringAsync(ct);
-        await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options))
+        await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(connectionString).Options))
         {
             await db.Database.GetService<IMigrator>().MigrateAsync("20261116092521_RequireInitialPasswordChange", ct);
             await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -344,7 +344,7 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
         // When 新版 API 启动并应用迁移；Then 账户资料保留，旧会话表和旧令牌失效。
         await legacyFixture.EnsureApiStartedAsync(ct);
         using var client = legacyFixture.CreateApiClient();
-        await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options))
+        await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(connectionString).Options))
         {
             Assert.False(await db.Database.SqlQueryRaw<bool>("""
                 SELECT EXISTS (

@@ -27,7 +27,7 @@ public sealed class ErpConfigurationTests
         socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         var port = ((IPEndPoint)socket.LocalEndPoint!).Port;
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql($"Host=127.0.0.1;Port={port};Username=test;Database=test;Pooling=false;Timeout=1")
+            .UseOpenErpPostgres($"Host=127.0.0.1;Port={port};Username=test;Database=test;Pooling=false;Timeout=1")
             .Options;
         await using var db = new AppDbContext(options);
         var store = new ErpTokenStore(db, new EphemeralDataProtectionProvider());

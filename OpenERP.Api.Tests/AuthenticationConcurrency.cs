@@ -14,7 +14,7 @@ internal static class AuthenticationConcurrency
 
     internal static async Task WaitForAdminLocksAsync(
         NpgsqlConnection observer, long expected, CancellationToken ct, string phase,
-        IReadOnlyList<BlockedOperation> operations, bool includeUpdates = false, TimeSpan? budget = null)
+        IReadOnlyList<BlockedOperation> operations, TimeSpan? budget = null)
     {
         var stopwatch = Stopwatch.StartNew();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -25,15 +25,13 @@ internal static class AuthenticationConcurrency
                    wait_event_type = 'Lock' AND matches AS blocked
             FROM (
                 SELECT pid, state, wait_event_type, wait_event,
-                       (query LIKE '%"Users"%FOR UPDATE%'
-                        OR (@includeUpdates AND query LIKE '%UPDATE "Users"%')) AS matches
+                       query LIKE '%UPDATE "Users"%' AS matches
                 FROM pg_stat_activity
                 WHERE datname = current_database() AND pid <> pg_backend_pid()
             ) sessions
             WHERE matches OR state = 'idle in transaction'
             ORDER BY pid
             """, observer);
-        activity.Parameters.AddWithValue("includeUpdates", includeUpdates);
         var completion = Task.WhenAny(operations.Select(operation => operation.Task));
         long? observed = null;
         var sessions = new List<string>();

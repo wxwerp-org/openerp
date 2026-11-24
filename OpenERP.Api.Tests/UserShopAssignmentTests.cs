@@ -27,7 +27,7 @@ public sealed class UserShopAssignmentTests(AspireIntegrationFixture fixture)
         var colleague = await CreateEmployeeAsync($"u{Guid.NewGuid():N}"[..18]);
         await AuthenticationIntegrationTests.LoginAsync(employee, ct, password, username);
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(await fixture.GetPostgresConnectionStringAsync(ct)).Options;
+            .UseOpenErpPostgres(await fixture.GetPostgresConnectionStringAsync(ct)).Options;
         await using var db = new AppDbContext(options);
         var first = new ShopKey("TemuPop", 105001);
         var second = new ShopKey("Temu", 105002);

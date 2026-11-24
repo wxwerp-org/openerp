@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,7 +12,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.JsonWebTokens;
-using Npgsql;
 
 namespace OpenERP.Api.Authentication;
 
@@ -19,14 +19,19 @@ internal static class AuthenticationEndpoints
 {
     private const string RefreshCookie = "__Secure-OpenERP.Refresh";
 
+    internal static void AddAccountStore(this IServiceCollection services)
+    {
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<AccountStore>();
+        services.AddSingleton<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
+    }
+
     internal static void AddAccountAuthentication(this WebApplicationBuilder builder)
     {
         var services = builder.Services;
         var tokens = new AccessTokens();
         services.AddSingleton(tokens);
-        services.AddSingleton(TimeProvider.System);
-        services.AddScoped<AccountStore>();
-        services.AddSingleton<IPasswordHasher<UserAccount>, PasswordHasher<UserAccount>>();
+        services.AddAccountStore();
         services.AddDataProtection().SetApplicationName("OpenERP").PersistKeysToDbContext<AppDbContext>();
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
         {
@@ -306,7 +311,7 @@ internal static class AuthenticationEndpoints
     {
         for (var current = exception; current is not null; current = current.InnerException)
         {
-            if (current is NpgsqlException or DbUpdateException)
+            if (current is DbException or DbUpdateException)
                 return true;
         }
 

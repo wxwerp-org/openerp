@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using OpResult;
+using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Erp;
 
@@ -14,11 +15,6 @@ public interface IErpTokenStore
     Task<OpResult<ErpAccessToken>> GetAsync(CancellationToken cancellationToken);
 
     Task<OpResult.OpResult> SaveAsync(string accessToken, CancellationToken cancellationToken);
-}
-
-internal sealed class ErpSettings : Entity
-{
-    public required string ProtectedAccessToken { get; set; }
 }
 
 internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider protection) : IErpTokenStore
@@ -65,14 +61,13 @@ internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider pro
         try
         {
             var protectedToken = _protector.Protect(accessToken);
-            await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO "ErpSettings" ("Id", "ProtectedAccessToken")
-                VALUES ({Guid.CreateVersion7()}, {protectedToken})
-                ON CONFLICT ("Singleton") DO UPDATE
-                SET "ProtectedAccessToken" = EXCLUDED."ProtectedAccessToken", "DeletedAt" = NULL
-                """, cancellationToken);
+            await SingletonSettings.SaveAsync(db, new ErpSettings { ProtectedAccessToken = protectedToken },
+                ct => db.ErpSettings.IgnoreQueryFilters().ExecuteUpdateAsync(setters => setters
+                    .SetProperty(settings => settings.ProtectedAccessToken, protectedToken)
+                    .SetProperty(settings => settings.DeletedAt, (DateTimeOffset?)null), ct), cancellationToken);
         }
-        catch (Exception exception) when (exception is DbException or CryptographicException)
+        catch (Exception exception) when (exception is DbException or DbUpdateException or CryptographicException
+            || IsDatabaseReadFailure(exception))
         {
             return OpResults.Err("保存 ERP AccessToken 失败，请重试。");
         }

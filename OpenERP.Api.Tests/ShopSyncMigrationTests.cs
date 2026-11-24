@@ -234,7 +234,7 @@ public sealed class ShopSyncMigrationTests(AspireIntegrationFixture fixture) : I
     }
 
     private DbContextOptions<AppDbContext> CreateOptions() =>
-        new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options;
+        new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(_connectionString).Options;
 
     private AppDbContext CreateDbContext() => new(CreateOptions());
 }

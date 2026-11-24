@@ -74,7 +74,7 @@ public sealed class DevelopmentMigrationTests(AspireIntegrationFixture fixture)
             Pooling = false
         };
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(connection.ConnectionString)
+            .UseOpenErpPostgres(connection.ConnectionString)
             .LogTo((id, _) => id == RelationalEventId.CommandError,
                 data => failures.Add(((CommandErrorEventData)data).Command.CommandText))
             .Options;

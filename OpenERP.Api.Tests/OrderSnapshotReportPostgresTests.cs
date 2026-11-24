@@ -194,7 +194,7 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
             changed = true;
         });
         await using var reader = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(_connection, options => options.EnableRetryOnFailure()).AddInterceptors(interceptor).Options);
+            .UseOpenErpPostgres(_connection, options => options.EnableRetryOnFailure()).AddInterceptors(interceptor).Options);
 
         // When 并发更新后读取明细、销售额与走势；Then 当前报表保持旧快照，下次查询才反映新值。
         var result = await new OrderSnapshotReportQuery(reader, new FixedClock()).QueryAsync(new(null, []), TestContext.Current.CancellationToken);
@@ -456,7 +456,7 @@ public sealed class OrderSnapshotReportPostgresTests(AspireIntegrationFixture fi
     }
 
     private AppDbContext Context() => new(new DbContextOptionsBuilder<AppDbContext>()
-        .UseNpgsql(_connection, options => options.EnableRetryOnFailure()).Options);
+        .UseOpenErpPostgres(_connection, options => options.EnableRetryOnFailure()).Options);
 
     private static string ShopKey(string platform, string sid) => new OrderShop("wxw-erp", platform, sid, "").Key;
     private static OrderSnapshotTotals Totals(OrderShopTotals totals) => new(totals.OrderCount, totals.ItemQuantity);

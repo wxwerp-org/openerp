@@ -364,7 +364,7 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
 
     private async Task<(UserRefreshToken Admin, UserRefreshToken Employee)> SeedAccountsAsync(CancellationToken ct)
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options;
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(_connectionString).Options;
         await using var db = new AppDbContext(options);
         await db.Database.MigrateAsync(ct);
 
@@ -398,7 +398,7 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
-        builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
+        builder.Services.AddDbContext<AppDbContext>(options => options.UseOpenErpPostgres(_connectionString));
         builder.AddAccountAuthentication();
         builder.Services.AddSignalR();
         builder.Services.AddSingleton<IShopSyncJob>(job);
@@ -431,7 +431,7 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
-        builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
+        builder.Services.AddDbContext<AppDbContext>(options => options.UseOpenErpPostgres(_connectionString));
         builder.AddAccountAuthentication();
         builder.Services.AddSignalR();
         builder.Services.AddSingleton<IErpClient>(erp);

@@ -231,7 +231,7 @@ public sealed class OrderListEndpointTests(AspireIntegrationFixture fixture) : I
         });
     }
 
-    private AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connection).Options);
+    private AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(_connection).Options);
 
     private async Task SaveAsync(IReadOnlyList<OrderSnapshot> orders)
     {

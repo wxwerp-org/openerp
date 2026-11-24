@@ -189,6 +189,10 @@ namespace OpenERP.Api.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("SearchName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<int>("Sid")
                         .HasColumnType("integer");
 
@@ -340,6 +344,9 @@ namespace OpenERP.Api.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<long?>("CreatedAtTicks")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("CreatedRaw")
                         .HasColumnType("text");
 
@@ -400,6 +407,9 @@ namespace OpenERP.Api.Migrations
                         .HasDefaultValueSql("gen_random_uuid()");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtTicks", "ErpId")
+                        .IsDescending(true, false);
 
                     b.ToTable("Orders", (string)null);
                 });

@@ -4,6 +4,7 @@ using OpenERP.Api.Authentication;
 using OpenERP.Api.Deployment;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Persistence;
 using OpenERP.Api.Reports;
 using OpenERP.Core.Reports;
 
@@ -15,9 +16,8 @@ if (args is ["initialize-compose-credentials", ..])
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
-builder.AddNpgsqlDbContext<AppDbContext>("openerp");
-builder.AddRedisDistributedCache("redis");
-builder.Services.AddHybridCache();
+builder.AddApplicationDatabase();
+builder.AddApplicationCache();
 builder.AddFileStorage();
 builder.AddAccountAuthentication();
 builder.Services.AddScoped<IOrderSnapshotReportQuery, OrderSnapshotReportQuery>();
@@ -64,9 +64,11 @@ await using var app = builder.Build();
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var stopping = app.Lifetime.ApplicationStopping;
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     if (app.Environment.IsDevelopment())
-        await scope.ServiceProvider.GetRequiredService<AppDbContext>().MigrateDevelopmentDatabaseAsync(stopping);
+        await db.MigrateDevelopmentDatabaseAsync(stopping);
     await scope.ServiceProvider.GetRequiredService<AccountStore>().SeedAsync(stopping);
+    await ReadModelBackfill.RunAsync(db, stopping);
 }
 
 app.UseAccountAuthentication();

@@ -171,6 +171,6 @@ public sealed class OrderSyncSettingsPostgresTests(AspireIntegrationFixture fixt
     }
 
     private AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>()
-        .UseNpgsql(_testConnectionString, options => options.EnableRetryOnFailure().MaxBatchSize(1))
+        .UseOpenErpPostgres(_testConnectionString, options => options.EnableRetryOnFailure().MaxBatchSize(1))
         .Options);
 }

@@ -91,7 +91,7 @@ public sealed class ErpSettingsIntegrationTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddDbContext<AppDbContext>(options => options.UseOpenErpPostgres(connectionString));
         services.AddDataProtection().SetApplicationName("OpenERP").PersistKeysToDbContext<AppDbContext>();
         await using var provider = services.BuildServiceProvider();
         await using var scope = provider.CreateAsyncScope();

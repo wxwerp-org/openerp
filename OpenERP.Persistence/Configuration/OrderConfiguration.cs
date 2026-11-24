@@ -11,8 +11,9 @@ internal sealed class OrderConfiguration : EntityConfiguration<OrderRecord>
         base.Configure(builder);
         builder.ToTable("Orders");
         builder.HasAlternateKey(order => order.ErpId);
+        builder.HasIndex(order => new { order.CreatedAtTicks, order.ErpId }).IsDescending(true, false);
         builder.Property(order => order.IncomeCost).HasPrecision(18, 2);
-        builder.Property(order => order.SyncRevision).IsConcurrencyToken().HasDefaultValueSql("gen_random_uuid()");
+        builder.Property(order => order.SyncRevision).IsConcurrencyToken();
         builder.HasMany(order => order.PlatformOrders).WithOne()
             .HasForeignKey(platformOrder => platformOrder.ErpId).HasPrincipalKey(order => order.ErpId);
         builder.HasMany(order => order.Lines).WithOne()
@@ -46,6 +47,6 @@ internal sealed class OrderSyncSettingsConfiguration : EntityConfiguration<Order
     {
         base.Configure(builder);
         ConfigureSingleton(builder, "OrderSyncSettings");
-        builder.Property(settings => settings.ShopSids).HasColumnType("integer[]").IsRequired();
+        builder.Property(settings => settings.ShopSids).IsRequired();
     }
 }
