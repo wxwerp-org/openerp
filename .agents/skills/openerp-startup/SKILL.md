@@ -25,6 +25,10 @@ description: >-
 
 ## 下一步读什么
 
+在 Windows 上用 DeepSeek Harness（DSH）启动 OpenERP 时，先用 DSH 的 `read` 工具阅读
+[Windows DSH 启动指引](references/windows-dsh.md)，再执行工作区命令。
+如果项目曾在 Windows DSH 中使用，且 AppHost 绑定回连套接字时报 `10013`，也按此指引检查。
+
 | 需要做的事 | 读什么 |
 | --- | --- |
 | 启动、停止、等待、资源操作、判断实例归属 | [项目内 Aspire Skill](../aspire/SKILL.md)，按路由读[编排](../aspire-orchestration/SKILL.md) |
