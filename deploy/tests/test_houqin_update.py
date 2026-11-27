@@ -112,6 +112,9 @@ class UpdateTests(unittest.TestCase):
                          (original_data.st_uid, original_data.st_gid, original_data.st_mode))
         self.assertEqual(self.env_file.read_text(), "WEB_PORT=18088\nCOMPOSE_PROJECT_NAME=staging\n")
         self.assertEqual((self.instance / ".houqin-run-number").read_text().strip(), "10")
+        # And 部署成功后清理同仓库的旧镜像，保留本次发布，且不碰其他项目的镜像
+        self.assertEqual(sorted(state["removed"]), sorted([OLD, "ghcr.nju.edu.cn/example/openerp/api:old"]))
+        self.assertIn("已清理旧版本镜像 2 个", result.stdout)
 
     def test_rejects_compose_port_that_differs_from_existing_container(self):
         # Given 旧容器使用临时 WEB_PORT 覆盖，两个 Compose 都从 .env 解析出不同的端口
@@ -329,6 +332,17 @@ def run_fake_command():
         return 0
     if args[0] == "pull":
         record("pull")
+        return 0
+    if args[0] == "images":
+        # 本机镜像：本次发布、旧版本、同仓库的其他组件，以及另一个项目的镜像
+        print(NEW)
+        print(OLD)
+        print("ghcr.nju.edu.cn/example/openerp/api:old")
+        print("ccr.example.com/other/wxw.api:v1")
+        return 0
+    if args[:2] == ["image", "rm"]:
+        state.setdefault("removed", []).append(args[2])
+        state_path.write_text(json.dumps(state))
         return 0
     raise RuntimeError(f"未知的测试命令：{command} {args}")
 
