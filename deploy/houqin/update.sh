@@ -156,3 +156,18 @@ jq -e --arg image "$expected_image" --arg id "$expected_id" '
     .State.Status == "running" and .Config.Image == $image and .Image == $id
 ' <<< "$(inspect "$new_id")" >/dev/null || fail '运行容器的镜像与本次拉取的 Release 镜像不匹配。'
 printf '实例已运行镜像 %s（%s）。\n' "$expected_image" "$expected_id"
+
+# 部署成功后清理旧版本镜像，避免占满服务器磁盘：只删同一镜像仓库前缀下、不是本次发布的已打标签镜像。
+# 其他项目（如 wxw 系列）的镜像不会被碰；仍被容器使用的镜像 docker 会拒绝删除。清理失败不影响本次部署。
+cleanup_old_images() {
+    local prefix="${expected_image%/openerp:*}" ref removed=0
+    [[ -n $prefix && $prefix != "$expected_image" ]] || return 0
+    while read -r ref; do
+        [[ $ref == "$prefix"/* && $ref != "$expected_image" && $ref != *"<none>"* ]] || continue
+        if docker image rm "$ref" >/dev/null 2>&1; then
+            removed=$((removed + 1))
+        fi
+    done < <(docker images --format '{{.Repository}}:{{.Tag}}')
+    printf '已清理旧版本镜像 %d 个。\n' "$removed"
+}
+cleanup_old_images || printf '旧镜像清理未完成，已忽略。\n'
