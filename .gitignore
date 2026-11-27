@@ -505,3 +505,11 @@ aspire-output/
 # SDD working files (briefs, reports, screenshots, review diffs)
 .superpowers/
 docs/superpowers/
+
+# 临时目录：联调/调试产生的本地文件（真实面单 PDF、探针日志、截图等，可能含订单、买家信息或凭据）一律放这里，禁止提交
+temp/
+probe*.log
+secrets.json
+*.pem
+*.key
+*.local

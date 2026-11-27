@@ -11,9 +11,8 @@ using OpResult;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
-using OpenERP.Api.Reports;
+using OpenERP.Api.Orders.Sources;
 using OpenERP.Core.Orders;
-using OpenERP.Core.Reports;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -306,28 +305,18 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
     }
 
     [Fact]
-    public async Task Employee_without_assignments_gets_empty_workbench_totals_and_report_options()
+    public async Task Employee_without_assignments_gets_empty_order_list()
     {
         // Given 本地已有一张订单，员工尚未分配店铺。
         var ct = TestContext.Current.CancellationToken;
         await SeedAsync(DateTimeOffset.UtcNow, ct);
         await SeedOrderAsync(ct);
         await using var app = await StartAppAsync(ct);
-
-        // When 查看工作台报表；Then 聚合、明细与选项均为空。
-        using var report = await app.Http.GetAsync("/api/reports/order-snapshot", ct);
-        Assert.Equal(HttpStatusCode.OK, report.StatusCode);
-        var reportBody = await report.Content.ReadFromJsonAsync<JsonElement>(ct);
-        Assert.Equal(0, reportBody.GetProperty("summary").GetProperty("orderCount").GetInt64());
-        Assert.Equal(0, reportBody.GetProperty("summary").GetProperty("itemQuantity").GetInt64());
-        foreach (var field in new[] { "orders", "groups", "shops", "platforms" })
-            Assert.Empty(reportBody.GetProperty(field).EnumerateArray());
     }
 
     [Theory]
     [InlineData("/api/orders?shopSid=42")]
     [InlineData("/api/orders?shopSid=42&platform=TemuPop")]
-    [InlineData("/api/reports/order-snapshot?shops=wxw-erp%2FTemuPop%2F42")]
     public async Task Employee_explicitly_requesting_an_unassigned_shop_is_forbidden(string url)
     {
         // Given 店铺有本地订单，员工未分配到该店；When 使用公开筛选参数指定该店。
@@ -371,7 +360,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
     }
 
     [Fact]
-    public async Task Assigned_history_uses_the_composite_shop_key_across_orders_reports_and_revocation()
+    public async Task Assigned_history_uses_the_composite_shop_key_across_orders_and_revocation()
     {
         // Given SID 42 仍在 TemuPop 目录，但员工分配的是 AliExpress 的同 SID 历史店。
         var ct = TestContext.Current.CancellationToken;
@@ -380,7 +369,6 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         await SeedOrderAsync(ct, "AliExpress", "待处理", 3);
         var userId = await SeedEmployeeAsync(ct, ("AliExpress", 42));
         await using var employee = await StartAppAsync(ct, userId: userId);
-        await using var administrator = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
 
         // When 查看员工订单；Then 历史店可按 SID 查询，订单名称、平台和状态均无其它平台信息。
         using var orders = await employee.Http.GetAsync("/api/orders?shopSid=42", ct);
@@ -397,32 +385,10 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         using var otherPlatform = await employee.Http.GetAsync("/api/orders?shopSid=42&platform=TemuPop", ct);
         Assert.Equal(HttpStatusCode.Forbidden, otherPlatform.StatusCode);
 
-        // When 读取工作台报表；Then 统计和明细与管理员选择该历史店时一致。
-        const string historicalReport = "/api/reports/order-snapshot?shops=wxw-erp%2FAliExpress%2F42";
-        using var report = await employee.Http.GetAsync("/api/reports/order-snapshot", ct);
-        using var filtered = await administrator.Http.GetAsync(historicalReport, ct);
-        using var selected = await employee.Http.GetAsync(historicalReport, ct);
-        Assert.Equal(HttpStatusCode.OK, report.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, filtered.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, selected.StatusCode);
-        var summary = await report.Content.ReadFromJsonAsync<JsonElement>(ct);
-        var comparison = await filtered.Content.ReadFromJsonAsync<JsonElement>(ct);
-        Assert.Equal(comparison.GetProperty("summary").GetRawText(), summary.GetProperty("summary").GetRawText());
-        Assert.Equal(3, summary.GetProperty("summary").GetProperty("itemQuantity").GetInt64());
-        Assert.Equal(comparison.GetProperty("groups").GetRawText(), summary.GetProperty("groups").GetRawText());
-        Assert.Equal(comparison.GetProperty("orders").GetRawText(), summary.GetProperty("orders").GetRawText());
-        var selectedReport = await selected.Content.ReadFromJsonAsync<JsonElement>(ct);
-        Assert.Equal(summary.GetProperty("summary").GetRawText(), selectedReport.GetProperty("summary").GetRawText());
-        Assert.Equal("AliExpress", Assert.Single(summary.GetProperty("platforms").EnumerateArray()).GetString());
-        Assert.Equal("wxw-erp/AliExpress/42", Assert.Single(summary.GetProperty("shops").EnumerateArray()).GetProperty("key").GetString());
-        using var mixed = await employee.Http.GetAsync(
-            "/api/reports/order-snapshot?shops=wxw-erp%2FAliExpress%2F42&shops=wxw-erp%2FTemuPop%2F42", ct);
-        Assert.Equal(HttpStatusCode.Forbidden, mixed.StatusCode);
-
         // When 管理员撤销该分配；Then 下一次查询不再允许指定该店。
         await using var db = CreateDbContext();
         await db.UserShopAssignments.Where(item => item.UserId == userId).ExecuteDeleteAsync(ct);
-        using var revoked = await employee.Http.GetAsync(historicalReport, ct);
+        using var revoked = await employee.Http.GetAsync("/api/orders?shopSid=42", ct);
         Assert.Equal(HttpStatusCode.Forbidden, revoked.StatusCode);
     }
 
@@ -507,38 +473,28 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
     }
 
     [Fact]
-    public async Task Offline_order_schedule_uses_persisted_shops_and_saves_selection()
+    public async Task Order_schedule_lists_directory_shops_of_supported_platforms_and_saves_selection()
     {
-        // Given wxw 已离线一天，应用重新启动，数据库保留上次同步的多平台店铺。
+        // Given 授权店铺目录里有速卖通店铺（已实现订单同步）和 TemuPop 店铺（未实现）。
         var ct = TestContext.Current.CancellationToken;
         await SeedAsync(DateTimeOffset.UtcNow.AddDays(-1), ct);
-        var upstreamCalls = 0;
-        var offline = new TestErpClient
-        {
-            GetAllShops = (_, _, _) =>
-            {
-                Interlocked.Increment(ref upstreamCalls);
-                return Task.FromResult<OpResult<IReadOnlyList<ErpShop>>>(OpResults.Err("wxw 离线"));
-            }
-        };
-        await using var app = await StartAppAsync(ct, erp: offline, role: UserAccount.AdministratorRole);
+        await using var app = await StartAppAsync(ct, role: UserAccount.AdministratorRole);
 
-        // When 打开定时选店，Then 返回本地全部 TemuPop 店铺，包括授权状态未知的店。
-        const string settings = "/api/erp/order-sync-settings";
+        // When 打开定时选店，Then 只返回已实现订单同步的平台下的店铺。
+        const string settings = "/api/order-sync/settings";
         using var response = await app.Http.GetAsync($"{settings}/shops", ct);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var selection = await response.Content.ReadFromJsonAsync<OrderSyncShopSelection>(ct);
         Assert.NotNull(selection);
-        Assert.Equal([new("42", "Alpha 店"), new("9", "Gamma 店")], selection.Items);
+        Assert.Equal([new("6", "Beta 店")], selection.Items);
 
         // When 选店并启用，Then 下次读取保留已保存的设置。
-        using var saved = await app.Http.PutAsJsonAsync(settings, new { enabled = true, shopSids = new[] { 9 } }, ct);
+        using var saved = await app.Http.PutAsJsonAsync(settings, new { enabled = true, shopSids = new[] { 6 } }, ct);
         Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
         var loaded = await app.Http.GetFromJsonAsync<OrderSyncSettingsResponse>(settings, ct);
         Assert.NotNull(loaded);
         Assert.True(loaded.Enabled);
-        Assert.Equal([9], loaded.ShopSids);
-        Assert.Equal(0, upstreamCalls);
+        Assert.Equal([6], loaded.ShopSids);
     }
 
     private async Task MigrateAsync(CancellationToken cancellationToken)
@@ -614,14 +570,14 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
 
     private async Task<TestApp> StartAppAsync(
-        CancellationToken cancellationToken, IShopSyncJob? job = null, IErpClient? erp = null,
+        CancellationToken cancellationToken, IShopSyncJob? job = null,
         string role = UserAccount.UserRole, Guid? userId = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
-        builder.Services.AddSingleton<IErpClient>(erp ?? new TestErpClient());
+        builder.Services.AddSingleton<IErpClient>(new TestErpClient());
         builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
         builder.Services.AddSingleton(job ?? new FakeShopSyncJob());
         builder.Services.AddScoped<IOrderSyncSettingsStore, OrderSyncSettingsStore>();
@@ -629,12 +585,14 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         builder.Services.AddSingleton<OrderSyncScheduler>();
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddScoped<OrderListQuery>();
-        builder.Services.AddScoped<IOrderSnapshotReportQuery, OrderSnapshotReportQuery>();
+        builder.Services.AddSingleton(new PlatformOrderSources([new TestPlatformOrderSource()]));
         ErpEndpointTestAuth.Configure(builder);
+        builder.Services.AddHybridCache();
+        builder.Services.AddSingleton<IPlatformAbilityClient, TestPlatformAbilityClient>();
         var app = builder.Build();
         app.MapErp();
+        app.MapOrderSync();
         app.MapOrderList();
-        app.MapOrderReports();
         await app.StartAsync(cancellationToken);
         var http = ErpEndpointTestAuth.CreateClient(app, role, userId);
         return new TestApp(app, http);

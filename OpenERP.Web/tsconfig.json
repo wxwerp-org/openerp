@@ -1,28 +1,28 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "useDefineForClassFields": true,
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client", "node"],
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "node",
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "noEmit": true,
-    "skipLibCheck": true,
+    "jsx": "preserve",
+    "sourceMap": true,
+    "resolveJsonModule": true,
     "esModuleInterop": true,
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "moduleDetection": "force"
+    "lib": ["esnext", "dom"],
+    "types": ["vite/client", "node", "element-plus/global"],
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@views/*": ["src/views/*"],
+      "@imgs/*": ["src/assets/images/*"],
+      "@icons/*": ["src/assets/icons/*"],
+      "@utils/*": ["src/utils/*"],
+      "@stores/*": ["src/store/*"],
+      "@plugins/*": ["src/plugins/*"],
+      "@styles/*": ["src/assets/styles/*"]
+    }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.vue",
-    "tests/**/*.ts",
-    "vite.config.ts",
-    "vitest.config.ts",
-    "playwright.config.ts"
-  ]
+  "include": ["src/**/*", "src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "exclude": ["node_modules", "dist", "**/*.js"]
 }

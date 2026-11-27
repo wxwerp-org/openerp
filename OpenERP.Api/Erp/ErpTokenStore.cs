@@ -13,12 +13,19 @@ public interface IErpTokenStore
 
     Task<OpResult<ErpAccessToken>> GetAsync(CancellationToken cancellationToken);
 
-    Task<OpResult.OpResult> SaveAsync(string accessToken, CancellationToken cancellationToken);
+    /// <param name="baseUrl">独立部署的上游地址；为空表示公共版。</param>
+    Task<OpResult.OpResult> SaveAsync(string accessToken, string? baseUrl, CancellationToken cancellationToken);
+
+    /// <summary>撤销配置：彻底删除已保存的 AccessToken 与部署地址。</summary>
+    Task<OpResult.OpResult> DeleteAsync(CancellationToken cancellationToken);
 }
 
 internal sealed class ErpSettings : Entity
 {
     public required string ProtectedAccessToken { get; set; }
+
+    /// <summary>独立部署的上游地址；为空表示公共版。</summary>
+    public string? BaseUrl { get; set; }
 }
 
 internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider protection) : IErpTokenStore
@@ -29,8 +36,14 @@ internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider pro
     {
         try
         {
-            var configured = await db.ErpSettings.AnyAsync(cancellationToken);
-            return new ErpConfiguration(configured, ErpConfiguration.UpstreamBaseUrl);
+            var row = await db.ErpSettings
+                .Select(settings => new { settings.BaseUrl })
+                .SingleOrDefaultAsync(cancellationToken);
+            var independent = !string.IsNullOrWhiteSpace(row?.BaseUrl);
+            return new ErpConfiguration(
+                row is not null,
+                independent ? row!.BaseUrl!.TrimEnd('/') : ErpConfiguration.UpstreamBaseUrl,
+                independent);
         }
         catch (Exception exception) when (IsDatabaseReadFailure(exception))
         {
@@ -42,12 +55,12 @@ internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider pro
     {
         try
         {
-            var value = await db.ErpSettings
-                .Select(settings => settings.ProtectedAccessToken)
+            var row = await db.ErpSettings
+                .Select(settings => new { settings.ProtectedAccessToken, settings.BaseUrl })
                 .SingleOrDefaultAsync(cancellationToken);
-            return value is null
+            return row is null
                 ? OpResults.Err("尚未配置私有 ERP AccessToken。")
-                : new ErpAccessToken(_protector.Unprotect(value));
+                : new ErpAccessToken(_protector.Unprotect(row.ProtectedAccessToken), row.BaseUrl);
         }
         catch (Exception exception) when (exception is CryptographicException || IsDatabaseReadFailure(exception))
         {
@@ -60,16 +73,31 @@ internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider pro
         exception is DbException or RetryLimitExceededException
             or InvalidOperationException { InnerException: DbException or TimeoutException };
 
-    public async Task<OpResult.OpResult> SaveAsync(string accessToken, CancellationToken cancellationToken)
+    public async Task<OpResult.OpResult> DeleteAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync("""DELETE FROM "ErpSettings" """, cancellationToken);
+        }
+        catch (Exception exception) when (IsDatabaseReadFailure(exception))
+        {
+            return OpResults.Err("撤销 ERP 配置失败，请重试。");
+        }
+
+        return OpResults.Ok();
+    }
+
+    public async Task<OpResult.OpResult> SaveAsync(string accessToken, string? baseUrl, CancellationToken cancellationToken)
     {
         try
         {
             var protectedToken = _protector.Protect(accessToken);
             await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO "ErpSettings" ("Id", "ProtectedAccessToken")
-                VALUES ({Guid.CreateVersion7()}, {protectedToken})
+                INSERT INTO "ErpSettings" ("Id", "ProtectedAccessToken", "BaseUrl")
+                VALUES ({Guid.CreateVersion7()}, {protectedToken}, {baseUrl})
                 ON CONFLICT ("Singleton") DO UPDATE
-                SET "ProtectedAccessToken" = EXCLUDED."ProtectedAccessToken", "DeletedAt" = NULL
+                SET "ProtectedAccessToken" = EXCLUDED."ProtectedAccessToken",
+                    "BaseUrl" = EXCLUDED."BaseUrl", "DeletedAt" = NULL
                 """, cancellationToken);
         }
         catch (Exception exception) when (exception is DbException or CryptographicException)

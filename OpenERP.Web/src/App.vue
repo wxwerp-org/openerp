@@ -1,58 +1,38 @@
-<script setup lang="ts">
-import { computed, onMounted, onUnmounted, watch } from 'vue'
-import { START_LOCATION, useRoute, useRouter } from 'vue-router'
-import { account, checkSession, sessionState } from './account/session'
-import AppShell from './components/layout/AppShell.vue'
-import AppButton from './ui/AppButton.vue'
-import AuthLayout from './components/layout/AuthLayout.vue'
-import { sessionRedirect } from './router/authRoutes'
-
-const router = useRouter()
-const route = useRoute()
-const routeReady = computed(() => router.currentRoute.value !== START_LOCATION)
-
-function recheckSession(): void {
-  void checkSession()
-}
-
-function recheckVisibleSession(): void {
-  if (document.visibilityState === 'visible') recheckSession()
-}
-
-watch(sessionState, (state) => {
-  if (!routeReady.value) return
-  const redirect = sessionRedirect(router, route, state)
-  if (redirect) void router.replace(redirect)
-})
-
-onMounted(() => {
-  window.addEventListener('focus', recheckSession)
-  window.addEventListener('online', recheckSession)
-  document.addEventListener('visibilitychange', recheckVisibleSession)
-})
-onUnmounted(() => {
-  window.removeEventListener('focus', recheckSession)
-  window.removeEventListener('online', recheckSession)
-  document.removeEventListener('visibilitychange', recheckVisibleSession)
-})
-</script>
-
 <template>
-  <RouterView
-    v-if="
-      (route.name === 'login' && sessionState === 'anonymous') ||
-      (route.name === 'initialize' && sessionState === 'uninitialized')
-    "
-  />
-  <AppShell
-    v-else-if="account && routeReady && route.name !== 'login' && route.name !== 'initialize'"
-    :account="account"
-  />
-  <AuthLayout v-else>
-    <template v-if="sessionState === 'unavailable'">
-      <p role="alert">无法验证登录状态，请稍后重试。</p>
-      <AppButton variant="primary" @click="checkSession">重试</AppButton>
-    </template>
-    <p v-else role="status">正在验证登录状态…</p>
-  </AuthLayout>
+  <ElConfigProvider size="default" :locale="locales[language]" :z-index="3000">
+    <RouterView></RouterView>
+  </ElConfigProvider>
 </template>
+
+<script setup lang="ts">
+  import { useUserStore } from './store/modules/user'
+  import { useSettingStore } from './store/modules/setting'
+  import zh from 'element-plus/es/locale/lang/zh-cn'
+  import en from 'element-plus/es/locale/lang/en'
+  import { systemUpgrade } from './utils/sys'
+  import { toggleTransition } from './utils/ui/animation'
+  import { checkStorageCompatibility } from './utils/storage'
+  import { initializeTheme } from './hooks/core/useTheme'
+
+  const userStore = useUserStore()
+  const settingStore = useSettingStore()
+  const { language } = storeToRefs(userStore)
+
+  const locales = {
+    zh: zh,
+    en: en
+  }
+
+  onBeforeMount(() => {
+    toggleTransition(true)
+    initializeTheme()
+  })
+
+  onMounted(() => {
+    checkStorageCompatibility()
+    toggleTransition(false)
+    systemUpgrade()
+    // 默认展开侧边栏菜单
+    settingStore.setMenuOpen(true)
+  })
+</script>

@@ -3,13 +3,13 @@ import {
   errorMessage,
   parsePlatforms,
   parseShopsResponse,
-  problemDetail,
-} from '../../src/components/shops/responses'
+  problemDetail
+} from '@/views/shop/list/responses'
 
 describe('授权店铺页的接口响应校验', () => {
   it('Given 只有店铺列表 When 解析 Then 缺失的分页与汇总字段使用兜底值', () => {
     const parsed = parseShopsResponse({
-      items: [{ sid: 7, name: '店铺 7', platform: 'TemuPop' }],
+      items: [{ sid: 7, name: '店铺 7', platform: 'TemuPop' }]
     })
 
     expect(parsed.items[0]).toMatchObject({ sid: '7', region: null, isTokenOk: null })
@@ -22,13 +22,13 @@ describe('授权店铺页的接口响应校验', () => {
       invalid: 0,
       unknown: 0,
       lastSyncedAt: null,
-      syncVersion: 0,
+      syncVersion: 0
     })
   })
 
   it('Given 店铺缺少名称或编号 When 解析 Then 拒绝整个响应', () => {
     expect(() => parseShopsResponse({ items: [{ sid: '1', platform: 'TemuPop' }] })).toThrow(
-      '本地店铺响应格式无效。',
+      '本地店铺响应格式无效。'
     )
     expect(() => parseShopsResponse({ items: [{ sid: '', name: 'A', platform: 'P' }] })).toThrow()
     expect(() => parseShopsResponse(null)).toThrow()
@@ -40,12 +40,12 @@ describe('授权店铺页的接口响应校验', () => {
         items: [
           { name: 'TemuPop', shopCount: 3 },
           { name: 'AliExpress', displayName: '速卖通', isProduction: false },
-          { displayName: '没有名称' },
-        ],
-      }),
+          { displayName: '没有名称' }
+        ]
+      })
     ).toEqual([
       { name: 'TemuPop', displayName: 'TemuPop', icon: null, isProduction: true, shopCount: 3 },
-      { name: 'AliExpress', displayName: '速卖通', icon: null, isProduction: false, shopCount: 0 },
+      { name: 'AliExpress', displayName: '速卖通', icon: null, isProduction: false, shopCount: 0 }
     ])
     expect(parsePlatforms({})).toEqual([])
   })

@@ -1,5 +1,4 @@
 using OpenERP.Core.Orders;
-using OpenERP.Core.Reports;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -35,26 +34,5 @@ public sealed class OrderSnapshotContractTests
         // When 构造筛选键；Then 身份不同就不会碰撞，名称变化不改变身份。
         Assert.Equal(5, shops.Select(shop => shop.Key).Distinct().Count());
         Assert.Equal(shops[0].Key, (shops[0] with { Label = "改名" }).Key);
-    }
-
-    [Theory]
-    [InlineData(0, 20)]
-    [InlineData(1, 0)]
-    [InlineData(1, 101)]
-    [InlineData(int.MaxValue, 100)]
-    public void Invalid_pagination_is_rejected(int page, int pageSize)
-    {
-        // Given 非法页码、页长或无法安全转换的偏移量；When 验证查询；Then 明确拒绝。
-        Assert.NotNull(new OrderSnapshotReportRequest(null, [], page, pageSize).ValidationError);
-    }
-
-    [Theory]
-    [InlineData(1, 1)]
-    [InlineData(1, 100)]
-    [InlineData(2, 20)]
-    public void Supported_pagination_is_accepted(int page, int pageSize)
-    {
-        // Given 正常的分页边界；When 验证查询；Then 不拒绝合法请求。
-        Assert.Null(new OrderSnapshotReportRequest(null, [], page, pageSize).ValidationError);
     }
 }

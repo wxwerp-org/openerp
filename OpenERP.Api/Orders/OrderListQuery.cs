@@ -127,21 +127,76 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         var childRows = await children.Where(po => ids.Contains(po.ErpId)).ToArrayAsync(ct);
         var childrenByOrder = childRows.OrderBy(po => po.PoNumber, StringComparer.Ordinal).ToLookup(po => po.ErpId,
             po => new PlatformOrderListItem(po.PoNumber, po.Status, po.Matched));
+        var lineRows = await lines.AsNoTracking().Where(line => ids.Contains(line.ErpId)).OrderBy(line => line.Ordinal)
+            .ToArrayAsync(ct);
+        var linesByOrder = lineRows.ToLookup(line => line.ErpId, line => new OrderLineListItem(line.ProductId, line.SkuCode,
+            line.Name, line.ImageUrl, line.Specs, line.Quantity, line.UnitPrice, line.Currency, line.Logistics,
+            ParseDetails(line.Details)));
+        var orderRows = await orders.Where(order => ids.Contains(order.ErpId))
+            .Select(order => new { order.ErpId, order.Status, order.Buyer, order.TotalAmount, order.TotalCurrency,
+                order.Logistics, order.PaidRaw, order.Details })
+            .ToDictionaryAsync(order => order.ErpId, ct);
         var shopDetails = shops.ToDictionary(shop => shop.Sid);
         var items = rows.Select(row =>
         {
             var shop = shopDetails[row.Order.Sid];
+            var detail = orderRows[row.Order.ErpId];
             var name = access.IsAdministrator || shop.Platform == row.Order.Platform ? shop.Name : null;
             return new OrderListItem(row.Order.ErpId, row.Order.Sid, name, row.Order.Platform,
                 childrenByOrder[row.Order.ErpId].ToArray(),
                 FormatTime(row.Order.CreatedAt, row.Order.CreatedRaw), FormatTime(row.Order.DispatchedAt, row.Order.DispatchedRaw),
-                row.LineCount, row.ItemQuantity);
+                row.LineCount, row.ItemQuantity, linesByOrder[row.Order.ErpId].ToArray(),
+                detail.Status, detail.Buyer, detail.TotalAmount, detail.TotalCurrency, detail.Logistics, detail.PaidRaw,
+                ParseDetails(detail.Details));
         }).ToArray();
 
         return new(items, total, page, request.PageSize, options);
     }
 
-    private IQueryable<OrderListHeader> ReadHeaders() =>
+    /// <summary>读取单个本地订单（与列表同一结构）；订单不存在或无权访问时返回 null。</summary>
+    internal async Task<OrderListItem?> ReadOneAsync(string erpId, ShopAccess access, CancellationToken ct)
+    {
+        var orders = access.Orders(db).AsNoTracking();
+        var header = await ReadHeaders().Where(row => row.ErpId == erpId && orders.Any(order => order.ErpId == row.ErpId))
+            .FirstOrDefaultAsync(ct);
+        if (header is null)
+            return null;
+
+        var order = await orders.FirstAsync(row => row.ErpId == erpId, ct);
+        var shopName = await access.Shops(db).AsNoTracking()
+            .Where(shop => shop.Sid == order.Sid && shop.Platform == order.Platform)
+            .Select(shop => shop.Name).FirstOrDefaultAsync(ct);
+        var platformOrders = await db.Set<PlatformOrderRecord>().AsNoTracking().Where(po => po.ErpId == erpId)
+            .OrderBy(po => po.PoNumber).ToArrayAsync(ct);
+        var lines = await db.Set<OrderLineRecord>().AsNoTracking().Where(line => line.ErpId == erpId)
+            .OrderBy(line => line.Ordinal).ToArrayAsync(ct);
+        return new OrderListItem(order.ErpId, order.Sid, shopName, order.Platform,
+            [.. platformOrders.Select(po => new PlatformOrderListItem(po.PoNumber,
+                !string.IsNullOrWhiteSpace(po.StatusText) ? po.StatusText! :
+                !string.IsNullOrWhiteSpace(po.StatusCode) ? po.StatusCode! : "未知", false))],
+            FormatTime(header.CreatedAt, header.CreatedRaw), FormatTime(header.DispatchedAt, header.DispatchedRaw),
+            lines.Length, lines.Sum(line => (long)line.Quantity),
+            [.. lines.Select(line => new OrderLineListItem(line.ProductId, line.SkuCode, line.Name, line.ImageUrl,
+                line.Specs, line.Quantity, line.UnitPrice, line.Currency, line.Logistics, ParseDetails(line.Details)))],
+            order.Status, order.Buyer, order.TotalAmount, order.TotalCurrency, order.Logistics, order.PaidRaw,
+            ParseDetails(order.Details));
+    }
+
+    private static IReadOnlyList<OrderDetail> ParseDetails(string? json)
+    {
+        if (string.IsNullOrEmpty(json))
+            return [];
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<OrderDetail[]>(json) ?? [];
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return [];
+        }
+    }
+
+    internal IQueryable<OrderListHeader> ReadHeaders() =>
         db.Database.SqlQueryRaw<OrderListHeader>(OrderHeadersSql, OrderCreatedTimeSql.Parameters());
 
     private static string? FormatTime(DateTime? value, string? source)
@@ -156,7 +211,7 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         return source.Length > 10 ? date + "T" + source[11..] : date;
     }
 
-    private sealed record OrderListHeader(string ErpId, int Sid, string Platform,
+    internal sealed record OrderListHeader(string ErpId, int Sid, string Platform,
         [property: Column(TypeName = "timestamp without time zone")] DateTime? CreatedAt,
         DateOnly? CreatedDate,
         [property: Column(TypeName = "timestamp without time zone")] DateTime? DispatchedAt,

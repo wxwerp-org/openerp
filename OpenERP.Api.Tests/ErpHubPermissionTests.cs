@@ -13,6 +13,7 @@ using OpResult;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Orders.Sources;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -232,25 +233,29 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
     }
 
     [Fact]
-    public async Task Employee_can_sync_and_receive_status_for_assigned_temu_pop_shops_only()
+    public async Task Employee_can_sync_and_receive_status_for_assigned_platform_shops_only()
     {
-        // Given 员工获分配 TemuPop 的 SID 30，同时保留 Temu 的 SID 31 历史分配。
+        // Given 员工只获分配其中一家平台店铺。
         var ct = TestContext.Current.CancellationToken;
         var (_, employeeLogin) = await SeedAccountsAsync(ct);
         var job = new RecordingShopSyncJob();
         await using var app = await StartAppAsync(job, orderSync: true, ct);
         await using var scope = app.App.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Shops.AddRange(
-            new Shop { Platform = "TemuPop", Sid = 30, Name = "已分配店铺" },
-            new Shop { Platform = "TemuPop", Sid = 31, Name = "未分配店铺" });
-        var assigned = new UserShopAssignment { UserId = employeeLogin.UserId, Platform = "TemuPop", Sid = 30 };
-        db.UserShopAssignments.AddRange(assigned,
-            new UserShopAssignment { UserId = employeeLogin.UserId, Platform = "Temu", Sid = 31 });
+        var assignedShop = NewShop("已分配店铺");
+        var otherShop = NewShop("未分配店铺");
+        db.Shops.AddRange(assignedShop, otherShop);
+        await db.SaveChangesAsync(ct);
+        var (assignedSid, otherSid) = (assignedShop.Sid, otherShop.Sid);
+        var assigned = new UserShopAssignment
+        {
+            UserId = employeeLogin.UserId, Platform = TestPlatformOrderSource.DefaultPlatform, Sid = assignedSid
+        };
+        db.UserShopAssignments.Add(assigned);
         await db.SaveChangesAsync(ct);
         var jobs = app.App.Services.GetRequiredService<OrderSyncJobs>();
-        Assert.False(jobs.StartScheduledBatch([31]).IsErr);
-        await TestWait.UntilAsync(() => jobs.Latest(31)?.Status == "succeeded", "定时同步未完成。", ct);
+        Assert.False(jobs.StartScheduledBatch([otherSid]).IsErr);
+        await TestWait.UntilAsync(() => jobs.Latest(otherSid)?.Status == "succeeded", "定时同步未完成。", ct);
 
         var snapshots = Channel.CreateUnbounded<OrderSyncSnapshot>();
         var updates = Channel.CreateUnbounded<OrderSyncStatus>();
@@ -260,35 +265,35 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
         using var updateSubscription = employee.On<OrderSyncStatus>(
             ErpHub.OrderSyncUpdated, state => updates.Writer.TryWrite(state));
 
-        // When 员工连接并直接发出 SID 31；Then 快照和拒绝结果都不会泄露该店已有同步状态。
+        // When 员工连接并直接发出未分配店铺的编号；Then 快照和拒绝结果都不会泄露该店已有同步状态。
         await employee.StartAsync(ct);
         var snapshot = await ReadAsync(snapshots, ct);
         Assert.False(string.IsNullOrWhiteSpace(snapshot.Epoch));
         Assert.Empty(snapshot.Statuses);
-        var rejected = await employee.InvokeAsync<OrderSyncStartResult>("StartOrderSync", 31, ct);
+        var rejected = await employee.InvokeAsync<OrderSyncStartResult>("StartOrderSync", otherSid, ct);
         Assert.False(rejected.Accepted);
         Assert.Null(rejected.Status);
 
         // When 未分配店铺先排队，员工发起自己的单店同步；Then 员工只收到已分配店铺的排队状态。
-        await TestWait.EventuallyAsync(() => jobs.Start(31), "未受理店铺 31 补跑。", ct);
-        var started = await employee.InvokeAsync<OrderSyncStartResult>("StartOrderSync", 30, ct);
+        await TestWait.EventuallyAsync(() => jobs.Start(otherSid), "未受理店铺补跑。", ct);
+        var started = await employee.InvokeAsync<OrderSyncStartResult>("StartOrderSync", assignedSid, ct);
         Assert.True(started.Accepted, started.Error);
         var queued = await ReadAsync(updates, ct);
-        Assert.Equal(30, queued.Sid);
+        Assert.Equal(assignedSid, queued.Sid);
         Assert.Equal("queued", queued.Stage);
         Assert.Equal(started.Status!.Id, queued.Id);
         OrderSyncStatus update;
         do
         {
             update = await ReadAsync(updates, ct);
-            Assert.Equal(30, update.Sid);
+            Assert.Equal(assignedSid, update.Sid);
             Assert.Equal(queued.Id, update.Id);
         } while (update.Status != "succeeded");
 
         // When 员工重连并调用一键同步；Then 快照仍只含自己店铺，受理计数也只涉及自己店铺。
         await employee.StopAsync(ct);
         await employee.StartAsync(ct);
-        Assert.Equal(30, Assert.Single((await ReadAsync(snapshots, ct)).Statuses).Sid);
+        Assert.Equal(assignedSid, Assert.Single((await ReadAsync(snapshots, ct)).Statuses).Sid);
         var bulk = await employee.InvokeAsync<AllOrderSyncStartResult>("StartAllOrderSync", ct);
         Assert.True(bulk.Accepted, bulk.Error);
         Assert.Equal(1, bulk.StartedCount + bulk.BusyCount);
@@ -312,10 +317,11 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
         await using var app = await StartAppAsync(new RecordingShopSyncJob(), orderSync: true, ct);
         await using var scope = app.App.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.Shops.AddRange(
-            new Shop { Platform = "TemuPop", Sid = 30, Name = "店铺 30" },
-            new Shop { Platform = "TemuPop", Sid = 31, Name = "店铺 31" });
+        var shopOne = NewShop("店铺 1");
+        var shopTwo = NewShop("店铺 2");
+        db.Shops.AddRange(shopOne, shopTwo);
         await db.SaveChangesAsync(ct);
+        var (firstSid, secondSid) = (shopOne.Sid, shopTwo.Sid);
 
         var snapshots = Channel.CreateUnbounded<OrderSyncSnapshot>();
         var completed = Channel.CreateUnbounded<OrderSyncStatus>();
@@ -331,15 +337,15 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
         Assert.Empty((await ReadAsync(snapshots, ct)).Statuses);
 
         // When 分配店铺后，员工通过同一连接发起单店或一键同步。
-        var sids = singleShop ? new[] { 30 } : new[] { 30, 31 };
+        var sids = (singleShop ? new[] { firstSid } : new[] { firstSid, secondSid }).Order().ToArray();
         db.UserShopAssignments.AddRange(sids.Select(sid =>
-            new UserShopAssignment { UserId = employeeLogin.UserId, Platform = "TemuPop", Sid = sid }));
+            new UserShopAssignment { UserId = employeeLogin.UserId, Platform = TestPlatformOrderSource.DefaultPlatform, Sid = sid }));
         await db.SaveChangesAsync(ct);
         if (singleShop)
         {
-            var start = await employee.InvokeAsync<OrderSyncStartResult>("StartOrderSync", 30, ct);
+            var start = await employee.InvokeAsync<OrderSyncStartResult>("StartOrderSync", firstSid, ct);
             Assert.True(start.Accepted, start.Error);
-            Assert.Equal(30, start.Status!.Sid);
+            Assert.Equal(firstSid, start.Status!.Sid);
         }
         else
         {
@@ -393,6 +399,8 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
         return (adminLogin, employeeLogin);
     }
 
+    private static Shop NewShop(string name) => TestShops.New(name);
+
     private async Task<TestApp> StartAppAsync(RecordingShopSyncJob job, bool orderSync, CancellationToken ct)
     {
         var builder = WebApplication.CreateBuilder();
@@ -405,8 +413,9 @@ public sealed class ErpHubPermissionTests(AspireIntegrationFixture fixture) : IA
         builder.Services.AddSingleton<IShopSyncNotifier, ShopSyncNotifier>();
         if (orderSync)
         {
-            builder.Services.AddSingleton<IErpClient>(new TestErpClient());
             builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
+            builder.Services.AddSingleton<IPlatformShops>(new TestPlatformShops());
+            builder.Services.AddSingleton(new PlatformOrderSources([new TestPlatformOrderSource()]));
             builder.Services.AddScoped<OrderStore>();
             builder.Services.AddSingleton<OrderSyncJobs>();
             builder.Services.AddHostedService(services => services.GetRequiredService<OrderSyncJobs>());

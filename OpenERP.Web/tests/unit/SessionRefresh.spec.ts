@@ -13,7 +13,7 @@ function account(expiresAt = fixedAccountExpiry) {
     phone: null,
     email: null,
     lastLoginAt: '2026-11-16T12:00:00Z',
-    expiresAt,
+    expiresAt
   }
 }
 
@@ -21,7 +21,7 @@ function credentials(accessToken = 'access-1') {
   return {
     accessToken,
     accessTokenExpiresAt: new Date(Date.now() + accessLifetimeMs).toISOString(),
-    account: account(),
+    account: account()
   }
 }
 
@@ -38,7 +38,7 @@ function deferred<T>() {
 function requestsFrom(fetch: ReturnType<typeof vi.fn>) {
   return fetch.mock.calls.map(([url, init]) => ({
     url: String(url),
-    init: init as RequestInit | undefined,
+    init: init as RequestInit | undefined
   }))
 }
 
@@ -63,7 +63,7 @@ describe('短期访问令牌与持久刷新会话', () => {
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
-    const session = await import('../../src/account/session')
+    const session = await import('@/utils/http/session')
 
     await session.checkSession()
 
@@ -71,7 +71,7 @@ describe('短期访问令牌与持久刷新会话', () => {
     expect(requests.map(({ url }) => url)).toEqual([
       '/api/auth/status',
       '/api/auth/csrf',
-      '/api/auth/refresh',
+      '/api/auth/refresh'
     ])
     const refresh = requests.find(({ url }) => url === '/api/auth/refresh')
     expect(refresh?.init?.method).toBe('POST')
@@ -93,7 +93,7 @@ describe('短期访问令牌与持久刷新会话', () => {
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
-    const session = await import('../../src/account/session')
+    const session = await import('@/utils/http/session')
 
     await session.login('admin', ' secret ')
     const response = await session.apiRequest('/api/orders')
@@ -105,7 +105,7 @@ describe('短期访问令牌与持久刷新会话', () => {
     const business = requests.find(({ url }) => url === '/api/orders')
     expect(JSON.parse(String(login?.init?.body))).toEqual({
       username: 'admin',
-      password: ' secret ',
+      password: ' secret '
     })
     expect(new Headers(login?.init?.headers).get('X-CSRF-TOKEN')).toBe('csrf-login')
     expect(new Headers(login?.init?.headers).has('Authorization')).toBe(false)
@@ -129,7 +129,7 @@ describe('短期访问令牌与持久刷新会话', () => {
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
-    const session = await import('../../src/account/session')
+    const session = await import('@/utils/http/session')
     await session.checkSession()
     await session.initialize(' initial ')
     await session.login('admin', ' initial ')
@@ -142,7 +142,7 @@ describe('短期访问令牌与持久刷新会话', () => {
     expect(new Headers(initialize?.init?.headers).get('X-CSRF-TOKEN')).toBe('csrf-write')
     expect(new Headers(initialize?.init?.headers).has('Authorization')).toBe(false)
     expect(new Headers(changePassword?.init?.headers).get('Authorization')).toBe(
-      'Bearer change-access',
+      'Bearer change-access'
     )
     expect(new Headers(changePassword?.init?.headers).has('X-CSRF-TOKEN')).toBe(false)
     expect(session.sessionState.value).toBe('anonymous')
@@ -167,7 +167,7 @@ describe('短期访问令牌与持久刷新会话', () => {
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
-    const session = await import('../../src/account/session')
+    const session = await import('@/utils/http/session')
     await session.login('admin', 'secret')
 
     const response = await session.apiRequest('/api/orders')
@@ -197,12 +197,12 @@ describe('短期访问令牌与持久刷新会话', () => {
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
-    const session = await import('../../src/account/session')
+    const session = await import('@/utils/http/session')
     await session.login('admin', 'secret')
 
     const responses = await Promise.all([
       session.apiRequest('/api/private/one'),
-      session.apiRequest('/api/private/two'),
+      session.apiRequest('/api/private/two')
     ])
 
     expect(responses.map(({ status }) => status)).toEqual([200, 200])
@@ -227,7 +227,7 @@ describe('短期访问令牌与持久刷新会话', () => {
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
-    const session = await import('../../src/account/session')
+    const session = await import('@/utils/http/session')
     await session.login('admin', 'secret')
 
     const response = await session.apiRequest('/api/orders', { method: 'POST', body: '{}' })
@@ -254,7 +254,7 @@ describe('短期访问令牌与持久刷新会话', () => {
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
-    const session = await import('../../src/account/session')
+    const session = await import('@/utils/http/session')
     await session.login('admin', 'secret')
 
     const first = await session.apiRequest('/api/private')
@@ -280,7 +280,7 @@ describe('短期访问令牌与持久刷新会话', () => {
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
-    const session = await import('../../src/account/session')
+    const session = await import('@/utils/http/session')
     await session.login('admin', 'secret')
 
     await session.apiRequest('/api/private')
@@ -310,7 +310,7 @@ describe('短期访问令牌与持久刷新会话', () => {
         return new Response(null, { status: 404 })
       })
       vi.stubGlobal('fetch', fetch)
-      const session = await import('../../src/account/session')
+      const session = await import('@/utils/http/session')
       const checking = session.checkSession()
       await refreshStarted.promise
       const login = session.login('admin', 'correct-secret')
@@ -330,7 +330,7 @@ describe('短期访问令牌与持久刷新会话', () => {
 
       expect(session.sessionState.value).toBe('authenticated')
       expect(session.account.value?.username).toBe('admin')
-    },
+    }
   )
 
   it.each(['logout', 'password-change', 'new-login'] as const)(
@@ -359,7 +359,7 @@ describe('短期访问令牌与持久刷新会话', () => {
         return new Response(null, { status: 404 })
       })
       vi.stubGlobal('fetch', fetch)
-      const session = await import('../../src/account/session')
+      const session = await import('@/utils/http/session')
       await session.login('admin', 'secret')
       const pendingRead = session.apiRequest('/api/private')
       await refreshStarted.promise
@@ -380,13 +380,13 @@ describe('短期访问令牌与持久刷新会话', () => {
         identityResponse = await identity.json()
       }
       expect(identityResponse).toEqual(
-        completion === 'new-login' ? { authorization: 'Bearer new-login-access' } : null,
+        completion === 'new-login' ? { authorization: 'Bearer new-login-access' } : null
       )
       expect(session.account.value === null).toBe(completion !== 'new-login')
       expect(session.sessionState.value).toBe(
-        completion === 'new-login' ? 'authenticated' : 'anonymous',
+        completion === 'new-login' ? 'authenticated' : 'anonymous'
       )
-    },
+    }
   )
 
   it('Given 刷新响应与资料保存并发 When 新资料先返回 Then 迟到刷新只更新令牌且保留最新资料', async () => {
@@ -406,7 +406,7 @@ describe('短期访问令牌与持久刷新会话', () => {
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
-    const session = await import('../../src/account/session')
+    const session = await import('@/utils/http/session')
     await session.login('admin', 'secret')
     const pendingRead = session.apiRequest('/api/private')
     await refreshStarted.promise
@@ -428,7 +428,7 @@ describe('短期访问令牌与持久刷新会话', () => {
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
-    const session = await import('../../src/account/session')
+    const session = await import('@/utils/http/session')
     await session.login('admin', 'secret')
 
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
@@ -453,7 +453,7 @@ describe('短期访问令牌与持久刷新会话', () => {
       return new Response(null, { status: 404 })
     })
     vi.stubGlobal('fetch', fetch)
-    const session = await import('../../src/account/session')
+    const session = await import('@/utils/http/session')
     await session.login('admin', 'secret')
     const refreshDeadline = performance.now() + 6 * 60 * 1000
     vi.spyOn(performance, 'now').mockReturnValue(refreshDeadline)
@@ -466,8 +466,8 @@ describe('短期访问令牌与持久刷新会话', () => {
     expect(requests.filter(({ url }) => url === '/api/orders')).toHaveLength(1)
     expect(
       new Headers(requests.find(({ url }) => url === '/api/orders')?.init?.headers).get(
-        'Authorization',
-      ),
+        'Authorization'
+      )
     ).toBe('Bearer access-after-background')
   })
 })

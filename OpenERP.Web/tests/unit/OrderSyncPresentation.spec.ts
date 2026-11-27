@@ -4,9 +4,9 @@ import {
   orderSyncProgressTone,
   orderSyncStageLabel,
   orderSyncStatusClass,
-  orderSyncStatusLabel,
-} from '../../src/forms/orderSyncPresentation'
-import type { OrderSyncTask } from '../../src/composables/orderSyncTask'
+  orderSyncStatusLabel
+} from '@/hooks/business/orderSyncPresentation'
+import type { OrderSyncTask } from '@/hooks/business/orderSyncTask'
 
 function task(patch: Partial<OrderSyncTask>): OrderSyncTask {
   return {
@@ -15,7 +15,7 @@ function task(patch: Partial<OrderSyncTask>): OrderSyncTask {
     total: 0,
     read: 0,
     processed: 0,
-    ...patch,
+    ...patch
   } as OrderSyncTask
 }
 

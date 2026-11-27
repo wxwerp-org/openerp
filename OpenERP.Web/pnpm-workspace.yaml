@@ -1,0 +1,16 @@
+# pnpm 11 默认不运行依赖的安装脚本，且未声明的脚本会让安装以非零码退出（ERR_PNPM_IGNORED_BUILDS）。
+# 以下依赖的安装脚本都不是构建和运行所必需，显式禁用：
+#   @parcel/watcher、sharp：可选的原生加速/图片处理，仅脚本使用；
+#   esbuild：平台二进制由 optionalDependencies 提供，安装脚本只做校验；
+#   vue-demi：默认已指向 Vue 3；core-js、es5-ext：只打印赞助信息。
+# Element Plus 等依赖会直接引用未声明的 @vue/shared 等包（幽灵依赖），
+# pnpm 11 的隔离布局下 Vite 依赖预构建会报 Could not resolve，需提升到根 node_modules。
+shamefullyHoist: true
+
+allowBuilds:
+  '@parcel/watcher': false
+  core-js: false
+  es5-ext: false
+  esbuild: false
+  sharp: false
+  vue-demi: false

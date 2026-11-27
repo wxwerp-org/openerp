@@ -38,7 +38,14 @@ internal static class OrderSnapshotFingerprint
             .ThenBy(line => line.SkuCode, StringComparer.Ordinal)
             .ThenBy(line => line.Quantity)
             .ThenBy(line => line.Disabled)
-            .ThenBy(line => line.Appended);
+            .ThenBy(line => line.Appended)
+            .ThenBy(line => line.Name, StringComparer.Ordinal)
+            .ThenBy(line => line.ImageUrl, StringComparer.Ordinal)
+            .ThenBy(line => line.Specs, StringComparer.Ordinal)
+            .ThenBy(line => line.UnitPrice)
+            .ThenBy(line => line.Currency, StringComparer.Ordinal)
+            .ThenBy(line => line.Logistics, StringComparer.Ordinal)
+            .ThenBy(line => line.Details, StringComparer.Ordinal);
         foreach (var line in sortedLines)
         {
             WriteString(writer, line.ProductId);
@@ -48,11 +55,23 @@ internal static class OrderSnapshotFingerprint
             writer.Write(line.Quantity);
             WriteNullableBoolean(writer, line.Disabled);
             WriteNullableBoolean(writer, line.Appended);
+            WriteString(writer, line.Name);
+            WriteString(writer, line.ImageUrl);
+            WriteString(writer, line.Specs);
+            WriteString(writer, line.UnitPrice?.ToString("G29", CultureInfo.InvariantCulture));
+            WriteString(writer, line.Currency);
+            WriteString(writer, line.Logistics);
+            WriteString(writer, line.Details);
         }
 
         // 以数值相等为准，忽略来源金额字符串的小数位数差异。
         WriteString(writer, snapshot.IncomeCost?.ToString("G29", CultureInfo.InvariantCulture));
         WriteString(writer, snapshot.IncomeCurrency);
+        WriteString(writer, snapshot.Buyer);
+        WriteString(writer, snapshot.TotalAmount?.ToString("G29", CultureInfo.InvariantCulture));
+        WriteString(writer, snapshot.TotalCurrency);
+        WriteString(writer, snapshot.Logistics);
+        WriteString(writer, snapshot.Details);
 
         stream.Position = 0;
         return Convert.ToHexString(SHA256.HashData(stream));

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Orders.Sources;
 
 namespace OpenERP.Api.Erp;
 
@@ -17,12 +18,11 @@ public sealed class ErpHub(
     public const string ShopSyncUpdated = "ShopSyncUpdated";
     public const string OrderSyncUpdated = "OrderSyncUpdated";
     public const string OrderSyncSnapshot = "OrderSyncSnapshot";
-    private const string OrderPlatform = "TemuPop";
 
     /// <summary>管理员连接的分发组；组员由 SignalR 随连接建立和结束自动维护。</summary>
     internal const string AdministratorGroup = "openerp.administrators";
 
-    internal static string OrderSyncGroup(int sid) => $"openerp.order-sync.{OrderPlatform}.{sid}";
+    internal static string OrderSyncGroup(int sid) => $"openerp.order-sync.{sid}";
 
     public override async Task OnConnectedAsync()
     {
@@ -63,7 +63,6 @@ public sealed class ErpHub(
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var sids = await ShopAccess.For(Context.User!).Assignments(db)
-            .Where(assignment => assignment.Platform == OrderPlatform)
             .Select(assignment => assignment.Sid)
             .ToHashSetAsync(cancellationToken);
 
@@ -105,13 +104,28 @@ public sealed class ErpHub(
             try
             {
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                if (!await access.AllowsAsync(db, OrderPlatform, sid, ct))
+                if (!await access.AllowsAsync(db, null, sid, ct))
                     return new(false, null, "无权同步该店铺。");
             }
             catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
             {
                 return new(false, null, "本地店铺数据暂时不可用。");
             }
+        }
+
+        try
+        {
+            var shopDb = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var platform = await shopDb.Shops.AsNoTracking().Where(shop => shop.Sid == sid)
+                .Select(shop => shop.Platform).FirstOrDefaultAsync(ct);
+            if (platform is null)
+                return new(false, orders.Latest(sid), "店铺不存在或已从授权店铺中移除。");
+            if (scope.ServiceProvider.GetRequiredService<PlatformOrderSources>().Find(platform) is null)
+                return new(false, orders.Latest(sid), $"{platform} 平台暂未实现订单同步。");
+        }
+        catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
+        {
+            return new(false, null, "本地店铺数据暂时不可用。");
         }
 
         var tokens = scope.ServiceProvider.GetRequiredService<IErpTokenStore>();
@@ -151,8 +165,10 @@ public sealed class ErpHub(
         int[] sids;
         try
         {
+            // 尚未实现订单同步的平台不参与全部同步。
+            var platforms = scope.ServiceProvider.GetRequiredService<PlatformOrderSources>().Platforms.ToArray();
             sids = await access.Shops(db)
-                .Where(shop => shop.Platform == OrderPlatform)
+                .Where(shop => platforms.Contains(shop.Platform))
                 .Select(shop => shop.Sid)
                 .ToArrayAsync(ct);
         }

@@ -137,6 +137,9 @@ namespace OpenERP.Api.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BaseUrl")
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -302,11 +305,26 @@ namespace OpenERP.Api.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Currency")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("text");
+
                     b.Property<bool?>("Disabled")
                         .HasColumnType("boolean");
 
                     b.Property<string>("ErpId")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Logistics")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
                         .HasColumnType("text");
 
                     b.Property<string>("Oguid")
@@ -327,6 +345,13 @@ namespace OpenERP.Api.Migrations
                     b.Property<string>("SkuId")
                         .HasColumnType("text");
 
+                    b.Property<string>("Specs")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ErpId", "Ordinal")
@@ -340,6 +365,9 @@ namespace OpenERP.Api.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Buyer")
+                        .HasColumnType("text");
+
                     b.Property<string>("CreatedRaw")
                         .HasColumnType("text");
 
@@ -348,6 +376,9 @@ namespace OpenERP.Api.Migrations
 
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("text");
 
                     b.Property<string>("DispatchedRaw")
                         .HasColumnType("text");
@@ -364,6 +395,9 @@ namespace OpenERP.Api.Migrations
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<string>("IncomeCurrency")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Logistics")
                         .HasColumnType("text");
 
                     b.Property<string>("OrderNumber")
@@ -398,6 +432,13 @@ namespace OpenERP.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<decimal?>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("TotalCurrency")
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
