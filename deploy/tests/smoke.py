@@ -387,10 +387,16 @@ def main():
             b'--smoke\r\nContent-Disposition: form-data; name="file"; filename="smoke.gif"\r\n'
             b"Content-Type: image/gif\r\n\r\n" + GIF + b"\r\n--smoke--\r\n"
         )
-        file_key = json.loads(client.request(
-            "POST", "/api/files/", expected=201, body=upload,
-            content_type="multipart/form-data; boundary=smoke",
-        )[1])["key"]
+        # 容器刚就绪时对象存储（SeaweedFS）的锁服务可能还没准备好，上传会短暂返回 502/503；最多等 60 秒重试。
+        deadline = time.monotonic() + 60
+        while True:
+            status, body, _ = client.request(
+                "POST", "/api/files/", body=upload, content_type="multipart/form-data; boundary=smoke")
+            if status == 201 or status not in (502, 503) or time.monotonic() > deadline:
+                break
+            time.sleep(3)
+        check(status == 201, f"POST /api/files/ 预期 HTTP 201，实际为 {status}")
+        file_key = json.loads(body)["key"]
         shop_id = 47268
         settings = client.json("PUT", SETTINGS, body={"enabled": False, "shopSids": [shop_id]})
         check(settings["shopSids"] == [shop_id], "店铺同步设置写入未返回选店")
