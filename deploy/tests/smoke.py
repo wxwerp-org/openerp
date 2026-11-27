@@ -27,7 +27,7 @@ PG_CREDENTIALS = f"{DATA}/credentials/postgres/current"
 EF_BUNDLE = "/app/efbundle"
 SPA_MARKER = b'<div id="app">'
 GIF = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
-SETTINGS = "/api/erp/order-sync-settings"
+SETTINGS = "/api/order-sync/settings"
 BUILD_FIELDS = ("version", "commit", "buildTime")
 
 
