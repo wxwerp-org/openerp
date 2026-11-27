@@ -113,7 +113,7 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(self.env_file.read_text(), "WEB_PORT=18088\nCOMPOSE_PROJECT_NAME=staging\n")
         self.assertEqual((self.instance / ".houqin-run-number").read_text().strip(), "10")
         # And 部署成功后清理同仓库的旧镜像，保留本次发布，且不碰其他项目的镜像
-        self.assertEqual(sorted(state["removed"]), [OLD, "ghcr.nju.edu.cn/example/openerp/api:old"])
+        self.assertEqual(sorted(state["removed"]), sorted([OLD, "ghcr.nju.edu.cn/example/openerp/api:old"]))
         self.assertIn("已清理旧版本镜像 2 个", result.stdout)
 
     def test_rejects_compose_port_that_differs_from_existing_container(self):
