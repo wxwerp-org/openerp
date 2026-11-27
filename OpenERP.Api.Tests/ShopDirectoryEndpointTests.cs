@@ -577,7 +577,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddDbContext<AppDbContext>(options => options.UseOpenErpPostgres(_connectionString));
-        builder.Services.AddSingleton<IErpClient>(erp ?? new TestErpClient());
+        builder.Services.AddSingleton<IErpClient>(new TestErpClient());
         builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
         builder.Services.AddSingleton(job ?? new FakeShopSyncJob());
         builder.Services.AddScoped<IOrderSyncSettingsStore, OrderSyncSettingsStore>();

@@ -7,8 +7,6 @@ using Npgsql;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Orders;
 using OpenERP.Api.Persistence;
-using OpenERP.Api.Reports;
-using OpenERP.Core.Reports;
 using Xunit;
 using Xunit.Sdk;
 

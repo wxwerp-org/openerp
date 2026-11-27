@@ -151,7 +151,6 @@ public sealed class OrderSyncSettingsEndpointTests
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
         builder.Services.AddDbContext<AppDbContext>(options => options.UseOpenErpPostgres(connectionString));
-        builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore(token));
         ErpEndpointTestAuth.Configure(builder);
         builder.Services.AddSingleton<IOrderSyncSettingsStore>(new TestSettingsStore());
         builder.Services.AddSingleton<OrderSyncJobs>();
