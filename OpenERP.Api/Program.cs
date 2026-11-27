@@ -4,9 +4,9 @@ using OpenERP.Api.Authentication;
 using OpenERP.Api.Deployment;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Orders.Printing;
+using OpenERP.Api.Orders.Sources;
 using OpenERP.Api.Persistence;
-using OpenERP.Api.Reports;
-using OpenERP.Core.Reports;
 
 if (args is ["reset-admin-password", ..])
     return await ResetAdminPassword.RunAsync(args);
@@ -20,8 +20,19 @@ builder.AddApplicationDatabase();
 builder.AddApplicationCache();
 builder.AddFileStorage();
 builder.AddAccountAuthentication();
-builder.Services.AddScoped<IOrderSnapshotReportQuery, OrderSnapshotReportQuery>();
 builder.Services.AddScoped<OrderListQuery>();
+builder.Services.AddScoped<OrderReportQuery>();
+builder.Services.AddScoped<IPlatformShops, PlatformShopDirectory>();
+builder.Services.AddHttpClient<PlatformAgentApiClient>(client => client.Timeout = TimeSpan.FromSeconds(60))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
+    .RedactLoggedHeaders(["AccessToken"]);
+builder.Services.AddTransient<IPlatformAgentApiClient>(services => services.GetRequiredService<PlatformAgentApiClient>());
+builder.Services.AddTransient<AliExpressOrderSource>();
+builder.Services.AddTransient<IPlatformOrderSource>(services => services.GetRequiredService<AliExpressOrderSource>());
+builder.Services.AddTransient<PlatformOrderSources>();
+builder.Services.AddTransient<AliExpressOrderLabelPrinter>();
+builder.Services.AddTransient<IOrderLabelPrinter>(services => services.GetRequiredService<AliExpressOrderLabelPrinter>());
+builder.Services.AddTransient<OrderLabelPrinters>();
 builder.Services.AddScoped<IErpTokenStore, ErpTokenStore>();
 builder.Services.AddHttpClient<WxwErpClient>(client => client.Timeout = TimeSpan.FromSeconds(15))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
@@ -31,6 +42,9 @@ builder.Services.AddHttpClient<WxwErpClient>(client => client.Timeout = TimeSpan
     })
     .RedactLoggedHeaders(["AccessToken"]);
 builder.Services.AddTransient<IErpClient>(services => services.GetRequiredService<WxwErpClient>());
+builder.Services.AddHttpClient<PlatformAbilityClient>(client => client.Timeout = TimeSpan.FromSeconds(30))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
+builder.Services.AddTransient<IPlatformAbilityClient>(services => services.GetRequiredService<PlatformAbilityClient>());
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IShopSyncNotifier, ShopSyncNotifier>();
 builder.Services.AddSingleton<ShopSyncJob>();
@@ -84,8 +98,14 @@ if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 app.UseWebSockets();
 app.MapErp();
 app.MapHub<ErpHub>("/api/hubs/erp", options => options.CloseOnAuthenticationExpiration = true);
-app.MapOrderReports();
 app.MapOrderList();
+app.MapOrderDetail();
+app.MapOrderDelete();
+app.MapOrderLabels();
+app.MapOrderReport();
+app.MapPlatformShops();
+if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
+    app.MapOrderSync();
 
 await app.RunAsync();
 return 0;

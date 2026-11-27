@@ -22,7 +22,8 @@ if (builder.Configuration["NativeDataDirectory"] is { Length: > 0 } nativeDataDi
 }
 
 var api = builder.AddDotnetProject("api", "../OpenERP.Api/OpenERP.Api.csproj")
-    .WithHttpsEndpoint()
+    // 固定宿主端口，重启后地址不变。
+    .WithHttpsEndpoint(port: DevPorts.Api)
     .WithHttpHealthCheck("/health", endpointName: "https");
 
 switch (builder.Configuration["Database:Provider"]?.ToUpperInvariant())
@@ -92,6 +93,8 @@ var web = builder.AddViteApp("web", "../OpenERP.Web")
     .WithReference(api)
     .WaitFor(api)
     .WithExternalHttpEndpoints();
+// 固定前端的宿主端口：每次启动都用同一个地址访问。
+web.WithEndpoint("http", endpoint => endpoint.Port = DevPorts.Web);
 
 // 开发证书和浏览器日志仅服务于本地 Vite 会话。
 #pragma warning disable ASPIRECERTIFICATES001 // 使用 Aspire 的本地 HTTPS 证书集成。
@@ -103,3 +106,10 @@ web.WithBrowserLogs();
 #pragma warning restore ASPIREBROWSERLOGS001
 
 builder.Build().Run();
+
+/// <summary>本地开发固定使用的宿主端口，避免每次启动地址都变。</summary>
+static class DevPorts
+{
+    internal const int Web = 5173;
+    internal const int Api = 5201;
+}

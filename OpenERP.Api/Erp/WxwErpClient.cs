@@ -156,7 +156,7 @@ public sealed partial class WxwErpClient(HttpClient http) : IErpClient
         if (accessToken.Value.Length == 0)
             return (OpResults.Err("尚未配置私有 ERP AccessToken。"), 503);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, ErpConfiguration.UpstreamBaseUrl + path);
+        using var request = new HttpRequestMessage(HttpMethod.Post, accessToken.BaseUrl + path);
         if (!request.Headers.TryAddWithoutValidation("AccessToken", accessToken.Value) ||
             accessToken.Value.Contains('\r') || accessToken.Value.Contains('\n'))
             return (OpResults.Err("ERP AccessToken 配置格式不正确。"), 503);
@@ -175,8 +175,6 @@ public sealed partial class WxwErpClient(HttpClient http) : IErpClient
             {
                 // 不透传上游原始响应，防止把凭证或内部信息带到浏览器。
                 var message = Text(root, "message");
-                if (path == OrderTimePath && message is "_暂未找到信息" or "暂未找到信息")
-                    return (OpResults.Err("ERP 未找到订单或时间记录。"), 404);
 
                 return (OpResults.Err(message switch
                 {

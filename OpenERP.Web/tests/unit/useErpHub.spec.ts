@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiRequest } from '../../src/account/session'
+import { apiRequest } from '@/utils/http/session'
 import {
   useErpHub,
   type ShopSyncStartResult,
-  type ShopSyncStatus,
-} from '../../src/composables/useErpHub'
+  type ShopSyncStatus
+} from '@/hooks/business/useErpHub'
 
 const hubMock = vi.hoisted(() => {
   const handlers = new Map<string, (value: unknown) => void>()
@@ -22,13 +22,13 @@ const hubMock = vi.hoisted(() => {
     stop: vi.fn(async () => {
       connection.state = 'Disconnected'
     }),
-    invoke: vi.fn(),
+    invoke: vi.fn()
   }
   const builder = {
     withUrl: vi.fn(() => builder),
     withAutomaticReconnect: vi.fn(() => builder),
     configureLogging: vi.fn(() => builder),
-    build: vi.fn(() => connection),
+    build: vi.fn(() => connection)
   }
   return { connection, builder, handlers }
 })
@@ -38,12 +38,12 @@ vi.mock('@microsoft/signalr', () => ({
     return hubMock.builder
   }),
   HubConnectionState: { Connected: 'Connected', Disconnected: 'Disconnected' },
-  LogLevel: { Warning: 'Warning' },
+  LogLevel: { Warning: 'Warning' }
 }))
 
-vi.mock('../../src/account/session', () => ({
+vi.mock('@/utils/http/session', () => ({
   apiRequest: vi.fn(),
-  currentAccessToken: () => 'access-token',
+  currentAccessToken: () => 'access-token'
 }))
 
 function status(overrides: Partial<ShopSyncStatus> = {}): ShopSyncStatus {
@@ -58,14 +58,14 @@ function status(overrides: Partial<ShopSyncStatus> = {}): ShopSyncStatus {
     unknown: 0,
     error: null,
     version: 0,
-    ...overrides,
+    ...overrides
   }
 }
 
 function jsonResponse(value: unknown): Response {
   return new Response(JSON.stringify(value), {
     status: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' }
   })
 }
 
@@ -108,19 +108,19 @@ describe('ERP Hub 状态同步', () => {
     hubMock.connection.invoke.mockReturnValueOnce(pending.promise)
     const starting = hub.startShopSync()
     hubMock.handlers.get('ShopSyncUpdated')?.(
-      status({ completedAt: 'done', total: 1, checked: 1, version: 2 }),
+      status({ completedAt: 'done', total: 1, checked: 1, version: 2 })
     )
     pending.resolve({ accepted: true, status: status({ running: true, version: 1 }), error: null })
     await starting
 
     expect(hub.status.value).toEqual(
-      status({ completedAt: 'done', total: 1, checked: 1, version: 2 }),
+      status({ completedAt: 'done', total: 1, checked: 1, version: 2 })
     )
   })
 
   it('Given 期间没有更新 When 刷新响应返回 Then 应用该状态', async () => {
     vi.mocked(apiRequest).mockResolvedValueOnce(
-      jsonResponse(status({ completedAt: 'initial', version: 1 })),
+      jsonResponse(status({ completedAt: 'initial', version: 1 }))
     )
     const hub = useErpHub()
 
@@ -153,7 +153,7 @@ describe('ERP Hub 订单同步', () => {
     unchanged: 1,
     skipped: 0,
     skipReasons: {},
-    error: null,
+    error: null
   }
 
   it('Given 一键同步 When 连接已建立 Then 通过无分页参数的 Hub 命令返回受理数量', async () => {
@@ -217,7 +217,7 @@ describe('ERP Hub 订单同步', () => {
     send?.(allowed)
     hubMock.handlers.get('OrderSyncSnapshot')?.({
       epoch: orderTask.epoch,
-      statuses: [{ ...allowed, version: 7 }],
+      statuses: [{ ...allowed, version: 7 }]
     })
     hubMock.connection.onreconnected.mock.lastCall?.[0]()
 
@@ -247,7 +247,7 @@ describe('ERP Hub 订单同步', () => {
     const other = { ...completed, id: 'task-2', sid: 43, version: 7 }
     hubMock.handlers.get('OrderSyncSnapshot')?.({
       statuses: [completed, other],
-      epoch: orderTask.epoch,
+      epoch: orderTask.epoch
     })
 
     expect(hub.orderSyncTasks.value[42]).toEqual(completed)

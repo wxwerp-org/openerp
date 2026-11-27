@@ -453,7 +453,7 @@ public sealed partial class AuthenticationStartupTests(AspireIntegrationFixture 
     {
         using var client = new HttpClient { BaseAddress = endpoint };
         using var files = await client.GetAsync("/api/files/", ct);
-        using var orderSettings = await client.GetAsync("/api/erp/order-sync-settings", ct);
+        using var orderSettings = await client.GetAsync("/api/order-sync/settings", ct);
         Assert.Equal((HttpStatusCode.Conflict, HttpStatusCode.Conflict), (files.StatusCode, orderSettings.StatusCode));
 
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/auth/csrf");

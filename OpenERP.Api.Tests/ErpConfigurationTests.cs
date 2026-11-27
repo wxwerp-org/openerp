@@ -7,10 +7,12 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Orders.Sources;
 using Xunit;
 
 namespace OpenERP.Api.Tests;
@@ -81,23 +83,23 @@ public sealed class ErpConfigurationTests
         // Then 旧路由不再提供，设置 API 保留原有环境限制。
         Assert.Equal(HttpStatusCode.NotFound, status.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, start.StatusCode);
-        using var settings = await http.GetAsync("/api/erp/order-sync-settings", ct);
+        using var settings = await http.GetAsync("/api/order-sync/settings", ct);
         Assert.Equal(expected ? HttpStatusCode.OK : HttpStatusCode.NotFound, settings.StatusCode);
         if (expected)
             return;
 
-        using var selection = await http.GetAsync("/api/erp/order-sync-settings/shops", ct);
+        using var selection = await http.GetAsync("/api/order-sync/settings/shops", ct);
         Assert.Equal(HttpStatusCode.NotFound, selection.StatusCode);
-        using var save = await http.PutAsync("/api/erp/order-sync-settings", null, ct);
+        using var save = await http.PutAsync("/api/order-sync/settings", null, ct);
         Assert.Equal(HttpStatusCode.NotFound, save.StatusCode);
     }
 
     [Theory]
     [InlineData("GET", "/api/erp/config")]
     [InlineData("PUT", "/api/erp/config")]
-    [InlineData("GET", "/api/erp/order-sync-settings")]
-    [InlineData("PUT", "/api/erp/order-sync-settings")]
-    [InlineData("GET", "/api/erp/order-sync-settings/shops")]
+    [InlineData("GET", "/api/order-sync/settings")]
+    [InlineData("PUT", "/api/order-sync/settings")]
+    [InlineData("GET", "/api/order-sync/settings/shops")]
     public async Task Ordinary_user_cannot_read_or_write_erp_configuration(string method, string route)
     {
         // Given 已登录普通用户，ERP 已配置。
@@ -140,6 +142,73 @@ public sealed class ErpConfigurationTests
     }
 
     [Fact]
+    public async Task Administrator_can_validate_token_against_upstream_without_saving()
+    {
+        // Given 管理员已登录，上游 ERP 接受任何 Token。
+        var ct = TestContext.Current.CancellationToken;
+        await using var app = await StartAppAsync("Production", new TestErpTokenStore(""), ct);
+        using var http = ErpEndpointTestAuth.CreateClient(app, UserAccount.AdministratorRole);
+
+        // When 提交待检测的 Token。Then 返回可用，且配置仍为未配置。
+        using var response = await http.PostAsJsonAsync("/api/erp/config/validate", new { accessToken = "candidate" }, ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.True(payload.GetProperty("valid").GetBoolean());
+        var config = await http.GetFromJsonAsync<JsonElement>("/api/erp/config", ct);
+        Assert.False(config.GetProperty("configured").GetBoolean());
+
+        // When 提交空 Token。Then 400。
+        using var empty = await http.PostAsJsonAsync("/api/erp/config/validate", new { accessToken = " " }, ct);
+        Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(null, true, null)]
+    [InlineData("", true, null)]
+    [InlineData("https://123.wxwerp.com", true, "https://123.wxwerp.com")]
+    [InlineData("https://123.wxwerp.com/", true, "https://123.wxwerp.com")]
+    [InlineData("http://123.wxwerp.com", false, null)]
+    [InlineData("https://evil.example.com", false, null)]
+    [InlineData("https://wxwerp.com.evil.com", false, null)]
+    [InlineData("https://123.wxwerp.com/path", false, null)]
+    [InlineData("https://user@123.wxwerp.com", false, null)]
+    public void Independent_base_url_is_limited_to_https_wxwerp_subdomains(string? input, bool accepted, string? expected)
+    {
+        Assert.Equal(accepted, ErpEndpoints.TryNormalizeBaseUrl(input, out var baseUrl));
+        Assert.Equal(expected, baseUrl);
+    }
+
+    [Fact]
+    public async Task Administrator_can_revoke_configuration_and_ordinary_user_cannot()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var app = await StartAppAsync("Production", new TestErpTokenStore("test-secret"), ct);
+        using var user = ErpEndpointTestAuth.CreateClient(app, UserAccount.UserRole);
+        using var forbidden = await user.DeleteAsync("/api/erp/config", ct);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        using var admin = ErpEndpointTestAuth.CreateClient(app, UserAccount.AdministratorRole);
+        using var response = await admin.DeleteAsync("/api/erp/config", ct);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var config = await admin.GetFromJsonAsync<JsonElement>("/api/erp/config", ct);
+        Assert.False(config.GetProperty("configured").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Validate_rejects_a_base_url_outside_wxwerp()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var app = await StartAppAsync("Production", new TestErpTokenStore(""), ct);
+        using var http = ErpEndpointTestAuth.CreateClient(app, UserAccount.AdministratorRole);
+
+        using var response = await http.PostAsJsonAsync(
+            "/api/erp/config/validate", new { accessToken = "candidate", baseUrl = "https://evil.example.com" }, ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Availability_reports_unavailable_configuration_to_authenticated_user()
     {
         // Given 普通用户已登录，ERP 配置存储暂时不可读。
@@ -172,12 +241,17 @@ public sealed class ErpConfigurationTests
         builder.Services.AddSingleton(tokens);
         builder.Services.AddSingleton<IErpClient, TestErpClient>();
         ErpEndpointTestAuth.Configure(builder);
+        builder.Services.AddHybridCache();
+        builder.Services.AddSingleton<IPlatformAbilityClient, TestPlatformAbilityClient>();
         builder.Services.AddSingleton<OrderSyncJobs>();
+        builder.Services.AddSingleton(new PlatformOrderSources([new TestPlatformOrderSource()]));
         builder.Services.AddSingleton<IOrderSyncSettingsStore>(new TestSettingsStore());
         builder.Services.AddOptions<OrderSyncSchedulerOptions>();
         builder.Services.AddSingleton<OrderSyncScheduler>();
         var app = builder.Build();
         app.MapErp();
+        if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
+            app.MapOrderSync();
         try
         {
             await app.StartAsync(ct);

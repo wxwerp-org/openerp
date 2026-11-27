@@ -38,10 +38,10 @@ aspire start --isolated --launch-profile native
 **使用 Docker 开发**时，在仓库根目录启动默认的 `https` profile：
 
 ```bash
-aspire start --isolated
+aspire start
 ```
 
-仓库的 `aspire.config.json` 已指定唯一 AppHost，无需重复指定项目。`--isolated` 隔离运行状态，不等于创建独立测试数据库或清空数据卷。普通后台启动可用 `aspire start`；需要终端前台运行时可用 `aspire run`。
+仓库的 `aspire.config.json` 已指定唯一 AppHost，无需重复指定项目。本地开发使用固定的宿主端口，重启后地址不变：前端 `https://localhost:5173`、API `https://localhost:5201`、Aspire 控制台 `https://localhost:17000`（定义在 [AppHost.cs](../OpenERP.AppHost/AppHost.cs) 的 `DevPorts` 和 AppHost 的 `launchSettings.json`）。因此不要加 `--isolated`：它会随机化端口并隔离用户机密，每次地址都会变，管理员密码也会重新生成；确实需要同时运行第二个实例时才使用。普通后台启动用 `aspire start`；需要终端前台运行时可用 `aspire run`。
 
 也可以在安装了 Aspire 扩展的 VS Code 中，选择仓库提供的 `apphost` 启动配置运行；需要 worktree 隔离时使用上面的 CLI 入口。
 
@@ -91,7 +91,7 @@ Development 环境启动 API 时会应用所选数据库的迁移。需手动升
 | 目录                                                   | 内容                              |
 | ------------------------------------------------------ | --------------------------------- |
 | [OpenERP.Web](../OpenERP.Web/)                         | Vue 前端与单元测试                |
-| [OpenERP.Api](../OpenERP.Api/)                         | API、ERP 对接、订单同步与存储配置 |
+| [OpenERP.Api](../OpenERP.Api/)                         | API、ERP 店铺目录、平台订单同步与数据存储 |
 | [OpenERP.Persistence](../OpenERP.Persistence/)        | 共享 `AppDbContext` 与 EF Core 模型 |
 | [OpenERP.Migrations.PostgreSQL](../OpenERP.Migrations.PostgreSQL/) | PostgreSQL 迁移 |
 | [OpenERP.Migrations.Sqlite](../OpenERP.Migrations.Sqlite/) | SQLite 迁移 |
@@ -99,7 +99,7 @@ Development 环境启动 API 时会应用所选数据库的迁移。需手动升
 | [OpenERP.ServiceDefaults](../OpenERP.ServiceDefaults/) | 健康检查、遥测与服务发现          |
 | [OpenERP.Api.Tests](../OpenERP.Api.Tests/)             | 后端单元测试和集成测试            |
 
-[router/index.ts](../OpenERP.Web/src/router/index.ts) 定义工作台、订单、商品量报表、授权店铺、用户管理与 ERP 接入路由，并为管理员保留仅内部比对用的视觉原型路由（`/visual-prototype`，不写入口与文档）。[views](../OpenERP.Web/src/views/) 存放页面，[components](../OpenERP.Web/src/components/) 提供可复用工作台区块、导航和控件，[workspace](../OpenERP.Web/src/workspace/) 承载工作台取数与状态推导，[ui](../OpenERP.Web/src/ui/) 提供 Tailwind 主题 token 与 `App*` 通用组件。前端无按页面拆分的全局样式目录，样式由工具类与 [theme.css](../OpenERP.Web/src/ui/theme.css) 统一承载，约定见[前端样式架构](#前端样式架构)。
+前端基于 SpiderUI（Art Design Pro）框架，入口与目录约定见[前端结构与约定](#前端结构与约定)。[router/modules](../OpenERP.Web/src/router/modules/) 定义订单管理（订单列表）、店铺（授权店铺）、设置（用户管理、ERP 接入）等菜单与路由，其余为框架自带的模板、组件、示例演示页；[views](../OpenERP.Web/src/views/) 存放页面，[api](../OpenERP.Web/src/api/) 封装后端接口，[utils/http](../OpenERP.Web/src/utils/http/) 负责请求与会话。
 
 ## 构建与测试
 
@@ -111,8 +111,6 @@ Development 环境启动 API 时会应用所选数据库的迁移。需手动升
 dotnet build OpenERP.slnx --no-restore
 dotnet test --solution OpenERP.slnx
 pnpm --dir OpenERP.Web lint
-pnpm --dir OpenERP.Web format:check
-pnpm --dir OpenERP.Web typecheck
 pnpm --dir OpenERP.Web build
 pnpm --dir OpenERP.Web test
 ```
@@ -127,87 +125,76 @@ API 的版本信息在构建时注入：`OPENERP_BUILD_VERSION`、`OPENERP_BUILD
 
 认证并发测试先用真实 PostgreSQL 行锁确认操作进入等待队列，同时观察 CLI 或 HTTP 操作是否提前结束。默认每阶段锁等待最多 30 秒，真实子进程执行最多 90 秒；测试取消仍会提前终止等待。失败输出包含阶段、耗时、锁数量及操作结果，CLI 的退出码和已收集输出也会保留，子进程日志脱敏后交给 xUnit 的 `ITestOutputHelper`，随对应测试进入标准报告；不要在诊断中输出密码、stdin、私钥或完整连接字符串。失败后先结束测试持有的事务，再有界等待操作完成、取消并回收尚未结束的操作，最后释放连接和删除数据库；清理使用独立的 30 秒预算，事务释放与子进程回收各使用 10 秒子预算，主错误与清理错误同时报告。共享改密测试在释放观察连接后通过真实 CLI 恢复密码并撤销旧会话，避免晚到的改密请求再次改变共享账号。排障时先查看测试输出和 CTRF 报告，区分资源未就绪、操作提前退出、锁等待超时与清理失败，不以自动重跑掩盖失败。
 
+### 前端结构与约定
+
+前端位于 [OpenERP.Web](../OpenERP.Web/)，基于 SpiderUI（Art Design Pro）：Vue 3、Element Plus、Pinia（持久化）、vue-i18n、vue-router（Hash 路由）、SCSS 与 Tailwind CSS v4，构建使用 Vite。
+
+- **页面与路由**：页面放在 `src/views/<模块>/<页面>/index.vue`；菜单与路由在 `src/router/modules/*.ts` 声明，`component` 写成相对 `views` 的路径（如 `/order/list`）。菜单由前端按角色过滤，不依赖后端菜单接口：管理员对应 `R_SUPER`，普通用户对应 `R_USER`，`meta.roles` 为空表示所有登录用户可见。菜单标题使用 `src/locales/langs/zh.json`、`en.json` 里的 `menus.*` 键，新增菜单时两个文件都要补，且键名不要与框架已有的 `menus.shop` 等冲突。
+- **接口调用**：统一走 [utils/http](../OpenERP.Web/src/utils/http/index.ts)，写法为 `request.get<T>({ url, params })`，失败抛出带服务端 `detail` 文案的 `ApiError`；接口按领域放在 `src/api/*.ts`。令牌、CSRF 与刷新由 [session.ts](../OpenERP.Web/src/utils/http/session.ts) 处理：access token 只放内存，刷新值在 HttpOnly Cookie 中，业务写请求不自动重放。页面不要直接 `fetch`。
+- **登录与会话**：路由守卫在首次进入时校验会话（`checkSession`），未初始化跳转 `/auth/initialize`，未登录跳转 `/auth/login` 并带 `redirect`；账号信息由守卫同步到用户 store。退出登录用 `userStore.signOut()`，它先通知服务端再清理本地状态。
+- **业务逻辑**：与界面无关的取数、校验和推导放在 `src/utils`、`src/hooks/business`，例如 SignalR 实时连接（`hooks/business/useErpHub.ts`）。这些模块有单元测试，改动前先确认保护。
+- **样式**：优先使用 Element Plus 组件和框架的主题变量（`--el-*`、`--default-box-color` 等），页面私有样式写在 `<style scoped>`，颜色引用变量而不是硬编码；需要全局调整时改 `src/assets/styles`。表格用 `ArtTable` / `ArtTableHeader`，其列配置类型为 `ColumnOption`。
+- **自动导入**：`vue`、`vue-router`、`pinia`、`@vueuse/core` 的 API 与 Element Plus 组件由 `unplugin-auto-import`、`unplugin-vue-components` 自动导入，类型声明生成在 `src/types/import`。
+- **开发代理**：[vite.config.ts](../OpenERP.Web/vite.config.ts) 把 `/api` 转发到 Aspire 注入的 `API_HTTPS` 或 `API_BASE_URL`，缺失时使用 `.env.development` 的 `VITE_API_PROXY_URL`。
+
+### 页面布局与间距规范
+
+业务页（下表中的页面）的面板间距**只由容器的 `gap` 决定**，页面里不再手写外边距。规则由 [PageLayout.spec.ts](../OpenERP.Web/tests/unit/PageLayout.spec.ts) 强制检查，违反会使单元测试失败。
+
+- **全局间距变量**：`--page-gap: 12px`，定义在 [app.scss](../OpenERP.Web/src/assets/styles/core/app.scss)。需要改间距只改这一处。
+- **根容器**：纵向堆叠的页面用 `page-stack`，需要撑满可视高度的表格类页面再加 `page-stack--fill`；横向并排用 `page-row`；统计块等分网格用 `page-grid`（列数用 `--cols` 指定，默认 4）。提示、统计、筛选卡片、表格卡片都作为这些容器的**直接子元素**，间距相同。
+- **禁止手写外边距**：模板里不用 `mb-*`、`mt-*`、`my-*`、`m-*`，样式里不写 `margin`、`margin-top`、`margin-bottom`。需要内部留白用 `padding` 或 `gap`；左右方向的 `margin-left`、`margin-inline` 不受限制。框架的 `.art-table-card` 自带的 `margin-top` 在 `page-stack` 内已被抵消，不会与 `gap` 叠加。
+- **筛选卡片**：`<ElCard class="search-card">`，它去掉了行内表单每一项默认的 18px 下外边距。
+- **提示**：统一用 `AppNotice`（[app-notice](../OpenERP.Web/src/components/business/app-notice/index.vue)）：小字号、小图标、带边框和圆角，作为独立的一块呈现，`tone` 取 `info`、`success`、`warning`、`error`，右侧操作放在 `#action` 插槽。业务页不使用 `ElAlert`。页内的提示放在卡片外面，做 `page-stack` 的直接子元素。
+- **汇总数字**：统一用 `AppStat`（[app-stat](../OpenERP.Web/src/components/business/app-stat/index.vue)）放进 `page-grid`：一行标签、一行 18px 数值、可选说明，不再用 `ElCard` 自制大卡片。
+- **弹窗**：弹窗内容同样包在 `page-stack` 里，遵守同一套规则。
+- **图标与多行文字并排**：左侧图标、右侧标题加多行说明（如 API权限绑定页的「功能介绍」卡片）时，图标必须靠上，与标题首行对齐，不要垂直居中。容器用 `display: flex; align-items: flex-start`，图标加 `flex: none` 固定尺寸；文字区变高时图标不跟着下移。图标与单行文字并排（按钮、标签、提示）仍可居中。
+- **空状态**：没有数据且需要引导时，用向导卡片代替空表格（如授权店铺：绑定旺销王 ERP 密钥 → 读取全部店铺 → 使用各项功能）。
+- **文案**：上游 ERP 的产品名称统一写“旺销王”，不使用旧称。该约束由 `PageLayout.spec.ts` 检查。
+
+页面清单（新增业务页时补充到这里，并加入 `PageLayout.spec.ts`）：
+
+| 页面 | 路由 | 文件 | 根容器 | 主要内容 |
+| --- | --- | --- | --- | --- |
+| 订单列表 | `/order/list` | `views/order/list` | `page-stack` | 筛选、提示、表格（左右铺满卡片、自然高度）；复选框与底部悬浮批量操作条、固定操作列（详情跳转订单详情页、删除）；「同步历史订单」跳转订单同步页 |
+| 订单详情 | `/order/detail/:id`（隐藏路由，从订单列表的「详情」进入） | `views/order/detail` | `page-stack` | 标题卡、统计块、商品明细表，右侧基本信息、金额与支付、物流、状态、时间线 |
+| 订单同步 | `/order/sync` | `views/order/sync` | `page-stack` | 提示、定时同步（管理员）、店铺列表与逐店同步进度 |
+| 授权店铺 | `/shop/list` | `views/shop/list` | `page-stack` | 无店铺时向导；有店铺时平台标签页（角标为授权无效数）、筛选、表格、分页、详情弹窗 |
+| 用户管理 | `/system/user` | `views/system/user` | `page-stack page-stack--fill` | 筛选、提示、表格；添加/编辑/查看弹窗 |
+| API权限绑定 | `/system/erp-binding` | `views/system/erp-binding` | `page-stack` | 首次向导（输入、检测、保存）+ 配置内容；入口在顶部栏 |
+| 登录、初始化 | `/auth/login`、`/auth/initialize` | `views/auth` | 框架登录版式 | 无面板，不适用本规范 |
+| 个人资料、修改密码 | 头像菜单 | `components/core/layouts/art-header-bar/widget/ArtUserMenu.vue` | 弹窗 | 表单弹窗 |
+
+框架自带的演示页（分析页、电子商务、模板中心、组件中心、功能示例、文章管理、结果页面、异常页面、运维管理）沿用 SpiderUI 的版式，不受本规范约束。
+
 ### 前端静态检查
 
-[ESLint 配置](../OpenERP.Web/eslint.config.js) 使用 flat config，以 `@eslint/js`、`typescript-eslint` 和 `eslint-plugin-vue` 的官方配置为基础。Vue 采用完整 `flat/recommended` 规则集，`eslint-config-prettier/flat` 放在最后关闭与 Prettier 冲突的排版规则；单元测试与浏览器测试分别使用 `@vitest/eslint-plugin` 和 `eslint-plugin-playwright` 的推荐规则。Playwright 按官方 `allowConditional` 选项仅允许现有真实会话环境条件下的 `skip`，不放宽无条件跳过。这套组合与仓库现有 Node.js 26、TypeScript 6、Vue 3.5 的版本范围兼容，且不引入旧式 `.eslintrc`。
-
-[Prettier 配置](../OpenERP.Web/.prettierrc.json) 采用 create-vue v3.24.0 预设：两格缩进由 `.editorconfig` 提供，不加分号、使用单引号、行宽 100。格式检查覆盖 `src`、`tests`、`scripts`、前端根目录 JS/TS 配置、`index.html`、`package.json`、`tsconfig.json` 和 `.prettierrc.json`；依赖、构建产物、测试报告与生成的锁文件不在检查范围内。
-
-ESLint 检查范围为 `src/**/*.{ts,vue}`、`tests/**/*.ts`、`scripts/**/*.mjs`、前端根目录的构建配置和 ESLint 配置本身；`node_modules`、`dist`、`coverage`、`playwright-report` 与 `test-results` 不参与检查。`src` 使用浏览器全局变量，构建配置使用 Node.js 全局变量，单元测试同时启用浏览器、Node.js 与 Vitest 环境，端到端测试使用 Playwright 规则并同时启用浏览器与 Node.js 全局变量（浏览器全局变量用于 `page.evaluate` 等页面内回调）。
+ESLint 使用 [eslint.config.mjs](../OpenERP.Web/eslint.config.mjs)，Prettier 规则通过 `eslint-plugin-prettier` 一并检查，Prettier 配置见 [.prettierrc](../OpenERP.Web/.prettierrc)，因此不再有单独的格式检查脚本。
 
 ```bash
 pnpm --dir OpenERP.Web lint
-pnpm --dir OpenERP.Web lint:fix
-pnpm --dir OpenERP.Web format:check
-pnpm --dir OpenERP.Web format
+pnpm --dir OpenERP.Web fix
 ```
 
-`lint` 和 `format:check` 只读检查，不修改文件；`lint:fix` 和 `format` 分别自动修复 ESLint 支持的问题与 Prettier 排版。两个 ESLint 入口都使用 `--max-warnings 0`，发现问题时返回非零退出码；`lint` 与 `format:check` 均接入本地和前端 CI。
+`lint` 只读检查，`fix` 自动修复可修复的问题（包括排版）。遇到 lint 报错或警告，按对应规则的官方文档修正成因，不用行内禁用或放宽配置绕过检查。
 
-类型检查由 `pnpm --dir OpenERP.Web typecheck`（`vue-tsc --noEmit`）执行。遇到 lint 报错或警告，按对应规则的官方文档修正成因，不用行内禁用或放宽配置绕过检查。
+类型检查为 `pnpm --dir OpenERP.Web typecheck`（`vue-tsc --noEmit`）。当前没有类型报错，新增代码不应引入报错。`lint` 与 `typecheck` 依赖构建时生成的 `.auto-import.json` 和 `src/types/import/*.d.ts`（不入库），所以全新检出后要先执行一次 `pnpm --dir OpenERP.Web build`（CI 也是这个顺序）。单测在 `vitest.config.ts` 里关闭了 Node 25+ 默认启用的实验性 webstorage，否则 jsdom 的 `localStorage` 会变成 undefined。
 
-### 前端样式架构
+### 前端视觉验收
 
-前端样式使用 Tailwind CSS v4（[Vite 插件](../OpenERP.Web/vite.config.ts) 中的 `@tailwindcss/vite`）与 [src/ui](../OpenERP.Web/src/ui/) 下的 `App*` 组件，不再维护按页面拆分的全局 CSS 目录。[theme.css](../OpenERP.Web/src/ui/theme.css) 是唯一的样式入口：它按固定层序导入 Tailwind，关闭 preflight，并在 `@layer base` 提供全站 reset（盒子模型、按钮/链接/列表/标题重置、正文排版、滚动条、图标基础样式），在 `@theme static` 提供全部设计 token。
-
-- 设计值只有一处来源：颜色、字号、行高、圆角、阴影都定义在 `@theme static` 的 token 中，命名空间决定工具类前缀（`--color-*` → `text-*`/`bg-*`/`border-*`/`stroke-*`，`--text-*` → `text-12/22` 等）。新增视觉值先按实测值补 token，禁止在模板里散落十六进制色值或自造近似值。
-- `--spacing: 1px`，因此 `h-54`、`px-16`、`gap-12` 直接等于像素值；字号工具类的斜杠后为行高（`text-14/22`）。
-- 优先复用 [src/ui](../OpenERP.Web/src/ui/) 的组件及其 props 表达上下文差异（尺寸档、色调、变体），页面和卡片只组合工具类，不复制组件内部结构。
-- 类名必须是可静态扫描的字面量：不要在模板里拼接类名，按状态用互斥分支选择字面量。同一元素避免出现同属性冲突的工具类（如 `h-32` 与 `h-40` 并存），把公共部分与状态差异拆开。
-- 不使用 `!important`。Tailwind 的 `max-[…]:` 变体是严格小于，需要“小于等于”语义时使用 `[@media(max-width:…)]:` 任意变体。
-- `<style scoped>` 仅用于工具类无法干净表达的场景：伪元素、滚动条、粘性表格、复杂组合选择器、图表内部、原生 `<dialog>` 定位、几何形状（如工作台引导卡的箭头切角 `clip-path`）。颜色必须引用 token，尺寸同样优先使用 token 或在注释中说明实测来源；其余样式一律走工具类。
-- 需要影响 `body` 等全局节点的布局例外（如登录页解除桌面最小宽度、报表页窄屏收缩）用 SFC 内的 `:global(...)` 保持未分层（unlayered），以便压过 `@layer base` 的 reset。
-- 测试钩子使用 `data-testid`、role 与 ARIA，不依赖视觉类名；样式迁移时同步迁移选择器，不弱化断言。断言「视觉隐藏但保留无障碍名称」时，jsdom 单测只能检查 `sr-only` 约定，浏览器用例应改为断言实际裁剪尺寸（≤1px）等可观察结果。
-
-### 前端视觉回归（视觉探针）
-
-样式重构或布局调整后，用视觉探针核对渲染结果。探针按固定场景（视口、路由、API mock、交互步骤）截图并采集控件/排版/布局指标，产物写入 `OpenERP.Web/artifacts`（已忽略提交）。
-
-```bash
-# 采集当前代码到指定目录（会自动构建并启动预览服务）
-VISUAL_PROBE=1 VISUAL_OUT=artifacts/issue93/after pnpm --dir OpenERP.Web visual:capture
-
-# 对比两批产物：控件、调色板、布局指标按默认 4px 容差比较
-pnpm --dir OpenERP.Web visual:compare artifacts/issue93/before artifacts/issue93/after
-```
-
-需要逐像素复核时，可用图像工具直接比较两批产物 `screenshots/` 下的同名 PNG。探针只覆盖桌面固定布局；移动端/窄屏行为以 Playwright 用例的视口断言为准。
+框架已不再使用旧的视觉探针和设计规范原型。改界面后，用浏览器打开页面核对，并在 PR 中附截图。
 
 ### 测试环境
 
-后端使用 xUnit v3、原生 .NET 10 Microsoft.Testing.Platform 和 Aspire.Hosting.Testing，配置见 [global.json](../global.json) 与[测试项目](../OpenERP.Api.Tests/OpenERP.Api.Tests.csproj)。PostgreSQL 与 S3 集成测试共用隔离 Aspire 测试宿主，需要容器环境和受信任的开发证书。宿主自行启动和清理资源，订单用例另建并清理独立数据库，无需 `OPENERP_TEST_POSTGRES`。回归用例见 [OpenERP.Api.Tests](../OpenERP.Api.Tests/)。
+后端使用 xUnit v3、原生 .NET 10 Microsoft.Testing.Platform 和 Aspire.Hosting.Testing，配置见 [global.json](../global.json) 与[测试项目](../OpenERP.Api.Tests/OpenERP.Api.Tests.csproj)。订单 PostgreSQL 与文件存储测试共用隔离 Aspire 测试宿主，需要容器环境和受信任的开发证书。宿主自行启动和清理资源，订单用例另建并清理独立数据库，无需 `OPENERP_TEST_POSTGRES`。回归用例见 [OpenERP.Api.Tests](../OpenERP.Api.Tests/)。
 
-前端单元测试位于 [tests/unit](../OpenERP.Web/tests/unit/)，使用 Vitest、Vue Test Utils 和 jsdom。Vite 代理回归测试在环回地址启动临时服务，需要 PATH 中有 `openssl` 生成临时自签证书。依赖和执行脚本以 [package.json](../OpenERP.Web/package.json) 为准。
+前端单元测试位于 [tests/unit](../OpenERP.Web/tests/unit/)，使用 Vitest、Vue Test Utils 和 jsdom，配置见 [vitest.config.ts](../OpenERP.Web/vitest.config.ts)（别名、自动导入与 `vite.config.ts` 保持一致）。页面测试用桩替换依赖全局 store 与国际化的 `ArtTable`、`ArtTableHeader`，只验证页面收到的数据与交互。依赖和执行脚本以 [package.json](../OpenERP.Web/package.json) 为准。
+
+模拟接口失败时不要对 `vi.fn()` 使用 `mockRejectedValue`：`vi.fn` 会给返回的 Promise 挂记录回调，被拒绝的 Promise 会因此变成未处理的拒绝，导致用例失败。请用普通函数返回 `Promise.reject(...)`，页面测试里已有写法可参照。
 
 [WebInstallerTests](../OpenERP.Api.Tests/WebInstallerTests.cs) 使用实际 AppHost 安装参数，在临时目录执行 pnpm 验证无 TTY 的依赖重建与冻结锁文件行为。需要 PATH 中有 Node.js 和 pnpm；fixture 只使用本地依赖，不连接 ERP，也不修改开发目录的 `node_modules`。
 
-浏览器测试入口由 [Playwright 配置](../OpenERP.Web/playwright.config.ts) 指定。未指定外部地址时使用 `127.0.0.1:4173`。本地可复用该地址已有的服务，否则由 `webServer` 构建并启动预览服务；安装浏览器后直接运行：
-
-```bash
-pnpm --dir OpenERP.Web exec playwright install chromium
-pnpm --dir OpenERP.Web test:e2e
-```
-
-未设置 `OPENERP_TEST_ADMIN_PASSWORD` 时，工作台用例通过页面级 mock 会话执行，账户与会话用例（[authentication.spec.ts](../OpenERP.Web/tests/e2e/authentication.spec.ts)）跳过；手动派发[前端工作流](../.github/workflows/ci-web.yml)时运行这类无需后端的浏览器用例，PR 不自动运行浏览器测试。设置 `PLAYWRIGHT_BASE_URL` 指向真实宿主时复用外部服务，不再启动 `webServer`。
-
-账户端到端用例需要真实后端与 `OPENERP_TEST_ADMIN_PASSWORD`，会修改测试账户资料和密码。请使用隔离测试宿主，避免对日常开发账户运行这些用例：
-
-```bash
-OPENERP_RUN_BROWSER_TESTS=1 dotnet test --project OpenERP.Api.Tests/OpenERP.Api.Tests.csproj --filter-class '*BrowserAcceptanceTests'
-```
-
-该入口创建测试专用数据库，从未初始化状态启动 HTTPS 前端，将实际端点及本次测试要设置的密码通过环境传给 Playwright，并串行运行浏览器用例；测试密码不会注入 API 作为预置密码。员工角色用例覆盖零店铺代办授权、管理员同步目录和分配、负责人核对历史小计与手动同步，以及未分配账号被拒绝读取。该宿主仅替换外部 ERP 的 HTTP 传输。初始化和角色用例保存实际界面截图，完成后由 Aspire 测试夹具清理测试资源。它先通过 .NET 严格校验前端证书，再通过 `NODE_EXTRA_CA_CERTS` 将已校验的服务端 PEM 证书提供给 Node 客户端，不跳过证书校验；临时文件在结束后删除。独立运行 Playwright 时，Node 如不识别本机开发证书，需用 `NODE_EXTRA_CA_CERTS` 指定对应的公开 PEM 证书。不设置开关时，此浏览器入口明确跳过，不计作浏览器验收通过。
-
-### 真实 ERP 验证
-
-后端测试自行准备隔离的 PostgreSQL 或 SQLite 数据库。真实 ERP 验收通过进程环境变量启用：
-
-| 变量                     | 用途与前提                                                                                                                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `OPENERP_TEST_ERP_TOKEN` | 启用 SID `644928` 的[只读分页验证](../OpenERP.Api.Tests/OrderLiveAcceptanceTests.cs)（需超过 100 单），以及 SID `30` 的[报表核对](order-snapshot-report.md#验证)（只读源端，写入测试专用数据库） |
-| `OPENERP_TEST_POSTGRES`  | 与上述 Token 一起启用 SID `30` 的源端与入库结果比对；指向已完成该店手动同步的数据库                                                                                                              |
-
-使用 `OPENERP_TEST_POSTGRES` 的比对用例的前置步骤是在浏览器完成 SID `30` 的两次手动同步；测试本身只读源端和数据库，不执行同步或建表。未设置相应变量时用例跳过。凭证仅通过进程环境提供，不写入文档或版本库；测试命令见本页[构建与测试](#构建与测试)。
+前端重构后，旧的 Playwright 浏览器用例、视觉探针和 `playwright.config.ts` 已删除，尚未重建。依赖这些用例的 [BrowserAcceptanceTests](../OpenERP.Api.Tests/BrowserAcceptanceTests.cs) 目前不可用，不要启用 `OPENERP_RUN_BROWSER_TESTS`；[前端工作流](../.github/workflows/ci-web.yml)里仍引用旧的 `format:check`、`typecheck` 脚本和 Playwright 任务，需要随浏览器用例一并调整。
 
 ### GitHub Actions
 
@@ -244,7 +231,7 @@ python3 deploy/tests/smoke.py --compose ./aspire-output/docker-compose.yaml
 
 ## 用户、权限与会话
 
-唯一管理员 `admin` 管理用户、系统接入、全局目录与定时同步，并能读取所有店铺。员工使用 `User` 角色，可以从店铺列表去旺销网授权新店。员工的目录、平台选项、订单、报表、工作台和手动同步范围由服务端读取当前分配。
+唯一管理员 `admin` 管理用户、系统接入、全局目录与定时同步，并能读取所有店铺。员工使用 `User` 角色，可以从店铺列表去旺销王授权新店。员工的目录、平台选项、订单和手动同步范围由服务端读取当前分配。
 
 `UserShopAssignments` 以用户 UUID、平台和 SID 为复合键。迁移为存量员工建立空范围。管理员在用户管理中选择已同步到本地目录的店铺，可以保留或撤销暂时下架的已有分配。归属独立于目录行，因此历史订单继续可查，同平台同 SID 恢复后沿用原分配。删除员工会在同一事务中清理归属和会话。
 
@@ -302,19 +289,21 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 
 | 接口 | 行为 |
 | --- | --- |
-| `GET /api/erp/order-sync-availability` | 已登录用户查询 `configured` 和 `orderSyncEnabled`，供业务页面判断能否同步 |
+| `GET /api/erp/order-sync-availability` | 已登录用户查询 `configured` 和 `orderSyncEnabled`，供授权店铺页判断 ERP 是否已配置 |
 | `GET /api/erp/config` | 管理员查询配置记录是否存在，返回 `configured`、`baseUrl` 和 `orderSyncEnabled`。查询失败返回 `503` |
 | `PUT /api/erp/config` | 管理员提交 `{ accessToken }` 保存或更换 Token，成功返回 `204`。下一次读取凭证的操作使用新值 |
 | `GET /api/erp/shops?page=1&pageSize=20&platform=&status=&keyword=` | 按账号范围分页读取本地目录，每页 1–100 条。员工可查看所属店铺的状态、失败原因和检查时间。管理员额外获得 `summary`，可按 `status=valid/invalid/unknown` 筛选 |
 | `GET /api/erp/platforms` | 返回当前账号可见的本地店铺涉及的平台（名称、展示名、图标、是否生产可用、店铺数）；平台元数据来自上游同步，不在本地写死 |
 | `GET /api/erp/shop-sync` | 仅管理员可读取。返回店铺同步的当前或最近一次状态（运行中、开始/完成时间、总数、已检查、有效/无效/未知、错误、单调递增的 `version`） |
-| `GET /api/erp/order-sync-settings` | 仅管理员在 Development / Production 可用；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes` |
-| `PUT /api/erp/order-sync-settings` | 仅管理员在 Development / Production 可用；保存启用状态和店铺选择；启用时至少选择一家店铺 |
-| `GET /api/erp/order-sync-settings/shops` | 仅管理员在 Development / Production 可用。从本地目录返回全部 TemuPop 店铺。凭证缺失、凭证或本地目录读取失败返回 `503` |
+| `GET /api/order-sync/settings` | 仅管理员在 Development / Production 可用；返回定时同步的 `enabled`、`shopSids` 和只读 `intervalMinutes` |
+| `PUT /api/order-sync/settings` | 仅管理员在 Development / Production 可用；保存启用状态和店铺选择；启用时至少选择一家店铺 |
+| `GET /api/order-sync/settings/shops` | 仅管理员在 Development / Production 可用。返回已实现订单同步的平台下的全部授权店铺。本地数据库读取失败返回 `503` |
+| `GET /api/order-sync/availability` | 已登录用户查询 ERP 是否已配置（`configured`）、`orderSyncEnabled` 和已实现订单同步的平台列表 |
+| `GET /api/order-sync/shops?page=1&pageSize=20` | 分页读取可见的授权店铺（编号、名称、平台、区域），并用 `syncSupported` 标明该平台是否已实现订单同步。管理员看到全部，员工只看到分配给自己的店铺 |
 
-每轮授权店铺同步、每家店的订单同步和每次定时同步选店请求，分别通过 scoped `IErpTokenStore.GetAsync` 读取并解密一次 Token。读取失败由存储层返回 `OpResult`。配置状态只检查记录是否存在，因此旧密文损坏时管理员仍可查看配置并替换凭证。
+店铺目录同步和订单同步都通过 scoped `IErpTokenStore.GetAsync` 读取并解密 Token；读取失败由存储层返回 `OpResult`。配置状态只检查记录是否存在，因此旧密文损坏时管理员仍可查看配置并替换凭证。订单同步不保存任何平台凭据，店铺只用 Sid 标识。
 
-`IErpClient` 的每个上游方法都显式接收不可变的 `ErpAccessToken`。同一操作的分页、详情和并发状态查询共用该快照。`WxwErpClient` 只处理 HTTP 和上游响应，并发期间各请求无需访问凭证存储。参见 [EF Core 对 DbContext 并行使用的说明](https://learn.microsoft.com/en-us/ef/core/dbcontext-configuration/#avoiding-dbcontext-threading-issues)。
+`IErpClient` 的每个上游方法都显式接收不可变的 `ErpAccessToken`。同一操作的分页和并发状态查询共用该快照。`WxwErpClient` 只处理 HTTP 和上游响应，并发期间各请求无需访问凭证存储。参见 [EF Core 对 DbContext 并行使用的说明](https://learn.microsoft.com/en-us/ef/core/dbcontext-configuration/#avoiding-dbcontext-threading-issues)。
 
 本地店铺接口查询所配置的数据库，数据库暂时不可用时返回 `503`。旧 `/api/erp/authorization/*` 接口、授权快照与事件表已删除。实现见 [ShopDirectoryEndpoints](../OpenERP.Api/Erp/ShopDirectoryEndpoints.cs)、[ShopSyncJob](../OpenERP.Api/Erp/ShopSyncJob.cs)、[ErpHub](../OpenERP.Api/Erp/ErpHub.cs) 和 [OrderSyncEndpoints](../OpenERP.Api/Orders/OrderSyncEndpoints.cs)。
 
@@ -330,15 +319,15 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 - 同步状态带单调递增的 `Version`：开始、完成、失败时递增，进度沿用开始版本。`/api/erp/shops` 先读状态行再读店铺行，因此 `summary.SyncVersion` 不会把旧数据标成最新；客户端只应用版本不低于当前值的状态，并在状态版本大于已加载目录版本时刷新列表。
 - 上游店铺列表或平台目录读取失败时**不修改店铺数据**，只更新 `LastError`；页面继续展示上次成功数据。wxw 暂时离线时，本地查询、筛选、分页、详情仍可用。
 - 授权状态只有三档：`IsTokenOk=true` → 有效，`false` → 无效，`null` → 未知。不提供“授权中/待授权/已取消/即将过期”，也不记录本地授权操作或历史。
-- 订单同步仍只处理 TemuPop（见下文订单同步边界）；店铺目录本身支持上游返回的全部平台。
+- 订单同步直接使用授权店铺目录里的店铺和 Sid；平台是否已实现订单同步由 `PlatformOrderSources` 决定，未实现的平台照常列出，但不能同步（见下文订单同步边界）。
 
 ### SignalR 同步
 
 - 单 Hub：`/api/hubs/erp`。普通读取（订单列表、店铺目录、平台、配置、店铺同步状态）继续使用 HTTP；只有长时同步与进度使用 SignalR。
 - 浏览器通过 `access_token` 查询参数连接 Hub。JWT 中间件只对 `/api/hubs` 路径读取该参数，其他路径忽略，避免 token 泄漏到普通接口。
 - 管理员方法 `StartShopSync()` 返回 `accepted`、当前状态与错误；服务端事件 `ShopSyncUpdated(ShopSyncStatus)` 在管理员连接建立、同步开始、每 10 家店检查、完成或失败时向管理员推送。状态带单调递增 `version`，客户端据此丢弃迟到的 HTTP/invoke 旧快照。
-- 订单列表通过 `StartOrderSync(sid)` 启动单店同步，返回 `accepted`、该店状态与错误。「全部同步」通过一次 `StartAllOrderSync()` 命令读取本地目录中当前账号可见的 TemuPop 店铺，覆盖所有分页和授权状态，返回本次受理和跳过的店铺数。
-- 单店命令在读取状态或受理前按当前分配检查 TemuPop 和 SID。越权返回 `accepted: false` 和空状态。两种手动订单同步命令均在受理前检查 ERP 凭证，并为员工的当前连接订阅本次可同步店铺的进度。因此连接建立后新分配的店铺也能在原连接收到终态。受理后关闭面板或断开连接，任务继续执行。若凭证无法解密，该店任务在 `shop` 阶段报告失败。
+- 订单同步页通过 `StartOrderSync(sid)` 启动单店同步，返回 `accepted`、该店状态与错误。「全部同步」通过一次 `StartAllOrderSync()` 命令读取当前账号可见、且平台已实现订单同步的授权店铺，未实现平台的店铺被忽略，返回本次受理和跳过的店铺数。
+- 单店命令在读取状态或受理前检查 ERP Token 已配置、按当前分配检查 SID、确认店铺仍在授权店铺中，并拒绝未实现订单同步的平台。越权返回 `accepted: false` 和空状态。两种手动订单同步命令都为员工的当前连接订阅本次可同步店铺的进度，因此连接建立后新分配的店铺也能在原连接收到终态。受理后关闭页面或断开连接，任务继续执行。
 - 连接或重连时，`OrderSyncSnapshot` 提供当前进程的 `epoch` 和可见店铺的最近状态。管理员接收全部进度，员工连接按当次分配加入各自的店铺组，重连时重建。手动与定时任务通过 `OrderSyncUpdated` 推送带版本的状态，包含阶段、进度、入库计数和跳过原因。成功或部分成功后，页面按当前筛选刷新本地订单。
 - 客户端使用 `withAutomaticReconnect`；access token 由 `accessTokenFactory` 每次读取最新值，配合会话刷新处理 20 分钟 JWT 到期。连接断开时页面仍可浏览本地数据，但同步按钮不可用。
 - Hub 映射开启 `CloseOnAuthenticationExpiration`：JWT 到期即关闭连接，客户端用刷新后的 access token 重连，避免连接无限期沿用旧凭证。
@@ -348,29 +337,62 @@ API 使用 RS256 签发 Bearer access token，`sub` 为用户 UUID，`role` 为 
 
 ## 本地订单列表
 
-工作台的订单列表和[商品量报表](order-snapshot-report.md)都读取数据库中的订单快照。订单列表使用已认证的 `GET /api/orders`，支持 `shopSid`、`platform`、`number`、`status`、`createdFrom`、`createdTo` 和分页。它按主单计数和翻页，每页默认 20 条。订单号片段和状态同时指定时，两个条件须命中同一个平台订单；返回整张主单上的全部号码，并标出命中项。行数和件数均按整张主单计算。店铺名称来自本地目录，订单所属店铺已从目录移除时，仍可通过 SID 展示和筛选。
+订单列表读取数据库中的订单快照，使用已认证的 `GET /api/orders`，支持 `shopSid`、`platform`、`number`、`status`、`createdFrom`、`createdTo` 和分页。它按主单计数和翻页，每页默认 20 条。订单号片段和状态同时指定时，两个条件须命中同一个平台订单；返回整张主单上的全部号码，并标出命中项。行数和件数均按整张主单计算。店铺名称来自本地授权店铺目录，订单所属店铺已从目录移除时，仍可通过 SID 展示和筛选。
 
-订单列表按来源创建日期（`YYYY-MM-DD`）筛选，含起止日，默认展示全部历史。wxw 可配置年月日的显示顺序，本地保留了时间原值。像 `08-09-2025` 这样有两种有效解释的日期按未知处理。有效的创建时间按倒序排列，缺少有效时间的订单排在末尾，指定日期范围时排除。创建和出库时间按来源的日期和精度显示。筛选及分页无需访问上游。
+订单列表按来源创建日期（`YYYY-MM-DD`）筛选，含起止日，默认展示全部历史。本地保留了平台返回的时间原值。像 `08-09-2025` 这样有两种有效解释的日期按未知处理。有效的创建时间按倒序排列，缺少有效时间的订单排在末尾，指定日期范围时排除。创建和出库时间按来源的日期和精度显示。筛选及分页无需访问平台。
 
 ## 订单同步边界
 
-- 主单以 ERP 内部 ID 标识，平台 PO 和商品行关联主单；订单时间保留 ERP 显示原值及来源。
+### 平台接口调用流程
+
+**核心方法：** 一切调用平台开放 API 的功能（订单同步、面单打印……）都走 `IPlatformAgentApiClient.InvokeAsync(平台, 店铺Sid, 平台API名, 参数, AccessToken)`，后端不保存任何平台密钥。新功能先在 `apiSchemas` 里查平台 API 的入参和出参，再照下面的流程调用。
+
+**调试前提：先绑定 AccessToken。** 没有绑定时所有平台调用都会失败。未绑定时请二选一，之后的开发、联调和验证交给 AI：
+
+1. 把旺销王 AccessToken 直接告诉 AI，由 AI 绑定；
+2. 自己登录后打开 `/system/erp-binding`（本地为 `https://localhost:5173/#/system/erp-binding`），按向导输入、检测、保存。
+
+AI 不会也不应该去数据库、容器环境变量里翻 Token；dev 管理员密码同理，由开发者自己登录。
+
+**改完代码怎么看效果：** 不需要手动打包。前端改完同步即热更新；后端改完执行 `accept.cmd api`，会自动编译检查并重启，然后刷新页面即可。
+
+订单同步不使用旺销王自己的订单接口，也不在本系统保存任何平台凭据，而是通过旺销王的**平台接口**（Open API 里的「平台专属 / 平台接口」，`/open-api/agent/{平台}/invoke`）调用平台自己的开放 API。旺销王托管店铺的平台授权与应用密钥，调用方只提供店铺 Sid。接口说明见旺销王仓库 `docs/规范文档/开放API平台专属分类接入指南.md`，各平台 API 的入参、出参在 `wxw.Api/wwwroot/open-api/apiSchemas/platform/<平台>/<API 名>.json`，目录在 `platform-aliexpress-apis.json`。
+
+1. 管理员在「ERP 接入」保存旺销王 Open API 的 AccessToken。该账号须有平台接口（`openApi`）额度，且店铺已在旺销王完成平台授权。
+2. 订单同步页的店铺来自授权店铺目录（`Shops` 表，Sid 是旺销王的店铺编号）。平台已注册 `IPlatformOrderSource` 的店铺可同步，其余只列出并禁用按钮。
+3. 同步任务按 Sid 取出目录里的店铺（平台、名称），再按平台名称找到对应的订单来源，调用 `ReadOrdersAsync`。
+4. 订单来源通过 [PlatformAgentApiClient](../OpenERP.Api/Erp/PlatformAgentApiClient.cs) 调用 `POST {旺销王地址}/open-api/agent/{平台}/invoke`，请求头带 `AccessToken`，请求体为 `{ "sid": 店铺编号, "api": "平台 API 名称", "method": 可选, "params": { 平台参数 } }`。
+   - `params` 的所有值必须是字符串；平台要求对象的参数（例如 `param_aeop_order_query`）先序列化为 JSON 文本再传。
+   - 响应为 `{ "success": true/false, "message": 失败原因, "content": 平台原始响应 }`。`success=false` 时按 `message` 映射为中文提示（Token 无效、没有平台接口权限、店铺不存在或无权访问、店铺尚未授权等），不透传原始响应；`success=true` 时取 `content` 交给订单来源解析。
+5. AliExpress 订单来源（[AliExpressOrderSource](../OpenERP.Api/Orders/Sources/AliExpressOrderSource.cs)）：
+   - 调用 `aliexpress.trade.seller.orderlist.get`，`param_aeop_order_query` 带 `current_page`、`page_size`（50）、`create_date_start`、`create_date_end`（最近 180 天，格式 `yyyy-MM-dd HH:mm:ss`，平台要求美国太平洋时间），按 `total_page` 翻页。
+   - 真实响应（2026-11-25 用店铺 156764 核对）是 `content.aliexpress_trade_seller_orderlist_get_response.result`，其中 `target_list` 和每个订单的 `product_list` 都再包了一层：`target_list.aeop_order_item_dto[]`、`product_list.aeop_order_product_dto[]`（文档里写的是直接数组）。解析会自动展开只含一个数组的包装对象。每个订单已包含商品行（`product_id`、`child_id`、`sku_code`、`product_count`），因此不再逐单调用详情接口。`result.success=false` 或 `error_response` 使整个任务失败，缺订单号、缺商品行或数量无效的订单计入「跳过」。
+   - 订单标识为 `AliExpress:店铺编号:平台订单号`，时间保留平台返回的原值，来源标记为 `AliExpress`。
+6. 订单快照交给 `OrderStore` 保存，步骤与其他平台相同。新增平台时实现 `IPlatformOrderSource`（需要时再给 `PlatformAgentApiClient` 增加平台的调用约定）并在 `Program.cs` 注册。
+
+验证状态：订单同步（2026-11-25）和面单打印（2026-11-26，见 [订单打印面单](order-label-printing.md)）都已用真实 AccessToken 和店铺联调过；平台响应字段以真实返回为准，新接口先小范围试一次再写解析。
+
+### 订单同步边界
+
+- 订单同步抽象为 `IPlatformOrderSource`：每个平台一个实现，读取某家店的订单并转换为统一的订单快照，同步任务、进度和定时调度只依赖该契约，不关心各平台不同的订单结构。`PlatformOrderSources` 按平台名称解析实现，目前内置 AliExpress。
+- 店铺沿用授权店铺目录里的 Sid，订单、员工分配、定时同步都以「平台 + Sid」识别店铺。订单主单以 `平台:店铺编号:平台订单号` 标识；平台子单和商品行关联主单，订单时间保留平台原值及来源。
+- API 在 Development 启动时应用 EF Core 迁移。
 - 完整读取并校验列表和详情后才写库；读取失败时不保存本批结果，数据库保存失败时整批回滚。
 - 归属异常的订单整单跳过，任务显示部分成功和跳过原因。只刷新本批通过校验的订单，未返回或被跳过的已有订单会保留；已接受订单的子项按本次结果更新。
-- 同步任务状态保存在 API 内存中，每店保留最近一次任务。手动和定时同步共用 4 个店铺执行位置，同一店铺同时只接受一个任务。其余已受理店铺在面板显示「等待同步」，获得空位后读取 ERP Token。各店分别保存，写入时串行更新以 ERP 内部 ID 标识的主单。刷新网页可恢复状态，API 重启后状态丢失；手动同步需重新触发，定时同步会在下一周期重跑，已保存的订单仍在数据库中。
-- 订单列表每页读取 500 条，按 ERP ID 排序，并核对前后计数、每页条数及 ID 唯一性。上游使用偏移分页，没有一致性快照：扫描期间若不同订单同时进入和退出可见范围，即使总数不变仍可能漏读。两种页长得到相同结果仅能证明当次扫描一致。
-- wxw 商品详情接口一次接收一个 ERP 订单 ID。所有店铺在一个 API 进程内共享 8 个详情读取位置，单店可以使用全部空位。每单按需补读时间，按原列表顺序汇总进度。单店完整读取并校验后，EF Core 批量写入并一次提交。
-- 本地保存通过 ASP.NET Core `HybridCache` 复用已落库订单的 SHA-256 指纹。启用 Redis 时它提供二级缓存。每次先从数据库批量读取主单 ID 和版本，当前版本与完整订单内容都命中时，直接计为「未变」。新单和未命中的订单走正常保存或明细比对。所有订单写入入口都须在业务数据变化时于同一事务内更换主单版本，包含仅子单或商品行变化的情况。缓存于保存成功后填充。缓存过期或丢失可从数据库重新比对，订单详情仍逐单实时读取。
+- 同步任务状态保存在 API 内存中，每店保留最近一次任务。手动和定时同步共用 4 个店铺执行位置，同一店铺同时只接受一个任务。其余已受理店铺在页面显示「等待同步」，获得空位后读取订单。各店分别保存，写入时串行更新主单。刷新网页可恢复状态，API 重启后状态丢失；手动同步需重新触发，定时同步会在下一周期重跑，已保存的订单仍在数据库中。
+- 订单列表按每页 50 条读取，达到平台返回的总数或末页即停止。平台使用页码分页，没有一致性快照：扫描期间订单进入或退出范围时仍可能漏读，下一次同步会补上。
+- 订单详情逐单读取，所有店铺在一个 API 进程内各自最多并发 4 个详情请求，按原列表顺序汇总进度。单店完整读取并校验后，EF Core 批量写入并一次提交。
+- 本地保存通过 ASP.NET Core `HybridCache`（进程内一级、Redis 二级）复用已落库订单的 SHA-256 指纹。每次先批量读取 PostgreSQL 主单 ID 和版本；当前版本与完整订单内容都命中时，直接计为「未变」。新单和未命中的订单走正常保存或明细比对。所有订单写入入口都须在业务数据变化时于同一事务内更换主单版本，包含仅子单或商品行变化的情况。缓存于保存成功后填充。缓存过期或丢失可从数据库重新比对，订单详情仍逐单实时读取。
 
-相关实现：[订单读取器](../OpenERP.Api/Erp/WxwErpClient.Orders.cs)、[任务状态](../OpenERP.Api/Orders/OrderSyncJobs.cs)、[订单保存](../OpenERP.Api/Orders/OrderStore.cs)。
+相关实现：[平台订单来源](../OpenERP.Api/Orders/Sources/PlatformOrderSource.cs)、[平台接口客户端](../OpenERP.Api/Erp/PlatformAgentApiClient.cs)、[任务状态](../OpenERP.Api/Orders/OrderSyncJobs.cs)、[订单保存](../OpenERP.Api/Orders/OrderStore.cs)。
 
 ## 定时同步边界
 
-- 定时同步与手动同步同样只在 Development / Production 提供。订单列表工具栏「同步历史订单」面板中的「定时同步」卡片只配置是否启用和选择店铺，不提供周期配置。
+- 定时同步与手动同步同样只在 Development / Production 提供。订单同步页（`/order/sync`）中的「定时同步」卡片只配置是否启用和选择店铺，不提供周期配置。
 - 周期来自 API 配置 `OrderSync:SchedulerIntervalMinutes`（默认 `30`，允许 `1`–`1440` 分钟），启动时校验；修改后需重启 API，保存设置本身不需要重启。每轮受理后等待一个周期再尝试下一轮；若上一轮仍在运行，本轮跳过并等下一周期。启用后首次执行同样等待一个周期。
-- 设置保存在数据库的 `OrderSyncSettings` 单行表，使用 UUIDv7 主键和独立的数据库单行约束。保存后 API 唤醒调度器重新读取设置；启用后首次执行仍等待一个完整周期。
-- 启用时必须至少选择一家店铺，空选返回 `400`，前端也会禁用保存。历史空选数据不会触发同步。启用还要求已配置私有 ERP AccessToken；未配置时保存启用状态返回 `503`，前端禁用开关和保存。
-- 选店列表通过 `GET /api/erp/order-sync-settings/shops` 读取最近成功落库的全部 TemuPop 店铺 SID 和名称，独立于本地店铺表格的分页，提供「全选可见店铺」和清空辅助。wxw 离线期间仍可选店和保存设置；本地无店铺时返回空列表。实际同步订单时再向 ERP 校验店铺可见性：Token 权限变化后该店会在定时轮次中记录失败，其他店铺继续，可在卡片中清空或重新选择。
+- 设置保存在 PostgreSQL 的 `OrderSyncSettings` 单行表，使用 UUIDv7 主键和独立的数据库单行约束。保存后 API 唤醒调度器重新读取设置；启用后首次执行仍等待一个完整周期。
+- 启用时必须至少选择一家店铺，空选返回 `400`，前端也会禁用保存。历史空选数据不会触发同步。
+- 选店列表通过 `GET /api/order-sync/settings/shops` 读取已实现订单同步的平台下的全部授权店铺编号和名称，独立于店铺表格的分页，提供「全选可见店铺」和清空辅助。本地无店铺时返回空列表。实际同步订单时再经旺销王平台接口读取：店铺授权失效后该店会在定时轮次中记录失败，其他店铺继续，可在卡片中清空或重新选择。
 - 定时批次并行同步选中的空闲店铺，单店失败会记录原因，其他店铺继续执行。可手动补跑失败的店铺，下一周期会重新扫描全部选中店铺。重复同步复用订单记录的幂等 upsert，不会写入重复订单。
 - 手动与定时同步按店铺互斥。手动单店命令遇到该店已有任务时返回 `accepted: false`，手动全部同步与定时批次跳过已有任务的店铺。关闭定时同步只阻止后续周期，已受理的批次会继续执行完当前店铺列表。
 - 不做跨进程或重启的作业持久化、断点恢复：任务状态仍在 API 内存中，重启后丢失；定时同步会在下一个周期重新执行选中店铺，已保存订单不受影响。
@@ -412,7 +434,7 @@ aspire logs web-browser-logs --apphost OpenERP.AppHost/OpenERP.AppHost.csproj
 - **后端 C# 代码**：在 Dashboard 资源列表找到 `api`，打开操作菜单，选择 **Rebuild（重新构建）**。等待资源恢复健康后，再回到业务页面刷新并重试。该操作重新构建并启动 API；只点 Restart（重启）不能当作已经重新编译的证据。
 - **前端代码**：Vite 开发服务器通常会通过 HMR 自动更新页面。前端已更新不代表 API 已加载新代码；若出现新表单仍收到旧接口错误，先检查 `api` 的日志与重建状态。
 - **自动热重载**：只有对应 IDE Hot Reload 或运行时 watch 已启用时，才依赖它应用后端修改；普通启动不代表自动启用了后端热重载。
-- **AppHost 编排或配置**：需要应用新的资源配置时，在原仓库或 worktree 中重新执行相同的启动命令；隔离实例使用 `aspire start --isolated`。编辑器启动的实例由编辑器管理重启。
+- **AppHost 编排或配置**：需要应用新的资源配置时，在原仓库或 worktree 中重新执行相同的启动命令；需要第二个并行实例时才使用 `aspire start --isolated`（端口随机、机密隔离）。编辑器启动的实例由编辑器管理重启。
 
 仅一个资源的实现发生变化时，优先使用该资源的 Rebuild 或已有热重载流程，不重启整个 AppHost。终端操作可先用 `aspire resource api --help --apphost OpenERP.AppHost/OpenERP.AppHost.csproj --non-interactive` 查看该资源可用的命令；列出 `rebuild` 时使用 `aspire resource api rebuild --non-interactive --apphost OpenERP.AppHost/OpenERP.AppHost.csproj`，随后 `aspire wait api --non-interactive --apphost OpenERP.AppHost/OpenERP.AppHost.csproj` 等待就绪。若没有重建命令，先确认资源类型和启动方式，不把 Restart 视为等价替代。
 

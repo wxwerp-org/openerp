@@ -130,6 +130,9 @@ namespace OpenERP.Migrations.Sqlite
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("BaseUrl")
+                        .HasColumnType("TEXT");
+
                     b.Property<long?>("DeletedAt")
                         .HasColumnType("INTEGER");
 
@@ -296,14 +299,29 @@ namespace OpenERP.Migrations.Sqlite
                     b.Property<bool?>("Appended")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Currency")
+                        .HasColumnType("TEXT");
+
                     b.Property<long?>("DeletedAt")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("TEXT");
 
                     b.Property<bool?>("Disabled")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("ErpId")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Logistics")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Oguid")
@@ -324,6 +342,13 @@ namespace OpenERP.Migrations.Sqlite
                     b.Property<string>("SkuId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Specs")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ErpId", "Ordinal")
@@ -337,6 +362,9 @@ namespace OpenERP.Migrations.Sqlite
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Buyer")
+                        .HasColumnType("TEXT");
+
                     b.Property<long?>("CreatedAtTicks")
                         .HasColumnType("INTEGER");
 
@@ -348,6 +376,9 @@ namespace OpenERP.Migrations.Sqlite
 
                     b.Property<long?>("DeletedAt")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("DispatchedRaw")
                         .HasColumnType("TEXT");
@@ -364,6 +395,9 @@ namespace OpenERP.Migrations.Sqlite
                         .HasColumnType("TEXT");
 
                     b.Property<string>("IncomeCurrency")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Logistics")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OrderNumber")
@@ -395,6 +429,13 @@ namespace OpenERP.Migrations.Sqlite
 
                     b.Property<Guid>("SyncRevision")
                         .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TotalCurrency")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

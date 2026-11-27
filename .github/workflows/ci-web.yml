@@ -70,6 +70,12 @@ jobs:
 
       # 任一项失败后其余检查仍执行，一轮即暴露全部问题；依赖安装失败时不继续，
       # 避免在缺少依赖时产生级联失败。
+      # 先构建：自动导入插件会在构建时生成 .auto-import.json 和 *.d.ts（不入库），
+      # lint 与 typecheck 依赖这些文件，所以必须排在构建之后。
+      - name: 生产构建
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: pnpm --dir OpenERP.Web build
+
       - name: lint
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: pnpm --dir OpenERP.Web lint
@@ -85,10 +91,6 @@ jobs:
       - name: 单元测试
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: pnpm --dir OpenERP.Web test
-
-      - name: 生产构建
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: pnpm --dir OpenERP.Web build
 
   web-hosting:
     name: 发布形态宿主

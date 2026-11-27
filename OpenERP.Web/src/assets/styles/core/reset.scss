@@ -1,0 +1,55 @@
+@charset "UTF-8";
+
+/*滚动条*/
+/*滚动条整体部分,必须要设置*/
+::-webkit-scrollbar {
+  width: 8px !important;
+  height: 0 !important;
+}
+
+/*滚动条的轨道*/
+::-webkit-scrollbar-track {
+  background-color: var(--art-gray-200);
+}
+
+/*滚动条的滑块按钮*/
+::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+  background-color: #cccccc !important;
+  transition: all 0.2s;
+  -webkit-transition: all 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #b0abab !important;
+}
+
+/*滚动条的上下两端的按钮*/
+::-webkit-scrollbar-button {
+  height: 0px;
+  width: 0;
+}
+
+.dark {
+  ::-webkit-scrollbar-track {
+    background-color: var(--default-bg-color);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--art-gray-300) !important;
+  }
+}
+
+/* 覆盖 Chrome 自动填充的浅蓝色背景 */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+textarea:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--art-bg-color) inset !important;
+  -webkit-text-fill-color: var(--art-text-color) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}

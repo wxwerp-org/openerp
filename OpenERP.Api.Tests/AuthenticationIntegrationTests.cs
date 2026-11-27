@@ -102,7 +102,7 @@ public sealed class AuthenticationIntegrationTests(AspireIntegrationFixture fixt
     public async Task Order_sync_settings_require_a_ready_bearer_but_not_csrf()
     {
         // Given 独立浏览器尚未登录，准备提交有效的关闭设置。
-        const string route = "/api/erp/order-sync-settings";
+        const string route = "/api/order-sync/settings";
         var ct = TestContext.Current.CancellationToken;
         using var client = fixture.CreateApiClient();
         var settings = new { enabled = false, shopSids = Array.Empty<int>() };

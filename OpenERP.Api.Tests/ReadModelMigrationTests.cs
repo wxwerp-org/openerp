@@ -7,8 +7,6 @@ using Npgsql;
 using OpenERP.Api.Authentication;
 using OpenERP.Api.Orders;
 using OpenERP.Api.Persistence;
-using OpenERP.Api.Reports;
-using OpenERP.Core.Reports;
 using Xunit;
 using Xunit.Sdk;
 
@@ -56,10 +54,9 @@ public sealed class ReadModelMigrationTests(AspireIntegrationFixture fixture)
             Assert.Equal("2026-11-17T00:01:02.654321+08:00", item.Created);
             Assert.Equal("Équipe", item.ShopName);
 
-            var report = await new OrderSnapshotReportQuery(db, TimeProvider.System).QueryAsync(
-                new(null, [], TrendStart: day, TrendEnd: day), ct);
-            if (report.IsErr) throw new XunitException(report.Error.Message);
-            Assert.Equal(new OrderTrendPoint("2026-11-17", 1, 0, 1.23m), Assert.Single(report.Value.Trend.Points));
+            var report = await new OrderReportQuery(db).ReadAsync(new(null, null, day, day), access, ct);
+            Assert.NotNull(report);
+            Assert.Equal(1, Assert.Single(report.Daily).Orders);
             Assert.Equal(created, await db.Orders.Select(order => order.CreatedRaw).SingleAsync(ct));
             Assert.Equal("ÉQUIPE", await db.Shops.Select(shop => shop.SearchName).SingleAsync(ct));
         }

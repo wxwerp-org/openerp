@@ -46,12 +46,15 @@ public sealed class OrderListEndpointTests(AspireIntegrationFixture fixture) : I
     [Fact]
     public async Task Lists_current_shop_names_and_keeps_history_for_missing_shops()
     {
-        // Given 两家店铺有历史订单，只有一家仍在目录中，另有一家店尚无订单。
+        // Given 两家店铺有历史订单，只有一家仍是已录入店铺，另有一家店尚无订单。
         await SaveAsync(Samples());
         await using var db = CreateContext();
-        db.Shops.AddRange(new Shop { Sid = 30, Name = "目录中的店", Platform = "TemuPop" },
-            new Shop { Sid = 35, Name = "尚无订单", Platform = "TemuPop" });
-        await db.SaveChangesAsync(Ct);
+        // 直接写入授权店铺目录，固定店铺编号。
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Shops" ("Id", "Sid", "Name", "Platform")
+            VALUES (uuidv7(), 30, '目录中的店', 'TemuPop'),
+                   (uuidv7(), 35, '尚无订单', 'TemuPop')
+            """, Ct);
         await VerifyAsync(async client =>
         {
             // When 读取本地列表；Then 筛选项和表格都显示当前名称，历史店保留 SID。
@@ -230,6 +233,137 @@ public sealed class OrderListEndpointTests(AspireIntegrationFixture fixture) : I
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         });
     }
+
+    [Fact]
+    public async Task Reports_orders_by_day_shop_platform_status_logistics_and_product()
+    {
+        // Given 三张订单分属两家店铺、两个平台，金额币种不同，其中一张已付款并出库。
+        await SaveAsync(
+        [
+            new(Id("r1"), "erp-r1", 30, "TemuPop", "正常",
+                new(new("2025-08-12 10:00", "detail"), new("2025-08-12 10:30", "detail"), new("2025-08-12 18:00", "detail"), null),
+                [], [new("p1", null, null, "SKU-1", 3, false, false, "商品一"), new("p2", null, null, "SKU-2", 2, false, false, "商品二")],
+                TotalAmount: 10m, TotalCurrency: "USD", Logistics: "DHL"),
+            new(Id("r2"), "erp-r2", 30, "TemuPop", "已取消", new(new("2025-08-13 09:00", "detail"), null, null, null),
+                [], [new("p1", null, null, "SKU-1", 1, false, false, "商品一")],
+                TotalAmount: 20m, TotalCurrency: "USD", Logistics: "DHL"),
+            new(Id("r3"), "erp-r3", 31, "OtherPlatform", "正常", new(new("2025-08-13 11:00", "detail"), null, null, null),
+                [], [], TotalAmount: 5m, TotalCurrency: "EUR")
+        ]);
+        await using var db = CreateContext();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Shops" ("Id", "Sid", "Name", "Platform") VALUES (uuidv7(), 30, '目录中的店', 'TemuPop')
+            """, Ct);
+        await VerifyAsync(async client =>
+        {
+            // When 读取报表；Then 汇总、按日、按店铺、平台、状态、物流和商品的口径都来自本地订单。
+            var report = await ReportAsync(client);
+            var summary = report.GetProperty("summary");
+            Assert.Equal(3, summary.GetProperty("orders").GetInt32());
+            Assert.Equal(6, summary.GetProperty("itemQuantity").GetInt64());
+            Assert.Equal(1, summary.GetProperty("dispatched").GetInt32());
+            Assert.Equal(1, summary.GetProperty("paid").GetInt32());
+            Assert.Equal([("EUR", 5m), ("USD", 30m)], Amounts(summary.GetProperty("amounts")));
+            Assert.Equal([("2025-08-12", 1), ("2025-08-13", 2)], Buckets(report, "daily"));
+            Assert.Equal([("30", 2), ("31", 1)], Buckets(report, "shops"));
+            Assert.Equal("目录中的店", report.GetProperty("shops").EnumerateArray().First().GetProperty("label").GetString());
+            Assert.Equal([("OtherPlatform", 1), ("TemuPop", 2)], Buckets(report, "platforms"));
+            Assert.Equal([("已取消", 1), ("正常", 2)], Buckets(report, "statuses"));
+            Assert.Equal([("DHL", 2), ("未填写", 1)], Buckets(report, "logistics"));
+            var products = report.GetProperty("products").EnumerateArray().ToArray();
+            Assert.Equal(["p1", "p2"], products.Select(p => p.GetProperty("productId").GetString()));
+            Assert.Equal([4L, 2L], products.Select(p => p.GetProperty("quantity").GetInt64()));
+
+            // When 按平台和创建日期筛选；Then 汇总只统计命中的订单。
+            var filtered = await ReportAsync(client, "platform=TemuPop&createdFrom=2025-08-13&createdTo=2025-08-13");
+            Assert.Equal(1, filtered.GetProperty("summary").GetProperty("orders").GetInt32());
+        });
+    }
+
+    [Fact]
+    public async Task Rejects_an_invalid_report_range_and_anonymous_access()
+    {
+        await VerifyAsync(async client =>
+        {
+            // Given 未登录；When 读取报表；Then 返回 401。
+            using var anonymous = await client.GetAsync("/api/orders/report", Ct);
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+
+            // Given 已登录；When 起始日期晚于结束日期；Then 返回 400。
+            await AuthenticationIntegrationTests.LoginAsync(client, Ct, fixture.AdminPassword);
+            using var invalid = await client.GetAsync("/api/orders/report?createdFrom=2025-08-14&createdTo=2025-08-13", Ct);
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        }, authenticate: false);
+    }
+
+    [Fact]
+    public async Task Print_labels_rejects_anonymous_invalid_and_unknown_orders()
+    {
+        await SaveAsync(Samples());
+        await VerifyAsync(async client =>
+        {
+            // Given 未登录；When 请求打印；Then 返回 401。
+            using var anonymous = await client.PostAsJsonAsync("/api/orders/print-labels", new { ids = new[] { Id("a") } }, Ct);
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+
+            // Given 已登录；When 订单数为 0、超过 100 或订单不存在；Then 分别返回 400、400、404。
+            await AuthenticationIntegrationTests.LoginAsync(client, Ct, fixture.AdminPassword);
+            using var empty = await client.PostAsJsonAsync("/api/orders/print-labels", new { ids = Array.Empty<string>() }, Ct);
+            Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
+            using var tooMany = await client.PostAsJsonAsync("/api/orders/print-labels",
+                new { ids = Enumerable.Range(0, 101).Select(i => Id($"x{i}")).ToArray() }, Ct);
+            Assert.Equal(HttpStatusCode.BadRequest, tooMany.StatusCode);
+            using var unknown = await client.PostAsJsonAsync("/api/orders/print-labels", new { ids = new[] { Id("nope") } }, Ct);
+            Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        }, authenticate: false);
+    }
+
+    [Fact]
+    public async Task Print_labels_reports_each_platform_order_that_cannot_be_printed()
+    {
+        // Given 一张平台没有打印实现的订单，一张 AliExpress 订单（店铺已录入但未配置 ERP AccessToken）。
+        await SaveAsync([
+            Samples()[2],
+            new(Id("ali"), "erp-ali", 40, "AliExpress", "正常", new(null, null, null, null),
+                [new("ALI-1", 40, "1", "待发货")], [])
+        ]);
+        await using (var db = CreateContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "Shops" ("Id", "Sid", "Name", "Platform") VALUES (uuidv7(), 40, 'Ali店', 'AliExpress')
+                """, Ct);
+        await VerifyAsync(async client =>
+        {
+            // When 勾选两张订单请求面单；Then 不返回任何文档，每个平台单号都带有未取得的原因。
+            using var response = await client.PostAsJsonAsync("/api/orders/print-labels",
+                new { ids = new[] { Id("c"), Id("ali") } }, Ct);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.True(response.Headers.CacheControl?.NoStore);
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+            Assert.Empty(body.GetProperty("documents").EnumerateArray());
+            var failures = body.GetProperty("failures").EnumerateArray()
+                .ToDictionary(item => item.GetProperty("platformOrderNumber").GetString()!,
+                    item => item.GetProperty("reason").GetString()!);
+            Assert.Contains("暂不支持", failures["PO-%_\\A"]);
+            Assert.False(string.IsNullOrWhiteSpace(failures["ALI-1"]));
+        });
+    }
+
+    private static async Task<JsonElement> ReportAsync(HttpClient client, string query = "")
+    {
+        using var response = await client.GetAsync($"/api/orders/report?{query}", Ct);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+    }
+
+    private static IEnumerable<(string?, int)> Buckets(JsonElement report, string name) =>
+        report.GetProperty(name).EnumerateArray()
+            .Select(bucket => (bucket.GetProperty("key").GetString(), bucket.GetProperty("orders").GetInt32()))
+            .OrderBy(bucket => bucket.Item1, StringComparer.Ordinal);
+
+    private static IEnumerable<(string?, decimal)> Amounts(JsonElement amounts) =>
+        amounts.EnumerateArray()
+            .Select(amount => (amount.GetProperty("currency").GetString(), amount.GetProperty("total").GetDecimal()))
+            .OrderBy(amount => amount.Item1, StringComparer.Ordinal);
 
     private AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(_connection).Options);
 

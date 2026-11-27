@@ -108,6 +108,13 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
                 order.CreatedRaw,
                 order.CreatedAtTicks,
                 order.DispatchedRaw,
+                order.Status,
+                order.Buyer,
+                order.TotalAmount,
+                order.TotalCurrency,
+                order.Logistics,
+                order.PaidRaw,
+                order.Details,
                 LineCount = lines.Count(line => line.ErpId == order.ErpId),
                 ItemQuantity = lines.Where(line => line.ErpId == order.ErpId).Sum(line => (long)line.Quantity)
             }).ToArrayAsync(ct);
@@ -116,6 +123,11 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         var childRows = await children.Where(po => ids.Contains(po.ErpId)).ToArrayAsync(ct);
         var childrenByOrder = childRows.OrderBy(po => po.PoNumber, StringComparer.Ordinal).ToLookup(po => po.ErpId,
             po => new PlatformOrderListItem(po.PoNumber, po.Status, po.Matched));
+        var lineRows = await lines.AsNoTracking().Where(line => ids.Contains(line.ErpId)).OrderBy(line => line.Ordinal)
+            .ToArrayAsync(ct);
+        var linesByOrder = lineRows.ToLookup(line => line.ErpId, line => new OrderLineListItem(line.ProductId, line.SkuCode,
+            line.Name, line.ImageUrl, line.Specs, line.Quantity, line.UnitPrice, line.Currency, line.Logistics,
+            ParseDetails(line.Details)));
         var shopDetails = shops.ToDictionary(shop => shop.Sid);
         var items = rows.Select(row =>
         {
@@ -125,9 +137,52 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
                 childrenByOrder[row.ErpId].ToArray(),
                 OrderSourceTime.Format(row.CreatedRaw, row.CreatedAtTicks),
                 OrderSourceTime.Format(row.DispatchedRaw, OrderSourceTime.ToTicks(row.DispatchedRaw)),
-                row.LineCount, row.ItemQuantity);
+                row.LineCount, row.ItemQuantity, linesByOrder[row.ErpId].ToArray(),
+                row.Status, row.Buyer, row.TotalAmount, row.TotalCurrency, row.Logistics, row.PaidRaw,
+                ParseDetails(row.Details));
         }).ToArray();
 
         return new(items, total, page, request.PageSize, options);
+    }
+
+    /// <summary>读取单个本地订单（与列表同一结构）；订单不存在或无权访问时返回 null。</summary>
+    internal async Task<OrderListItem?> ReadOneAsync(string erpId, ShopAccess access, CancellationToken ct)
+    {
+        var order = await access.Orders(db).AsNoTracking().FirstOrDefaultAsync(row => row.ErpId == erpId, ct);
+        if (order is null)
+            return null;
+
+        var shopName = await access.Shops(db).AsNoTracking()
+            .Where(shop => shop.Sid == order.Sid && shop.Platform == order.Platform)
+            .Select(shop => shop.Name).FirstOrDefaultAsync(ct);
+        var platformOrders = await db.Set<PlatformOrderRecord>().AsNoTracking().Where(po => po.ErpId == erpId)
+            .OrderBy(po => po.PoNumber).ToArrayAsync(ct);
+        var lines = await db.Set<OrderLineRecord>().AsNoTracking().Where(line => line.ErpId == erpId)
+            .OrderBy(line => line.Ordinal).ToArrayAsync(ct);
+        return new OrderListItem(order.ErpId, order.Sid, shopName, order.Platform,
+            [.. platformOrders.Select(po => new PlatformOrderListItem(po.PoNumber,
+                !string.IsNullOrWhiteSpace(po.StatusText) ? po.StatusText! :
+                !string.IsNullOrWhiteSpace(po.StatusCode) ? po.StatusCode! : "未知", false))],
+            OrderSourceTime.Format(order.CreatedRaw, order.CreatedAtTicks),
+            OrderSourceTime.Format(order.DispatchedRaw, OrderSourceTime.ToTicks(order.DispatchedRaw)),
+            lines.Length, lines.Sum(line => (long)line.Quantity),
+            [.. lines.Select(line => new OrderLineListItem(line.ProductId, line.SkuCode, line.Name, line.ImageUrl,
+                line.Specs, line.Quantity, line.UnitPrice, line.Currency, line.Logistics, ParseDetails(line.Details)))],
+            order.Status, order.Buyer, order.TotalAmount, order.TotalCurrency, order.Logistics, order.PaidRaw,
+            ParseDetails(order.Details));
+    }
+
+    private static IReadOnlyList<OrderDetail> ParseDetails(string? json)
+    {
+        if (string.IsNullOrEmpty(json))
+            return [];
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<OrderDetail[]>(json) ?? [];
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return [];
+        }
     }
 }

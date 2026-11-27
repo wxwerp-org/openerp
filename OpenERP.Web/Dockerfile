@@ -2,7 +2,8 @@
 FROM node:26 AS build
 WORKDIR /app
 RUN npm install --global pnpm@11.16.0
-COPY package.json pnpm-lock.yaml ./
+# pnpm-workspace.yaml 里有 allowBuilds、shamefullyHoist 等安装设置，缺了它依赖安装会失败。
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm run build

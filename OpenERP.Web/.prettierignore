@@ -1,0 +1,7 @@
+/node_modules/*
+/dist/*
+/src/main.ts
+/pnpm-lock.yaml
+/.vscode/*
+/.auto-import.json
+/src/types/import/*

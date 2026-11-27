@@ -14,9 +14,7 @@ using OpenERP.Api.Authentication;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using OpenERP.Api.Persistence;
-using OpenERP.Api.Reports;
 using OpenERP.Core.Orders;
-using OpenERP.Core.Reports;
 using OpResult;
 using Xunit;
 using Xunit.Sdk;
@@ -86,20 +84,17 @@ public sealed class PortableReadQueryTests : IAsyncLifetime
             Sample("other", "2026-11-17", 0.99m) with { Platform = "Amazon" }
         ]);
 
-        // When 按分配店铺读取单日走势与分页；Then 同号店铺隔离，分币求和准确，未知日期与子单数量保持原口径。
-        var query = new OrderSnapshotReportQuery(db, TimeProvider.System);
-        var request = new OrderSnapshotReportRequest(null, [], 99, 2, TrendEnd, TrendEnd)
-        {
-            AllowedShops = [new OrderShop("wxw-erp", "TemuPop", "30", "店铺 30")]
-        };
-        var report = RequireValue(await query.QueryAsync(request, ct));
-        Assert.Equal(new OrderSnapshotTotals(3, 6), report.Summary);
-        Assert.Equal(new OrderSnapshotSales(0.03m, "USD", 2, 1), report.Sales);
-        Assert.Equal("TemuPop", Assert.Single(report.Platforms));
-        Assert.Equal(2, report.Page);
-        Assert.Equal("c", Assert.Single(report.Orders).Id);
-        Assert.Equal(1, report.Trend.MissingCreatedCount);
-        Assert.Equal(new OrderTrendPoint("2026-11-17", 2, 4, 0.03m), Assert.Single(report.Trend.Points));
+        // When 按店铺读取报表；Then 同号店铺隔离，三张主单各计一次，无法确定的创建日期不进入按日统计。
+        var access = ShopAccess.For(new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Role, UserAccount.AdministratorRole)], "Test")));
+        var report = await new OrderReportQuery(db).ReadAsync(new(30, "TemuPop", null, null), access, ct);
+        Assert.NotNull(report);
+        Assert.Equal(3, report.Summary.Orders);
+        Assert.Equal(6, report.Summary.ItemQuantity);
+        var day = Assert.Single(report.Daily);
+        Assert.Equal("2026-11-17", day.Key);
+        Assert.Equal(2, day.Orders);
+        Assert.Equal(4, day.ItemQuantity);
     }
 
     [Fact]

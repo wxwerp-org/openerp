@@ -3,8 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using OpResult;
-using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Orders.Sources;
 using Xunit;
 using Xunit.Sdk;
 
@@ -49,7 +49,7 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
     [Fact]
     public async Task Scheduled_batch_saves_orders_and_replays_without_new_rows()
     {
-        // Given 定时同步选中一家店，ERP 返回一张可保存的订单。
+        // Given 定时同步选中一家店，平台返回一张可保存的订单。
         var cancellationToken = TestContext.Current.CancellationToken;
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseOpenErpPostgres(_testConnectionString, builder => builder.EnableRetryOnFailure().MaxBatchSize(1))
@@ -61,15 +61,12 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
             new(new("1700000000", "addTime"), null, null, null),
             [new("po-1", 30, "1", "待发货")],
             [new("product-1", "oguid-1", "sku-id-1", "sku-1", 3, null, null)]);
-        var erp = new TestErpClient
-        {
-            ReadOrders = (_, _, _) => Task.FromResult(OpResults.Ok(new OrderImportBatch(
-                1, [order], new Dictionary<string, int>())))
-        };
+        var source = new TestPlatformOrderSource((_, _, _) => Task.FromResult(OpResults.Ok(new OrderImportBatch(
+            1, [order], new Dictionary<string, int>()))));
 
         var services = new ServiceCollection();
-        services.AddSingleton<IErpClient>(erp);
-        services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
+        services.AddSingleton<IPlatformShops>(new TestPlatformShops());
+        services.AddSingleton(new PlatformOrderSources([source]));
         services.AddScoped(_ => new OrderStore(new AppDbContext(options)));
         using var provider = services.BuildServiceProvider();
         using var jobs = new OrderSyncJobs(provider.GetRequiredService<IServiceScopeFactory>(),
@@ -124,31 +121,29 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
         var bothShopsReading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var order30 = CreateOrder("erp-30", "order-30", 30);
         var order31 = CreateOrder("erp-31", "order-31", 31);
-        var erp = new TestErpClient
+        var source = new TestPlatformOrderSource(async (shop, _, ct) =>
         {
-            ReadOrders = async (sid, _, ct) =>
+            var sid = shop.Sid;
+            var attempts = sid == 30
+                ? Interlocked.Increment(ref shop30Attempts)
+                : Interlocked.Increment(ref shop31Attempts);
+            if (sid == 30 && attempts == 1)
+                return OpResults.Err("店铺 30 首次读取失败。");
+
+            if (attempts == 2)
             {
-                var attempts = sid == 30
-                    ? Interlocked.Increment(ref shop30Attempts)
-                    : Interlocked.Increment(ref shop31Attempts);
-                if (sid == 30 && attempts == 1)
-                    return OpResults.Err("店铺 30 首次读取失败。");
+                if (Interlocked.Increment(ref secondRoundReads) == 2)
+                    bothShopsReading.SetResult();
 
-                if (attempts == 2)
-                {
-                    if (Interlocked.Increment(ref secondRoundReads) == 2)
-                        bothShopsReading.SetResult();
-
-                    await bothShopsReading.Task.WaitAsync(ct);
-                }
-
-                return new OrderImportBatch(1, [sid == 30 ? order30 : order31], new Dictionary<string, int>());
+                await bothShopsReading.Task.WaitAsync(ct);
             }
-        };
+
+            return new OrderImportBatch(1, [sid == 30 ? order30 : order31], new Dictionary<string, int>());
+        });
 
         var services = new ServiceCollection();
-        services.AddSingleton<IErpClient>(erp);
-        services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
+        services.AddSingleton<IPlatformShops>(new TestPlatformShops());
+        services.AddSingleton(new PlatformOrderSources([source]));
         services.AddScoped(_ => new OrderStore(new AppDbContext(options)));
         using var provider = services.BuildServiceProvider();
         using var jobs = new OrderSyncJobs(provider.GetRequiredService<IServiceScopeFactory>(),

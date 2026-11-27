@@ -12,6 +12,11 @@ internal sealed class OrderRecord : Entity
     public Guid SyncRevision { get; set; }
     public decimal? IncomeCost { get; set; }
     public string? IncomeCurrency { get; set; }
+    public string? Buyer { get; set; }
+    public decimal? TotalAmount { get; set; }
+    public string? TotalCurrency { get; set; }
+    public string? Logistics { get; set; }
+    public string? Details { get; set; }
     public string? CreatedRaw
     {
         get => _createdRaw;
@@ -54,4 +59,11 @@ internal sealed class OrderLineRecord : Entity
     public int Quantity { get; set; }
     public bool? Disabled { get; set; }
     public bool? Appended { get; set; }
+    public string? Name { get; set; }
+    public string? ImageUrl { get; set; }
+    public string? Specs { get; set; }
+    public decimal? UnitPrice { get; set; }
+    public string? Currency { get; set; }
+    public string? Logistics { get; set; }
+    public string? Details { get; set; }
 }

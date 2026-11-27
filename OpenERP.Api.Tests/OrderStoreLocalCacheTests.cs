@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using OpResult;
 using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
+using OpenERP.Api.Orders.Sources;
 using Xunit;
 using Xunit.Sdk;
 
@@ -23,17 +24,14 @@ public sealed class OrderStoreLocalCacheTests
         {
             var database = Path.Combine(directory.FullName, "orders.db");
             const int shopSid = 31;
-            var first = new OrderSnapshot("erp-001", "order-1", shopSid, "TemuPop", "pending",
+            var first = new OrderSnapshot("erp-001", "order-1", shopSid, TestPlatformOrderSource.DefaultPlatform, "pending",
                 new(new("1700000000", "addTime"), null, null, null),
                 [new("po-1", shopSid, "1", "待发货")], [new("product-1", "oguid-1", "sku-id-1", "sku-1", 3, false, false)]);
             OrderSnapshot[] orders = [first, first with { ErpId = "erp-002", OrderNumber = "order-2" }];
-            var erp = new TestErpClient
-            {
-                ReadOrders = (sid, _, _) => Task.FromResult(OpResults.Ok(new OrderImportBatch(
-                    2, sid == shopSid ? orders : [], new Dictionary<string, int>())))
-            };
+            var source = new TestPlatformOrderSource((shop, _, _) => Task.FromResult(OpResults.Ok(new OrderImportBatch(
+                2, shop.Sid == shopSid ? orders : [], new Dictionary<string, int>()))));
             const string probe = "test:local-cache";
-            await using (var initial = CreateServices(database, erp))
+            await using (var initial = CreateServices(database, source))
             {
                 Assert.False(initial.GetRequiredService<IServiceProviderIsService>().IsService(typeof(IDistributedCache)));
                 var cache = initial.GetRequiredService<HybridCache>();
@@ -55,7 +53,7 @@ public sealed class OrderStoreLocalCacheTests
             }
 
             // When 旧宿主释放，新宿主以空缓存和原 SQLite 文件执行下一轮。
-            await using var replay = CreateServices(database, erp);
+            await using var replay = CreateServices(database, source);
             var replayCache = replay.GetRequiredService<HybridCache>();
             Assert.Equal("cold", await replayCache.GetOrCreateAsync(probe,
                 static _ => ValueTask.FromResult("cold"), cancellationToken: ct));
@@ -100,7 +98,7 @@ public sealed class OrderStoreLocalCacheTests
         }
     }
 
-    private static ServiceProvider CreateServices(string path, IErpClient erp)
+    private static ServiceProvider CreateServices(string path, TestPlatformOrderSource source)
     {
         var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { DisableDefaults = true });
         builder.Configuration["Database:Provider"] = "SQLite";
@@ -109,8 +107,8 @@ public sealed class OrderStoreLocalCacheTests
         builder.AddApplicationCache();
         builder.Services.AddScoped<OrderStore>();
         builder.Services.AddScoped<IOrderSyncSettingsStore, OrderSyncSettingsStore>();
-        builder.Services.AddSingleton(erp);
-        builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
+        builder.Services.AddSingleton<IPlatformShops>(new TestPlatformShops());
+        builder.Services.AddSingleton(new PlatformOrderSources([source]));
         builder.Services.AddSingleton<OrderSyncJobs>();
         builder.Services.AddOptions<OrderSyncSchedulerOptions>();
         builder.Services.AddSingleton<OrderSyncScheduler>();

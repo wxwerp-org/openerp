@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using Microsoft.AspNetCore.SignalR;
 using OpResult;
 using OpenERP.Api.Erp;
+using OpenERP.Api.Orders.Sources;
 
 namespace OpenERP.Api.Orders;
 
@@ -180,16 +181,23 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
             current = job with { Stage = "shop" };
             SaveStatus(current);
             await using var scope = scopeFactory.CreateAsyncScope();
-            var tokens = scope.ServiceProvider.GetRequiredService<IErpTokenStore>();
-            var token = await tokens.GetAsync(ct);
-            if (token.IsErr)
+            var shops = scope.ServiceProvider.GetRequiredService<IPlatformShops>();
+            var found = await shops.FindAsync(job.Sid, ct);
+            if (found.IsErr)
             {
-                Fail(current, token.Error.Message);
+                Fail(current, found.Error.Message);
                 return;
             }
 
-            var erp = scope.ServiceProvider.GetRequiredService<IErpClient>();
-            var read = await erp.ReadOrdersAsync(job.Sid, progress =>
+            var shop = found.Value;
+            var source = scope.ServiceProvider.GetRequiredService<PlatformOrderSources>().Find(shop.Platform);
+            if (source is null)
+            {
+                Fail(current, $"暂不支持 {shop.Platform} 平台的订单同步。");
+                return;
+            }
+
+            var read = await source.ReadOrdersAsync(shop, progress =>
             {
                 current = current with
                 {
@@ -197,7 +205,7 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
                     Read = progress.Read, Processed = progress.Processed
                 };
                 SaveStatus(current, progress: true);
-            }, token.Value, ct);
+            }, ct);
 
             if (read.IsErr)
             {
@@ -244,7 +252,7 @@ public sealed class OrderSyncJobs(IServiceScopeFactory scopeFactory, ILogger<Ord
     private async Task<OpResult<OrderSaveCounts>> SaveOrdersAsync(
         OrderStore store, IReadOnlyList<OrderSnapshot> orders, CancellationToken ct)
     {
-        // ERP 主单 ID 是全局唯一键，将查询已有记录和写入作为一个互斥区段。
+        // 订单标识是全局唯一键，将查询已有记录和写入作为一个互斥区段。
         await _saving.WaitAsync(ct);
         try
         {

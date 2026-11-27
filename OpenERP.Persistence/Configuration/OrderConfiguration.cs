@@ -13,6 +13,7 @@ internal sealed class OrderConfiguration : EntityConfiguration<OrderRecord>
         builder.HasAlternateKey(order => order.ErpId);
         builder.HasIndex(order => new { order.CreatedAtTicks, order.ErpId }).IsDescending(true, false);
         builder.Property(order => order.IncomeCost).HasPrecision(18, 2);
+        builder.Property(order => order.TotalAmount).HasPrecision(18, 2);
         builder.Property(order => order.SyncRevision).IsConcurrencyToken();
         builder.HasMany(order => order.PlatformOrders).WithOne()
             .HasForeignKey(platformOrder => platformOrder.ErpId).HasPrincipalKey(order => order.ErpId);
@@ -37,6 +38,7 @@ internal sealed class OrderLineConfiguration : EntityConfiguration<OrderLineReco
     {
         base.Configure(builder);
         builder.ToTable("OrderLines");
+        builder.Property(line => line.UnitPrice).HasPrecision(18, 2);
         builder.HasIndex(line => new { line.ErpId, line.Ordinal }).IsUnique();
     }
 }
