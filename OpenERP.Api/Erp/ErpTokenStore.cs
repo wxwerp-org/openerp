@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using OpResult;
+using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Erp;
 
@@ -18,14 +19,6 @@ public interface IErpTokenStore
 
     /// <summary>撤销配置：彻底删除已保存的 AccessToken 与部署地址。</summary>
     Task<OpResult.OpResult> DeleteAsync(CancellationToken cancellationToken);
-}
-
-internal sealed class ErpSettings : Entity
-{
-    public required string ProtectedAccessToken { get; set; }
-
-    /// <summary>独立部署的上游地址；为空表示公共版。</summary>
-    public string? BaseUrl { get; set; }
 }
 
 internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider protection) : IErpTokenStore
@@ -77,7 +70,7 @@ internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider pro
     {
         try
         {
-            await db.Database.ExecuteSqlRawAsync("""DELETE FROM "ErpSettings" """, cancellationToken);
+            await db.ErpSettings.IgnoreQueryFilters().ExecuteDeleteAsync(cancellationToken);
         }
         catch (Exception exception) when (IsDatabaseReadFailure(exception))
         {
@@ -92,15 +85,15 @@ internal sealed class ErpTokenStore(AppDbContext db, IDataProtectionProvider pro
         try
         {
             var protectedToken = _protector.Protect(accessToken);
-            await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO "ErpSettings" ("Id", "ProtectedAccessToken", "BaseUrl")
-                VALUES ({Guid.CreateVersion7()}, {protectedToken}, {baseUrl})
-                ON CONFLICT ("Singleton") DO UPDATE
-                SET "ProtectedAccessToken" = EXCLUDED."ProtectedAccessToken",
-                    "BaseUrl" = EXCLUDED."BaseUrl", "DeletedAt" = NULL
-                """, cancellationToken);
+            await SingletonSettings.SaveAsync(db,
+                new ErpSettings { ProtectedAccessToken = protectedToken, BaseUrl = baseUrl },
+                ct => db.ErpSettings.IgnoreQueryFilters().ExecuteUpdateAsync(setters => setters
+                    .SetProperty(settings => settings.ProtectedAccessToken, protectedToken)
+                    .SetProperty(settings => settings.BaseUrl, baseUrl)
+                    .SetProperty(settings => settings.DeletedAt, (DateTimeOffset?)null), ct), cancellationToken);
         }
-        catch (Exception exception) when (exception is DbException or CryptographicException)
+        catch (Exception exception) when (exception is DbException or DbUpdateException or CryptographicException
+            || IsDatabaseReadFailure(exception))
         {
             return OpResults.Err("保存 ERP AccessToken 失败，请重试。");
         }

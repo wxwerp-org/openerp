@@ -243,7 +243,7 @@ public sealed class OrderStorePostgresTests(AspireIntegrationFixture fixture) : 
 
         // When 重读相同订单，Then 计入未变，数据库不读取平台子单或商品行。
         var commands = new List<string>();
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_testConnectionString)
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(_testConnectionString)
             .LogTo(commands.Add, [DbLoggerCategory.Database.Command.Name], LogLevel.Information).Options;
         await using (var replay = new AppDbContext(options))
         {
@@ -368,6 +368,6 @@ public sealed class OrderStorePostgresTests(AspireIntegrationFixture fixture) : 
     }
 
     private AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>()
-        .UseNpgsql(_testConnectionString, options => options.EnableRetryOnFailure().MaxBatchSize(1))
+        .UseOpenErpPostgres(_testConnectionString, options => options.EnableRetryOnFailure().MaxBatchSize(1))
         .Options);
 }

@@ -2,6 +2,8 @@ namespace OpenERP.Api.Orders;
 
 internal sealed class OrderRecord : Entity
 {
+    private string? _createdRaw;
+
     public required string ErpId { get; init; }
     public required string OrderNumber { get; set; }
     public int Sid { get; set; }
@@ -15,7 +17,17 @@ internal sealed class OrderRecord : Entity
     public string? TotalCurrency { get; set; }
     public string? Logistics { get; set; }
     public string? Details { get; set; }
-    public string? CreatedRaw { get; set; }
+    public string? CreatedRaw
+    {
+        get => _createdRaw;
+        set
+        {
+            _createdRaw = value;
+            CreatedAtTicks = OrderSourceTime.ToTicks(value);
+        }
+    }
+
+    public long? CreatedAtTicks { get; set; } = OrderSourceTime.UnknownTicks;
     public string? CreatedSource { get; set; }
     public string? PaidRaw { get; set; }
     public string? PaidSource { get; set; }

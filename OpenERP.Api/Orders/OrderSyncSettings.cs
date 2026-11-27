@@ -1,6 +1,7 @@
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using OpResult;
+using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Orders;
 
@@ -14,14 +15,6 @@ public interface IOrderSyncSettingsStore
 
     Task<OpResult<OrderSyncSettingsSnapshot>> SaveAsync(
         bool enabled, IReadOnlyList<int> shopSids, CancellationToken cancellationToken);
-}
-
-/// <summary>定时同步设置实体；全表最多保留一行。</summary>
-public sealed class OrderSyncSettings : Entity
-{
-    public bool Enabled { get; set; }
-
-    public int[] ShopSids { get; set; } = [];
 }
 
 public sealed class OrderSyncSettingsStore(AppDbContext db) : IOrderSyncSettingsStore
@@ -42,15 +35,13 @@ public sealed class OrderSyncSettingsStore(AppDbContext db) : IOrderSyncSettings
         var normalized = shopSids.Distinct().Order().ToArray();
         try
         {
-            // 单条插入或更新语句原子替换整份配置，避免并发保存把 Enabled 和 ShopSids 合并成用户未提交的组合。
-            await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO "OrderSyncSettings" ("Id", "Enabled", "ShopSids")
-                VALUES ({Guid.CreateVersion7()}, {enabled}, {normalized})
-                ON CONFLICT ("Singleton") DO UPDATE
-                SET "Enabled" = EXCLUDED."Enabled", "ShopSids" = EXCLUDED."ShopSids", "DeletedAt" = NULL
-                """, cancellationToken);
+            await SingletonSettings.SaveAsync(db, new OrderSyncSettings { Enabled = enabled, ShopSids = normalized },
+                ct => db.OrderSyncSettings.IgnoreQueryFilters().ExecuteUpdateAsync(setters => setters
+                    .SetProperty(settings => settings.Enabled, enabled)
+                    .SetProperty(settings => settings.ShopSids, normalized)
+                    .SetProperty(settings => settings.DeletedAt, (DateTimeOffset?)null), ct), cancellationToken);
         }
-        catch (DbException)
+        catch (Exception error) when (error is DbException or DbUpdateException)
         {
             return OpResults.Err("保存定时同步设置失败，请重试。");
         }

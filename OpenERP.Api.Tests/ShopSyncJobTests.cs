@@ -357,7 +357,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
         TestErpClient erp, CancellationToken cancellationToken, IErpTokenStore? store = null)
     {
         var services = new ServiceCollection();
-        services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
+        services.AddDbContext<AppDbContext>(options => options.UseOpenErpPostgres(_connectionString));
         services.AddSingleton<IErpClient>(erp);
         services.AddSingleton<IErpTokenStore>(store ?? new TestErpTokenStore("test-token"));
         services.AddLogging();
@@ -432,7 +432,7 @@ public sealed class ShopSyncJobTests(AspireIntegrationFixture fixture) : IAsyncL
     }
 
     private AppDbContext CreateDbContext() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
+        new(new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(_connectionString).Options);
 
     private sealed class RecordingNotifier : IShopSyncNotifier
     {

@@ -595,7 +595,7 @@ public sealed class OrderSyncHubTests
         builder.Services.AddSignalR();
         if (connectionString is not null)
         {
-            builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(connectionString));
+            builder.Services.AddDbContext<AppDbContext>(options => options.UseOpenErpPostgres(connectionString));
             builder.AddAccountAuthentication();
         }
         else

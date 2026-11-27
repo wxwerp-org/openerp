@@ -6,6 +6,7 @@ using OpenERP.Api.Erp;
 using OpenERP.Api.Orders;
 using OpenERP.Api.Orders.Printing;
 using OpenERP.Api.Orders.Sources;
+using OpenERP.Api.Persistence;
 
 if (args is ["reset-admin-password", ..])
     return await ResetAdminPassword.RunAsync(args);
@@ -15,11 +16,9 @@ if (args is ["initialize-compose-credentials", ..])
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
-builder.AddNpgsqlDbContext<AppDbContext>("openerp");
-builder.AddRedisDistributedCache("redis");
-builder.Services.AddHybridCache();
+builder.AddApplicationDatabase();
+builder.AddApplicationCache();
 builder.AddFileStorage();
-builder.Services.AddSingleton<FileStore>();
 builder.AddAccountAuthentication();
 builder.Services.AddScoped<OrderListQuery>();
 builder.Services.AddScoped<OrderReportQuery>();
@@ -79,9 +78,11 @@ await using var app = builder.Build();
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var stopping = app.Lifetime.ApplicationStopping;
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     if (app.Environment.IsDevelopment())
-        await scope.ServiceProvider.GetRequiredService<AppDbContext>().MigrateDevelopmentDatabaseAsync(stopping);
+        await db.MigrateDevelopmentDatabaseAsync(stopping);
     await scope.ServiceProvider.GetRequiredService<AccountStore>().SeedAsync(stopping);
+    await ReadModelBackfill.RunAsync(db, stopping);
 }
 
 app.UseAccountAuthentication();
@@ -91,7 +92,7 @@ app.MapUserManagement();
 app.MapAbout();
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
-    await app.Services.GetRequiredService<FileStore>().EnsureBucketAsync(app.Lifetime.ApplicationStopping);
+    await app.Services.InitializeFileStorageAsync(app.Lifetime.ApplicationStopping);
     app.MapFiles();
 }
 app.UseWebSockets();

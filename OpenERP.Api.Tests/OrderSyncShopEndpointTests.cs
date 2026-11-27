@@ -174,14 +174,14 @@ public sealed class OrderSyncShopEndpointTests(AspireIntegrationFixture fixture)
     }
 
     private AppDbContext CreateDbContext() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
+        new(new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(_connectionString).Options);
 
     private async Task<TestApp> StartAppAsync(string role, CancellationToken ct, Guid? userId = null, string erpToken = "token")
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(System.Net.IPAddress.Loopback, 0));
-        builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
+        builder.Services.AddDbContext<AppDbContext>(options => options.UseOpenErpPostgres(_connectionString));
         builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore(erpToken));
         builder.Services.AddSingleton(new PlatformOrderSources([new TestPlatformOrderSource()]));
         ErpEndpointTestAuth.Configure(builder);

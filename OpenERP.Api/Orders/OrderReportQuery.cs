@@ -7,7 +7,7 @@ using OpenERP.Api.Authentication;
 namespace OpenERP.Api.Orders;
 
 /// <summary>订单报表：在可见本地订单上按创建日期、店铺、平台等条件统计订单数、件数与按币种分列的金额。</summary>
-internal sealed class OrderReportQuery(AppDbContext db, OrderListQuery list)
+internal sealed class OrderReportQuery(AppDbContext db)
 {
     private const int TopProducts = 10;
     private const string NoLogistics = "未填写";
@@ -21,19 +21,25 @@ internal sealed class OrderReportQuery(AppDbContext db, OrderListQuery list)
 
         var orders = access.Orders(db).AsNoTracking();
         var lines = db.Set<OrderLineRecord>().AsNoTracking();
-        var matched = from header in list.ReadHeaders()
-                      join order in orders on header.ErpId equals order.ErpId
-                      where (request.ShopSid == null || order.Sid == request.ShopSid)
-                          && (platform == null || order.Platform == platform)
-                          && (request.CreatedFrom == null || header.CreatedDate >= request.CreatedFrom)
-                          && (request.CreatedTo == null || header.CreatedDate <= request.CreatedTo)
-                      select new { header, order };
-        var data = await matched.Select(m => new OrderReportRow(m.order.ErpId, m.order.Sid, m.order.Platform, m.order.Status,
-            m.order.Logistics, m.order.TotalAmount, m.order.TotalCurrency, m.header.CreatedDate, m.header.DispatchedAt != null,
-            m.order.PaidRaw != null && m.order.PaidRaw.Trim() != "",
-            lines.Where(line => line.ErpId == m.order.ErpId).Sum(line => (long)line.Quantity))).ToArrayAsync(ct);
+        var fromTicks = request.CreatedFrom is { } from ? (long)from.DayNumber * TimeSpan.TicksPerDay : (long?)null;
+        var endTicks = request.CreatedTo is { } to ? (to.DayNumber + 1L) * TimeSpan.TicksPerDay : (long?)null;
+        var matched = orders.Where(order => (request.ShopSid == null || order.Sid == request.ShopSid)
+            && (platform == null || order.Platform == platform)
+            && (fromTicks == null || order.CreatedAtTicks >= fromTicks)
+            && (endTicks == null || order.CreatedAtTicks < endTicks));
+        var rawRows = await matched.Select(order => new
+        {
+            order.ErpId, order.Sid, order.Platform, order.Status, order.Logistics, order.TotalAmount, order.TotalCurrency,
+            order.CreatedAtTicks, order.DispatchedRaw, order.PaidRaw,
+            ItemQuantity = lines.Where(line => line.ErpId == order.ErpId).Sum(line => (long)line.Quantity)
+        }).ToArrayAsync(ct);
+        var data = rawRows.Select(row => new OrderReportRow(row.ErpId, row.Sid, row.Platform, row.Status, row.Logistics,
+            row.TotalAmount, row.TotalCurrency,
+            row.CreatedAtTicks is >= 0 ? DateOnly.FromDayNumber((int)(row.CreatedAtTicks.Value / TimeSpan.TicksPerDay)) : null,
+            OrderSourceTime.ToTicks(row.DispatchedRaw) >= 0,
+            row.PaidRaw != null && row.PaidRaw.Trim() != "", row.ItemQuantity)).ToArray();
 
-        var ids = matched.Select(m => m.order.ErpId);
+        var ids = matched.Select(order => order.ErpId);
         var products = await (from line in lines join id in ids on line.ErpId equals id select line)
             .GroupBy(line => new { line.ProductId, line.SkuCode })
             .Select(group => new

@@ -192,6 +192,10 @@ namespace OpenERP.Api.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("SearchName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<int>("Sid")
                         .HasColumnType("integer");
 
@@ -302,11 +306,11 @@ namespace OpenERP.Api.Migrations
                     b.Property<bool?>("Appended")
                         .HasColumnType("boolean");
 
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Currency")
                         .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Details")
                         .HasColumnType("text");
@@ -367,6 +371,9 @@ namespace OpenERP.Api.Migrations
 
                     b.Property<string>("Buyer")
                         .HasColumnType("text");
+
+                    b.Property<long?>("CreatedAtTicks")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("CreatedRaw")
                         .HasColumnType("text");
@@ -441,6 +448,9 @@ namespace OpenERP.Api.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtTicks", "ErpId")
+                        .IsDescending(true, false);
 
                     b.ToTable("Orders", (string)null);
                 });

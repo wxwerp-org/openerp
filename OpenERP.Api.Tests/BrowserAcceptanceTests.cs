@@ -94,7 +94,7 @@ public sealed class BrowserAcceptanceTests(ITestOutputHelper output)
     private static async Task SeedOrderAsync(AspireIntegrationFixture fixture, CancellationToken ct)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(await fixture.GetPostgresConnectionStringAsync(ct)).Options;
+            .UseOpenErpPostgres(await fixture.GetPostgresConnectionStringAsync(ct)).Options;
         await using var db = new AppDbContext(options);
         // 两张主单覆盖两个平台店铺，供商品量报表的平台分布和店铺排行验收。
         var order = new OrderSnapshot("browser-local-order", "erp-internal-order", 30, "TemuPop", "处理中",

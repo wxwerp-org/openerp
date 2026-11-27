@@ -567,7 +567,7 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
     }
 
     private AppDbContext CreateDbContext() =>
-        new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_connectionString).Options);
+        new(new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres(_connectionString).Options);
 
     private async Task<TestApp> StartAppAsync(
         CancellationToken cancellationToken, IShopSyncJob? job = null,
@@ -576,8 +576,8 @@ public sealed class ShopDirectoryEndpointTests(AspireIntegrationFixture fixture)
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
         builder.Logging.ClearProviders();
         builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
-        builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(_connectionString));
-        builder.Services.AddSingleton<IErpClient>(new TestErpClient());
+        builder.Services.AddDbContext<AppDbContext>(options => options.UseOpenErpPostgres(_connectionString));
+        builder.Services.AddSingleton<IErpClient>(erp ?? new TestErpClient());
         builder.Services.AddSingleton<IErpTokenStore>(new TestErpTokenStore("test-token"));
         builder.Services.AddSingleton(job ?? new FakeShopSyncJob());
         builder.Services.AddScoped<IOrderSyncSettingsStore, OrderSyncSettingsStore>();

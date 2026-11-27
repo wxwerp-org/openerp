@@ -243,7 +243,7 @@ public sealed class OrderSyncBatchTests
         var services = new ServiceCollection();
         services.AddSingleton<IPlatformShops>(credentials);
         services.AddSingleton(new PlatformOrderSources([source]));
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql().Options;
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseOpenErpPostgres().Options;
         services.AddScoped(_ => new OrderStore(new AppDbContext(options)));
         return services.BuildServiceProvider();
     }

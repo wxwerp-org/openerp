@@ -16,7 +16,7 @@ internal sealed partial class AccountStore
     internal async Task<(OpResult.OpResult Result, int Status)> SetShopAssignmentsAsync(
         Guid id, HashSet<AssignedShop> requested, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var user = await LockByIdAsync(write, id, ct);
         if (user is null)

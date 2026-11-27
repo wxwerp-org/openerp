@@ -1,7 +1,6 @@
-using System.Net;
-using Amazon.S3;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using OpenERP.Api.ObjectStorage;
 
 namespace OpenERP.Api;
 
@@ -16,11 +15,11 @@ public static class FileEndpoints
             {
                 return await next(context);
             }
-            catch (AmazonS3Exception exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+            catch (ObjectStorageException exception) when (exception.NotFound)
             {
                 return TypedResults.NotFound();
             }
-            catch (AmazonS3Exception exception)
+            catch (ObjectStorageException exception)
             {
                 app.Logger.LogError(exception, "File storage request failed");
                 return TypedResults.Problem("文件存储暂时不可用，请稍后重试。", statusCode: 503);
@@ -46,7 +45,8 @@ public static class FileEndpoints
                     ["file"] = ["文件不能为空，且不能超过 20 MiB。"]
                 });
 
-            var result = await store.UploadAsync(file, name, contentType, ct);
+            await using var input = file.OpenReadStream();
+            var result = await store.UploadAsync(input, name, contentType, file.Length, ct);
             return TypedResults.Created($"/api/files/{Uri.EscapeDataString(result.Key)}", result);
         })
         .WithMetadata(new RequestSizeLimitAttribute(FileStore.MaxFileSize + 1024 * 1024))
@@ -55,18 +55,15 @@ public static class FileEndpoints
         files.MapGet("/{key}", async Task<Results<PushStreamHttpResult, NotFound>> (
             string key, bool? download, FileStore store, HttpContext context, CancellationToken ct) =>
         {
-            if (!FileStore.IsValidKey(key)) return TypedResults.NotFound();
-            var response = await store.OpenAsync(key, ct);
+            if (await store.OpenAsync(key, ct) is not { } file) return TypedResults.NotFound();
+            context.Response.RegisterForDispose(file.Object);
             context.Response.Headers.CacheControl = "no-store";
             context.Response.Headers.XContentTypeOptions = "nosniff";
-            context.Response.ContentLength = response.ContentLength;
-            var type = FileStore.ContentType(key)!;
+            context.Response.ContentLength = file.Metadata.Size;
+            var type = file.Metadata.ContentType;
             var attachment = download == true || type.StartsWith("application/vnd.", StringComparison.Ordinal);
-            return TypedResults.Stream(async output =>
-            {
-                using (response)
-                    await response.ResponseStream.CopyToAsync(output, ct);
-            }, type, attachment ? key[33..] : null);
+            return TypedResults.Stream(output => file.Object.Content.CopyToAsync(output, ct),
+                type, attachment ? file.Metadata.FileName : null);
         });
 
         files.MapDelete("/{key}", async Task<Results<NoContent, NotFound>> (

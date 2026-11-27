@@ -1,14 +1,12 @@
-using Amazon.S3;
-using Amazon.S3.Model;
+using OpenERP.Api.ObjectStorage;
 
 namespace OpenERP.Api;
 
-/// <summary>存放在应用 S3 存储桶中的文件。</summary>
+/// <summary>存放在应用对象存储中的文件。</summary>
 public sealed record StoredFile(string Key, string FileName, string ContentType, long Size);
 
-public sealed class FileStore(IAmazonS3 s3)
+internal sealed class FileStore(IObjectStorage storage)
 {
-    public const string Bucket = "openerp-files";
     public const long MaxFileSize = 20 * 1024 * 1024;
 
     public static string? ContentType(string name) => Path.GetExtension(name).ToLowerInvariant() switch
@@ -28,54 +26,34 @@ public sealed class FileStore(IAmazonS3 s3)
         && !key.Contains('/') && !key.Contains('\\') && !key.Any(char.IsControl)
         && ContentType(key) is not null;
 
-    public async Task EnsureBucketAsync(CancellationToken ct)
-    {
-        var buckets = await s3.ListBucketsAsync(new ListBucketsRequest(), ct);
-        if (buckets.Buckets is null || buckets.Buckets.All(bucket => bucket.BucketName != Bucket))
-        {
-            await s3.PutBucketAsync(new PutBucketRequest { BucketName = Bucket }, ct);
-        }
-    }
-
     public async Task<IReadOnlyList<StoredFile>> ListAsync(CancellationToken ct)
     {
+        var objects = await storage.ListAsync(ct);
         var files = new List<StoredFile>();
-        string? continuationToken = null;
-        do
+        foreach (var item in objects)
         {
-            var page = await s3.ListObjectsV2Async(new ListObjectsV2Request
-            {
-                BucketName = Bucket,
-                ContinuationToken = continuationToken
-            }, ct);
-            foreach (var item in page.S3Objects ?? [])
-            {
-                if (IsValidKey(item.Key))
-                    files.Add(new(item.Key, item.Key[33..], ContentType(item.Key)!, item.Size ?? 0));
-            }
-            continuationToken = page.IsTruncated == true ? page.NextContinuationToken : null;
-        } while (continuationToken is not null);
+            if (IsValidKey(item.Key))
+                files.Add(Describe(item.Key, item.Size));
+        }
         return files;
     }
 
-    public async Task<StoredFile> UploadAsync(IFormFile file, string fileName, string contentType, CancellationToken ct)
+    public async Task<StoredFile> UploadAsync(Stream input, string fileName, string contentType, long size, CancellationToken ct)
     {
         var key = $"{Guid.NewGuid():N}_{fileName}";
-        await using var input = file.OpenReadStream();
-        await s3.PutObjectAsync(new PutObjectRequest
-        {
-            BucketName = Bucket,
-            Key = key,
-            InputStream = input,
-            ContentType = contentType
-        }, ct);
-        return new(key, fileName, contentType, file.Length);
+        await storage.PutAsync(key, input, contentType, ct);
+        return new(key, fileName, contentType, size);
     }
 
-    public Task<GetObjectResponse> OpenAsync(string key, CancellationToken ct) =>
-        s3.GetObjectAsync(new GetObjectRequest { BucketName = Bucket, Key = key }, ct);
+    public async Task<(StoredFile Metadata, OpenedObject Object)?> OpenAsync(string key, CancellationToken ct)
+    {
+        if (!IsValidKey(key))
+            return null;
+        var opened = await storage.OpenAsync(key, ct);
+        return opened is null ? null : (Describe(key, opened.Size), opened);
+    }
 
-    // S3 delete is deliberately idempotent, including when the object is already absent.
-    public Task DeleteAsync(string key, CancellationToken ct) =>
-        s3.DeleteObjectAsync(new DeleteObjectRequest { BucketName = Bucket, Key = key }, ct);
+    public Task DeleteAsync(string key, CancellationToken ct) => storage.DeleteAsync(key, ct);
+
+    private static StoredFile Describe(string key, long size) => new(key, key[33..], ContentType(key)!, size);
 }

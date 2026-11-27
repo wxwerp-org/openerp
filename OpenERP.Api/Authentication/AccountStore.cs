@@ -1,12 +1,12 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
+using OpenERP.Api.Persistence;
 
 namespace OpenERP.Api.Authentication;
 
 internal sealed partial class AccountStore(
     AppDbContext db,
-    DbContextOptions<AppDbContext> options,
+    IDbContextFactory<AppDbContext> writes,
     IPasswordHasher<UserAccount> passwords,
     TimeProvider clock)
 {
@@ -16,13 +16,22 @@ internal sealed partial class AccountStore(
 
     internal async Task SeedAsync(CancellationToken ct)
     {
-        var admin = new UserAccount { Username = UserAccount.AdminUsername, Name = "管理员", CreatedAt = UtcNow() };
-        await using var write = CreateWriteContext();
-        await write.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO "Users" ("Id", "Username", "Name", "CreatedAt")
-            VALUES ({admin.Id}, {admin.Username}, {admin.Name}, {admin.CreatedAt})
-            ON CONFLICT ("Username") WHERE "DeletedAt" IS NULL DO NOTHING
-            """, ct);
+        await using var write = writes.CreateDbContext();
+        var administrators = write.Users.Where(user => user.Username == UserAccount.AdminUsername);
+        if (await administrators.AnyAsync(ct))
+            return;
+
+        write.Users.Add(new UserAccount { Username = UserAccount.AdminUsername, Name = "管理员", CreatedAt = UtcNow() });
+        try
+        {
+            await write.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException exception) when (DatabaseErrors.IsUniqueConstraintViolation(exception))
+        {
+            // 只有确有并发实例创建了管理员时，才把唯一约束冲突视为初始化成功。
+            if (!await administrators.AnyAsync(ct))
+                throw;
+        }
     }
 
     internal async Task<bool> IsInitializedAsync(CancellationToken ct) =>
@@ -36,8 +45,8 @@ internal sealed partial class AccountStore(
             return false;
 
         var hash = passwords.HashPassword(new UserAccount { Username = UserAccount.AdminUsername }, newPassword);
-        await using var write = CreateWriteContext();
-        // UPDATE 与登录和 CLI 重置争用同一行，等待后由 PostgreSQL 重新判定 NULL 条件。
+        await using var write = writes.CreateDbContext();
+        // UPDATE 与登录和 CLI 重置争用同一行，只能在密码仍未设置时写入。
         var updated = await write.Users
             .Where(user => user.Username == UserAccount.AdminUsername && user.PasswordHash == null)
             .ExecuteUpdateAsync(setters => setters.SetProperty(user => user.PasswordHash, hash), ct);
@@ -56,7 +65,7 @@ internal sealed partial class AccountStore(
         if (username is not { Length: >= 1 and <= 20 } || !IsValidPassword(password))
             return null;
 
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var user = await LockByUsernameAsync(write, username, ct);
         if (user is null && username == UserAccount.AdminUsername)
@@ -72,7 +81,7 @@ internal sealed partial class AccountStore(
         if (verification == PasswordVerificationResult.SuccessRehashNeeded)
             user.PasswordHash = passwords.HashPassword(user, password!);
 
-        // PostgreSQL 时间戳保留微秒精度，首次响应与后续数据库读取保持一致。
+        // 首次响应与后续读取统一使用微秒精度。
         var now = UtcNow();
         await MarkRevokedAsync(write.RefreshTokens.Where(token => token.ExpiresAt <= now), now, ct);
         user.LastLoginAt = now;
@@ -94,14 +103,14 @@ internal sealed partial class AccountStore(
 
     internal async Task RevokeAsync(byte[] tokenHash, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await MarkRevokedAsync(write.RefreshTokens.Where(token => token.TokenHash == tokenHash), UtcNow(), ct);
     }
 
     internal async Task<PasswordChangeResult> ChangePasswordAsync(
         Guid userId, Guid loginId, string? oldPassword, string newPassword, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var user = await LockByIdAsync(write, userId, ct);
 
@@ -120,7 +129,7 @@ internal sealed partial class AccountStore(
 
     internal async Task<bool> ResetPasswordAsync(string newPassword, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var admin = await LockByUsernameAsync(write, UserAccount.AdminUsername, ct);
         if (admin is null)
@@ -134,7 +143,7 @@ internal sealed partial class AccountStore(
     internal async Task<UserRefreshToken?> UpdateProfileAsync(
         Guid userId, Guid loginId, ProfileChanges changes, CancellationToken ct)
     {
-        await using var write = CreateWriteContext();
+        await using var write = writes.CreateDbContext();
         await using var transaction = await write.Database.BeginTransactionAsync(ct);
         var user = await LockByIdAsync(write, userId, ct);
         if (user?.PasswordHash is null)
@@ -163,30 +172,18 @@ internal sealed partial class AccountStore(
             .Where(token => token.ExpiresAt > now && token.User.PasswordHash != null);
     }
 
-    private AppDbContext CreateWriteContext()
-    {
-        // 连接在提交时中断可能已有写入结果，避免自动重放整笔认证事务。
-        var writeOptions = new DbContextOptionsBuilder<AppDbContext>(options)
-            .UseNpgsql(npgsql => npgsql.ExecutionStrategy(dependencies => new NonRetryingExecutionStrategy(dependencies)))
-            .Options;
-        return new AppDbContext(writeOptions);
-    }
-
     // 登录、改密与重置均先锁账号行，再检查密码或修改会话。
-    private static async Task<UserAccount?> LockByUsernameAsync(AppDbContext write, string username, CancellationToken ct)
-    {
-        var accounts = await write.Users.FromSqlInterpolated(
-            $"""SELECT * FROM "Users" WHERE "Username" = {username} AND "DeletedAt" IS NULL FOR UPDATE""")
-            .ToListAsync(ct);
-        return accounts.SingleOrDefault();
-    }
+    private static Task<UserAccount?> LockByUsernameAsync(AppDbContext write, string username, CancellationToken ct) =>
+        LockAccountAsync(write.Users.Where(user => user.Username == username), ct);
 
-    private static async Task<UserAccount?> LockByIdAsync(AppDbContext write, Guid id, CancellationToken ct)
+    private static Task<UserAccount?> LockByIdAsync(AppDbContext write, Guid id, CancellationToken ct) =>
+        LockAccountAsync(write.Users.Where(user => user.Id == id), ct);
+
+    private static async Task<UserAccount?> LockAccountAsync(IQueryable<UserAccount> accounts, CancellationToken ct)
     {
-        var accounts = await write.Users.FromSqlInterpolated(
-            $"""SELECT * FROM "Users" WHERE "Id" = {id} AND "DeletedAt" IS NULL FOR UPDATE""")
-            .ToListAsync(ct);
-        return accounts.SingleOrDefault();
+        // 将字段写回原值，在当前事务内取得写锁，并在取得锁后读取最新的账号状态。
+        var updated = await accounts.ExecuteUpdateAsync(setters => setters.SetProperty(user => user.Name, user => user.Name), ct);
+        return updated == 0 ? null : await accounts.SingleAsync(ct);
     }
 
     private async Task ReplacePasswordAsync(AppDbContext write, UserAccount user, string newPassword, CancellationToken ct)

@@ -1,6 +1,3 @@
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-
 namespace OpenERP.Api.Authentication;
 
 internal static class ResetAdminPassword
@@ -25,22 +22,24 @@ internal static class ResetAdminPassword
         if (!AccountStore.IsValidPassword(password))
             return Fail("新密码长度必须为 6–20 个字符。");
 
-        var configuration = WebApplication.CreateBuilder([]).Configuration;
-        var connectionString = configuration.GetConnectionString("openerp");
-        if (string.IsNullOrWhiteSpace(connectionString))
+        var builder = WebApplication.CreateBuilder(Array.Empty<string>());
+        if (string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("openerp")))
             return Fail("未配置 ConnectionStrings:openerp。");
 
         try
         {
-            var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options;
-            await using var db = new AppDbContext(options);
-            var store = new AccountStore(db, options, new PasswordHasher<UserAccount>(), TimeProvider.System);
-            if (!await store.ResetPasswordAsync(password!, CancellationToken.None))
+            builder.AddApplicationDatabase();
+            builder.Services.AddAccountStore();
+            await using var host = builder.Build();
+            await using var scope = host.Services.CreateAsyncScope();
+            var store = scope.ServiceProvider.GetRequiredService<AccountStore>();
+            var lifetime = scope.ServiceProvider.GetRequiredService<IHostApplicationLifetime>();
+            if (!await store.ResetPasswordAsync(password!, lifetime.ApplicationStopping))
                 return Fail("数据库中没有管理员账号。");
         }
         catch (Exception exception) when (AuthenticationEndpoints.IsDatabaseFailure(exception))
         {
-            return Fail("无法重置管理员密码，请检查 PostgreSQL 连接和迁移状态。");
+            return Fail("无法重置管理员密码，请检查数据库连接和 migrations 状态。");
         }
 
         Console.WriteLine("管理员密码已重置，所有登录会话已撤销。");

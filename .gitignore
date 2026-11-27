@@ -483,6 +483,9 @@ $RECYCLE.BIN/
 *.swp
 
 # OpenERP repository additions
+# Native profile development data
+/.openerp/
+
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
 

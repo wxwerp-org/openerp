@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.JsonWebTokens;
 using OpenERP.Api.Authentication;
+using OpenERP.Api.Persistence;
 using OpResult;
 using Xunit;
 
@@ -146,7 +147,7 @@ public sealed class UserManagementTests(AspireIntegrationFixture fixture) : IAsy
 
         // Given PostgreSQL 中保留了原用户及指向原用户的已撤销会话。
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(await fixture.GetPostgresConnectionStringAsync(ct)).Options;
+            .UseOpenErpPostgres(await fixture.GetPostgresConnectionStringAsync(ct)).Options;
         await using var db = new AppDbContext(options);
         var original = await db.Users.IgnoreQueryFilters().AsNoTracking().SingleAsync(account => account.Id == id, ct);
         Assert.Equal(after, original.Username);
@@ -154,7 +155,8 @@ public sealed class UserManagementTests(AspireIntegrationFixture fixture) : IAsy
             token => token.UserId == id && token.DeletedAt != null, ct));
         var availableAt = Assert.IsType<DateTimeOffset>(original.DeletedAt).AddDays(7);
         var clock = new TestClock(availableAt.AddTicks(-10));
-        var store = new AccountStore(db, options, new PasswordHasher<UserAccount>(), clock);
+        var store = new AccountStore(db, new AccountWriteDbContextFactory(options),
+            new PasswordHasher<UserAccount>(), clock);
         var changes = new ProfileChanges("员工", null, null);
 
         // When 距离七天还差 PostgreSQL 可表达的最小单位；Then 仍禁止新建和改名。

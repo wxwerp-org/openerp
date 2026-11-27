@@ -1,4 +1,6 @@
+using System.Data.Common;
 using Aspire.Hosting.ApplicationModel;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenERP.AppHost;
 
@@ -11,39 +13,79 @@ if (builder.ExecutionContext.IsPublishMode)
 
 builder.AddDockerComposeEnvironment("compose").WithDashboard(false);
 
-// 开发卷由 Aspire 按 AppHost 路径隔离。
-var postgres = builder.AddPostgres("postgres")
-    .WithImageTag("18-alpine")
-    .WithDataVolume()
-    .WithLifetime(ContainerLifetime.Persistent);
-var database = postgres.AddDatabase("openerp");
-
-var redis = builder.AddRedis("redis")
-    .WithImageTag("8-alpine")
-    .WithDataVolume()
-    .WithLifetime(ContainerLifetime.Persistent);
-
-var storage = builder.AddSeaweedFS("seaweedfs")
-    .WithImageTag("4.53")
-    .WithS3()
-    .WithDataVolume()
-    .WithLifetime(ContainerLifetime.Persistent);
-
-// Master/Volume 就绪后，还需确认 API 启动所依赖的 S3 列桶操作可用。
-builder.Services.AddHealthChecks()
-    .AddCheck("seaweedfs-s3", new SeaweedFsS3HealthCheck(storage.Resource), timeout: TimeSpan.FromSeconds(10));
-storage.WithHealthCheck("seaweedfs-s3");
+if (builder.Configuration["NativeDataDirectory"] is { Length: > 0 } nativeDataDirectory)
+{
+    var dataDirectory = Directory.CreateDirectory(Path.GetFullPath(nativeDataDirectory, builder.AppHostDirectory));
+    var sqlite = new DbConnectionStringBuilder { ["Data Source"] = Path.Combine(dataDirectory.FullName, "openerp.db") };
+    builder.Configuration["ConnectionStrings:openerp"] = sqlite.ConnectionString;
+    builder.Configuration["ObjectStorage:RootPath"] = Path.Combine(dataDirectory.FullName, "objects");
+}
 
 var api = builder.AddDotnetProject("api", "../OpenERP.Api/OpenERP.Api.csproj")
-    .WithReference(database)
     // 固定宿主端口，重启后地址不变。
     .WithHttpsEndpoint(port: DevPorts.Api)
-    .WithHttpHealthCheck("/health", endpointName: "https")
-    .WithReference(redis)
-    .WithReference(storage)
-    .WaitFor(database)
-    .WaitFor(redis)
-    .WaitFor(storage);
+    .WithHttpHealthCheck("/health", endpointName: "https");
+
+switch (builder.Configuration["Database:Provider"]?.ToUpperInvariant())
+{
+    case null or "POSTGRESQL":
+        // 开发卷由 Aspire 按 AppHost 路径隔离。
+        var database = builder.AddPostgres("postgres")
+            .WithImageTag("18-alpine")
+            .WithDataVolume()
+            .WithLifetime(ContainerLifetime.Persistent)
+            .AddDatabase("openerp");
+        api.WithEnvironment("Database__Provider", "PostgreSQL").WithReference(database).WaitFor(database);
+        break;
+    case "SQLITE":
+        if (string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString("openerp")))
+            throw new InvalidOperationException("SQLite 模式需要配置 ConnectionStrings:openerp。");
+        api.WithEnvironment("Database__Provider", "Sqlite").WithReference(builder.AddConnectionString("openerp"));
+        break;
+    default:
+        throw new InvalidOperationException("Database:Provider 必须为 PostgreSQL 或 Sqlite。");
+}
+
+switch (builder.Configuration["Cache:Provider"]?.ToUpperInvariant())
+{
+    case null or "REDIS":
+        var redis = builder.AddRedis("redis")
+            .WithImageTag("8-alpine")
+            .WithDataVolume()
+            .WithLifetime(ContainerLifetime.Persistent);
+        api.WithReference(redis).WaitFor(redis);
+        break;
+    case "MEMORY":
+        api.WithEnvironment("ConnectionStrings__redis", "");
+        break;
+    default:
+        throw new InvalidOperationException("Cache:Provider 必须为 Redis 或 Memory。");
+}
+
+switch (builder.Configuration["ObjectStorage:Provider"]?.ToUpperInvariant())
+{
+    case null or "S3":
+        var storage = builder.AddSeaweedFS("seaweedfs")
+            .WithImageTag("4.53")
+            .WithS3()
+            .WithDataVolume()
+            .WithLifetime(ContainerLifetime.Persistent);
+
+        // Master/Volume 就绪后，还需确认 API 启动所依赖的 S3 列桶操作可用。
+        builder.Services.AddHealthChecks()
+            .AddCheck("seaweedfs-s3", new SeaweedFsS3HealthCheck(storage.Resource), timeout: TimeSpan.FromSeconds(10));
+        storage.WithHealthCheck("seaweedfs-s3");
+        api.WithEnvironment("ObjectStorage__Provider", "S3").WithReference(storage).WaitFor(storage);
+        break;
+    case "LOCAL":
+        var rootPath = builder.Configuration["ObjectStorage:RootPath"];
+        if (string.IsNullOrWhiteSpace(rootPath))
+            throw new InvalidOperationException("本机对象存储需要配置 ObjectStorage:RootPath。");
+        api.WithEnvironment("ObjectStorage__Provider", "Local").WithEnvironment("ObjectStorage__RootPath", rootPath);
+        break;
+    default:
+        throw new InvalidOperationException("ObjectStorage:Provider 必须为 S3 或 Local。");
+}
 
 var web = builder.AddViteApp("web", "../OpenERP.Web")
     // 安装器没有 TTY；允许 pnpm 重建不兼容的 node_modules，同时保持锁文件校验。

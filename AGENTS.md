@@ -7,6 +7,7 @@
 - 遇到警告（含 ESLint），按该诊断的官方指导修正成因，不得忽略、屏蔽或降级。
 - .NET `restore`、`build` 直接在沙箱外执行。`run`、`test` 涉及显式或隐式还原时同样适用。
 - 涉及 Aspire 时，先读并遵循[项目内 Aspire Skill](.agents/skills/aspire/SKILL.md)，按路由名称读取仓库内对应的子 Skill。直接调用 PATH 中的 `aspire`。
+- 用户让编码助手在本机启动、验证页面或把版本留在本机时，遵循[助手启动指南](.agents/skills/openerp-startup/SKILL.md)，按其中判断依据和示例措辞行动。
 - 用户明确指令优先于 Skill。若 Skill 导致请求确认、暂停、未完成或偏离任务，链接实际读取的 Skill，引用原文并区分其要求与自己的判断。
 - 前端基于 SpiderUI（Art Design Pro）框架：Vue 3、Element Plus、Pinia、vue-i18n，约定见[前端结构与约定](docs/development.md#前端结构与约定)。新增或修改界面时优先复用 Element Plus 组件和 `src/components/core` 里的通用组件（`ArtTable`、`ArtTableHeader` 等），主题和颜色通过主题变量与 `src/assets/styles` 调整，不在页面里硬编码。后端调用统一走 `src/utils/http`，不要在页面里直接 `fetch`。
 

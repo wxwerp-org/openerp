@@ -1,7 +1,5 @@
-using System.ComponentModel.DataAnnotations.Schema;
 using System.Data;
 using System.Data.Common;
-using System.Globalization;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -13,31 +11,13 @@ namespace OpenERP.Api.Orders;
 
 internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> logger)
 {
-    private static readonly string OrderHeadersSql = $$"""
-        SELECT o."ErpId", o."Sid", o."Platform",
-               parsed.created_at AS "CreatedAt", parsed.created_at::date AS "CreatedDate",
-               parsed.dispatched_at AS "DispatchedAt",
-               source.created AS "CreatedRaw", source.dispatched AS "DispatchedRaw"
-        FROM "Orders" AS o
-        CROSS JOIN LATERAL (VALUES (btrim(o."CreatedRaw"), btrim(o."DispatchedRaw"))) AS source(created, dispatched)
-        CROSS JOIN LATERAL (VALUES (
-            {{OrderCreatedTimeSql.Normalize("source.created")}},
-            {{OrderCreatedTimeSql.Normalize("source.dispatched")}}
-        )) AS normalized(created, dispatched)
-        CROSS JOIN LATERAL (
-            SELECT {{OrderCreatedTimeSql.Parse("source.created", "normalized.created")}} AS created_at,
-                   {{OrderCreatedTimeSql.Parse("source.dispatched", "normalized.dispatched")}} AS dispatched_at
-        ) AS parsed
-        WHERE o."DeletedAt" IS NULL
-        """;
-
     internal async Task<(OpResult<OrderListResponse> Result, int Status)> ReadAsync(
-        OrderListRequest request, ShopAccess access, CancellationToken ct)
+        OrderListRequest request, ShopAccess access, CancellationToken cancellationToken)
     {
         try
         {
             // 订单同步可能同时改变行和子单；选项、总数与明细来自同一个数据库快照。
-            return await db.Database.CreateExecutionStrategy().ExecuteAsync<(OpResult<OrderListResponse>, int)>(async () =>
+            return await db.Database.CreateExecutionStrategy().ExecuteAsync<(OpResult<OrderListResponse>, int)>(async ct =>
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
                 var platform = string.IsNullOrEmpty(request.Platform) ? null : request.Platform;
@@ -46,7 +26,7 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
                 var response = await ReadSnapshotAsync(request, access, ct);
                 await transaction.CommitAsync(ct);
                 return (OpResults.Ok(response), StatusCodes.Status200OK);
-            });
+            }, cancellationToken);
         }
         catch (Exception exception) when (exception is DbException or RetryLimitExceededException)
         {
@@ -60,21 +40,20 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         var orders = access.Orders(db).AsNoTracking();
         var directory = access.Shops(db).AsNoTracking();
         var childOrders = db.Set<PlatformOrderRecord>().AsNoTracking();
-        var selected = ReadHeaders();
+        var selected = orders;
         if (!access.IsAdministrator)
         {
             // 目录上的 SID 可能对应另一个平台，历史订单只使用同平台的店铺名称。
             directory = directory.Where(shop => orders.Any(order => order.Platform == shop.Platform && order.Sid == shop.Sid));
             childOrders = childOrders.Where(po => orders.Any(order => order.ErpId == po.ErpId));
-            selected = selected.Where(header => orders.Any(order => order.ErpId == header.ErpId));
         }
 
         var platformOrders = childOrders.Select(po => new
         {
             po.ErpId,
             po.PoNumber,
-            Status = !string.IsNullOrWhiteSpace(po.StatusText) ? po.StatusText! :
-                !string.IsNullOrWhiteSpace(po.StatusCode) ? po.StatusCode! : "未知"
+            Status = po.StatusText != null && po.StatusText.Trim(' ', '\t', '\n', '\r') != "" ? po.StatusText :
+                po.StatusCode != null && po.StatusCode.Trim(' ', '\t', '\n', '\r') != "" ? po.StatusCode : "未知"
         });
         var shops = await orders.Select(order => order.Sid).Distinct()
             .LeftJoin(directory, sid => sid, shop => shop.Sid,
@@ -100,10 +79,16 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
             selected = selected.Where(order => order.Sid == sid);
         if (!string.IsNullOrEmpty(request.Platform))
             selected = selected.Where(order => order.Platform == request.Platform);
-        if (request.CreatedFrom is { } from)
-            selected = selected.Where(order => order.CreatedDate >= from);
+        if (request.CreatedFrom.HasValue || request.CreatedTo.HasValue)
+        {
+            var fromTicks = (long)(request.CreatedFrom?.DayNumber ?? 0) * TimeSpan.TicksPerDay;
+            selected = selected.Where(order => order.CreatedAtTicks >= fromTicks);
+        }
         if (request.CreatedTo is { } to)
-            selected = selected.Where(order => order.CreatedDate <= to);
+        {
+            var endTicks = (to.DayNumber + 1L) * TimeSpan.TicksPerDay;
+            selected = selected.Where(order => order.CreatedAtTicks < endTicks);
+        }
         if (filterPlatformOrders)
             selected = selected.Where(order => children.Any(po => po.ErpId == order.ErpId && po.Matched));
 
@@ -113,17 +98,28 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
 
         var page = (int)Math.Min(request.Page, (total - 1) / request.PageSize + 1);
         var lines = db.Set<OrderLineRecord>();
-        var rows = await selected.OrderBy(order => order.CreatedAt == null)
-            .ThenByDescending(order => order.CreatedAt).ThenBy(order => order.ErpId)
+        var rows = await selected.OrderByDescending(order => order.CreatedAtTicks).ThenBy(order => order.ErpId)
             .Skip((page - 1) * request.PageSize).Take(request.PageSize)
             .Select(order => new
             {
-                Order = order,
+                order.ErpId,
+                order.Sid,
+                order.Platform,
+                order.CreatedRaw,
+                order.CreatedAtTicks,
+                order.DispatchedRaw,
+                order.Status,
+                order.Buyer,
+                order.TotalAmount,
+                order.TotalCurrency,
+                order.Logistics,
+                order.PaidRaw,
+                order.Details,
                 LineCount = lines.Count(line => line.ErpId == order.ErpId),
                 ItemQuantity = lines.Where(line => line.ErpId == order.ErpId).Sum(line => (long)line.Quantity)
             }).ToArrayAsync(ct);
 
-        var ids = rows.Select(row => row.Order.ErpId).ToArray();
+        var ids = rows.Select(row => row.ErpId).ToArray();
         var childRows = await children.Where(po => ids.Contains(po.ErpId)).ToArrayAsync(ct);
         var childrenByOrder = childRows.OrderBy(po => po.PoNumber, StringComparer.Ordinal).ToLookup(po => po.ErpId,
             po => new PlatformOrderListItem(po.PoNumber, po.Status, po.Matched));
@@ -132,22 +128,18 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
         var linesByOrder = lineRows.ToLookup(line => line.ErpId, line => new OrderLineListItem(line.ProductId, line.SkuCode,
             line.Name, line.ImageUrl, line.Specs, line.Quantity, line.UnitPrice, line.Currency, line.Logistics,
             ParseDetails(line.Details)));
-        var orderRows = await orders.Where(order => ids.Contains(order.ErpId))
-            .Select(order => new { order.ErpId, order.Status, order.Buyer, order.TotalAmount, order.TotalCurrency,
-                order.Logistics, order.PaidRaw, order.Details })
-            .ToDictionaryAsync(order => order.ErpId, ct);
         var shopDetails = shops.ToDictionary(shop => shop.Sid);
         var items = rows.Select(row =>
         {
-            var shop = shopDetails[row.Order.Sid];
-            var detail = orderRows[row.Order.ErpId];
-            var name = access.IsAdministrator || shop.Platform == row.Order.Platform ? shop.Name : null;
-            return new OrderListItem(row.Order.ErpId, row.Order.Sid, name, row.Order.Platform,
-                childrenByOrder[row.Order.ErpId].ToArray(),
-                FormatTime(row.Order.CreatedAt, row.Order.CreatedRaw), FormatTime(row.Order.DispatchedAt, row.Order.DispatchedRaw),
-                row.LineCount, row.ItemQuantity, linesByOrder[row.Order.ErpId].ToArray(),
-                detail.Status, detail.Buyer, detail.TotalAmount, detail.TotalCurrency, detail.Logistics, detail.PaidRaw,
-                ParseDetails(detail.Details));
+            var shop = shopDetails[row.Sid];
+            var name = access.IsAdministrator || shop.Platform == row.Platform ? shop.Name : null;
+            return new OrderListItem(row.ErpId, row.Sid, name, row.Platform,
+                childrenByOrder[row.ErpId].ToArray(),
+                OrderSourceTime.Format(row.CreatedRaw, row.CreatedAtTicks),
+                OrderSourceTime.Format(row.DispatchedRaw, OrderSourceTime.ToTicks(row.DispatchedRaw)),
+                row.LineCount, row.ItemQuantity, linesByOrder[row.ErpId].ToArray(),
+                row.Status, row.Buyer, row.TotalAmount, row.TotalCurrency, row.Logistics, row.PaidRaw,
+                ParseDetails(row.Details));
         }).ToArray();
 
         return new(items, total, page, request.PageSize, options);
@@ -156,13 +148,10 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
     /// <summary>读取单个本地订单（与列表同一结构）；订单不存在或无权访问时返回 null。</summary>
     internal async Task<OrderListItem?> ReadOneAsync(string erpId, ShopAccess access, CancellationToken ct)
     {
-        var orders = access.Orders(db).AsNoTracking();
-        var header = await ReadHeaders().Where(row => row.ErpId == erpId && orders.Any(order => order.ErpId == row.ErpId))
-            .FirstOrDefaultAsync(ct);
-        if (header is null)
+        var order = await access.Orders(db).AsNoTracking().FirstOrDefaultAsync(row => row.ErpId == erpId, ct);
+        if (order is null)
             return null;
 
-        var order = await orders.FirstAsync(row => row.ErpId == erpId, ct);
         var shopName = await access.Shops(db).AsNoTracking()
             .Where(shop => shop.Sid == order.Sid && shop.Platform == order.Platform)
             .Select(shop => shop.Name).FirstOrDefaultAsync(ct);
@@ -174,7 +163,8 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
             [.. platformOrders.Select(po => new PlatformOrderListItem(po.PoNumber,
                 !string.IsNullOrWhiteSpace(po.StatusText) ? po.StatusText! :
                 !string.IsNullOrWhiteSpace(po.StatusCode) ? po.StatusCode! : "未知", false))],
-            FormatTime(header.CreatedAt, header.CreatedRaw), FormatTime(header.DispatchedAt, header.DispatchedRaw),
+            OrderSourceTime.Format(order.CreatedRaw, order.CreatedAtTicks),
+            OrderSourceTime.Format(order.DispatchedRaw, OrderSourceTime.ToTicks(order.DispatchedRaw)),
             lines.Length, lines.Sum(line => (long)line.Quantity),
             [.. lines.Select(line => new OrderLineListItem(line.ProductId, line.SkuCode, line.Name, line.ImageUrl,
                 line.Specs, line.Quantity, line.UnitPrice, line.Currency, line.Logistics, ParseDetails(line.Details)))],
@@ -195,25 +185,4 @@ internal sealed class OrderListQuery(AppDbContext db, ILogger<OrderListQuery> lo
             return [];
         }
     }
-
-    internal IQueryable<OrderListHeader> ReadHeaders() =>
-        db.Database.SqlQueryRaw<OrderListHeader>(OrderHeadersSql, OrderCreatedTimeSql.Parameters());
-
-    private static string? FormatTime(DateTime? value, string? source)
-    {
-        if (value is not { } time || source is null)
-            return null;
-        if (source.Length == 10 && source.All(char.IsAsciiDigit))
-            return time.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
-
-        // 只统一日期顺序和分隔符，保留来源的时间精度及显式偏移。
-        var date = time.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        return source.Length > 10 ? date + "T" + source[11..] : date;
-    }
-
-    internal sealed record OrderListHeader(string ErpId, int Sid, string Platform,
-        [property: Column(TypeName = "timestamp without time zone")] DateTime? CreatedAt,
-        DateOnly? CreatedDate,
-        [property: Column(TypeName = "timestamp without time zone")] DateTime? DispatchedAt,
-        string? CreatedRaw, string? DispatchedRaw);
 }

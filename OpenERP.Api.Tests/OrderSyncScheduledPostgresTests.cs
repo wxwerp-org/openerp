@@ -52,7 +52,7 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
         // Given 定时同步选中一家店，平台返回一张可保存的订单。
         var cancellationToken = TestContext.Current.CancellationToken;
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(_testConnectionString, builder => builder.EnableRetryOnFailure().MaxBatchSize(1))
+            .UseOpenErpPostgres(_testConnectionString, builder => builder.EnableRetryOnFailure().MaxBatchSize(1))
             .Options;
         await using (var db = new AppDbContext(options))
             await db.Database.MigrateAsync(cancellationToken);
@@ -110,7 +110,7 @@ public sealed class OrderSyncScheduledPostgresTests(AspireIntegrationFixture fix
         // Given 一家店首轮读取失败，另一家店成功；次轮两家都成功。
         var cancellationToken = TestContext.Current.CancellationToken;
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(_testConnectionString, builder => builder.EnableRetryOnFailure().MaxBatchSize(1))
+            .UseOpenErpPostgres(_testConnectionString, builder => builder.EnableRetryOnFailure().MaxBatchSize(1))
             .Options;
         await using (var db = new AppDbContext(options))
             await db.Database.MigrateAsync(cancellationToken);

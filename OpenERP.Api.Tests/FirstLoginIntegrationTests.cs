@@ -148,8 +148,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
             {
                 await AuthenticationConcurrency.WaitForAdminLocksAsync(observer, 2, ct, "两个初始化请求进入锁队列",
                     [new("第一个初始化请求", firstAttempt, () => $"HTTP {(int)firstAttempt.Result.StatusCode}"),
-                     new("第二个初始化请求", secondAttempt, () => $"HTTP {(int)secondAttempt.Result.StatusCode}")],
-                    includeUpdates: true);
+                     new("第二个初始化请求", secondAttempt, () => $"HTTP {(int)secondAttempt.Result.StatusCode}")]);
             }
             catch (Exception exception)
             {
@@ -249,7 +248,7 @@ public sealed class FirstLoginIntegrationTests(ITestOutputHelper output)
             initialize = InitializeAsync(browser, "browser-password", operations.Token);
             await AuthenticationConcurrency.WaitForAdminLocksAsync(observer, 2, ct, "浏览器初始化进入锁队列",
                 [new("CLI 重置", reset, () => $"退出码 {reset.Result.ExitCode}"),
-                 new("浏览器初始化", initialize, () => $"HTTP {(int)initialize.Result.StatusCode}")], includeUpdates: true);
+                 new("浏览器初始化", initialize, () => $"HTTP {(int)initialize.Result.StatusCode}")]);
         }
         catch (Exception exception)
         {
