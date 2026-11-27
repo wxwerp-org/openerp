@@ -512,6 +512,9 @@ docs/superpowers/
 # 临时目录：联调/调试产生的本地文件（真实面单 PDF、探针日志、截图等，可能含订单、买家信息或凭据）一律放这里，禁止提交
 # 只忽略仓库根目录的 temp/，不能写成 temp/，否则会误伤 OpenERP.Web/src/mock/temp 这类源码目录。
 /temp/
+
+# 本机私有信息：内部测试环境的域名、服务器地址、部署备忘等。只留在本机，不提交，不进入开放源码或打包。
+/.local/
 probe*.log
 secrets.json
 *.pem
