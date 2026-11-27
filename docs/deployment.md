@@ -59,7 +59,7 @@ docker compose up -d
 
 ## houqin staging 自动部署
 
-每次发布 GitHub Release（含预发布），发布工作流成功推送镜像并上传 `docker-compose.yaml` 后，会通过 SSH 更新 `openerp.wxwerp.com` 的 `/opt/openerp/`。其他实例仍可从同一 Release 下载附件，按上文手动部署。houqin 的部署结果可在该 Release 对应的 Actions 运行中查看，job 名为「部署 houqin staging」。
+每次发布 GitHub Release（含预发布），发布工作流成功推送镜像并上传 `docker-compose.yaml` 后，会通过 SSH 更新你配置的部署服务器的 `/opt/openerp/`。服务器地址来自 `HOUQIN_KNOWN_HOSTS` 的主机字段，不写在代码里，各部署者在自己的仓库变量里配置。没有配置这些变量就不会部署，其他实例仍可从同一 Release 下载附件，按上文手动部署。houqin 的部署结果可在该 Release 对应的 Actions 运行中查看，job 名为「部署 houqin staging」。
 
 ### 一次性配置
 
@@ -71,8 +71,8 @@ docker compose up -d
 | --- | --- | --- |
 | `HOUQIN_SSH_PRIVATE_KEY` | Secrets | 与部署账号公钥匹配、可供非交互使用的专用私钥 |
 | `HOUQIN_SSH_USER` | Variables | SSH 部署账号 |
-| `HOUQIN_KNOWN_HOSTS` | Variables | 已核验的主机公钥行，例如 `openerp.wxwerp.com ssh-ed25519 <主机公钥>` |
-| `HOUQIN_SSH_PORT` | Variables，可选 | 默认 `22`。自定义端口时，公钥行的主机部分写作 `[openerp.wxwerp.com]:端口` |
+| `HOUQIN_KNOWN_HOSTS` | Variables | 已核验的主机公钥行，例如 `deploy.example.com ssh-ed25519 <主机公钥>`。第一个字段同时就是部署用的主机名和公网 HTTPS 检查的域名 |
+| `HOUQIN_SSH_PORT` | Variables，可选 | 默认 `22`。自定义端口时，公钥行的主机部分写作 `[deploy.example.com]:端口` |
 
 ### 升级和故障处理
 

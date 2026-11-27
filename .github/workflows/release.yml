@@ -187,13 +187,20 @@ jobs:
           trap 'rm -rf -- "$ssh_dir"' EXIT
           printf '%s\n' "${HOUQIN_SSH_PRIVATE_KEY:?请配置部署密钥}" > "$ssh_dir/id"
           printf '%s\n' "${HOUQIN_KNOWN_HOSTS:?请配置经过核实的 SSH 主机公钥}" > "$ssh_dir/known_hosts"
+          # 部署主机名取自 HOUQIN_KNOWN_HOSTS 第一行的主机字段（形如 host、[host]:port 或 host,别名），不写进代码。
+          host=$(awk 'NF { print $1; exit }' "$ssh_dir/known_hosts")
+          host=${host%%,*}
+          host=${host#\[}
+          host=${host%%\]*}
+          : "${host:?HOUQIN_KNOWN_HOSTS 第一行缺少主机名}"
+          printf 'host=%s\n' "$host" >> "$GITHUB_OUTPUT"
           printf '%s\n' "${EXPECTED_IMAGE:?缺少已验收的镜像引用}" > "$RUNNER_TEMP/image"
           printf '%s\n' "${EXPECTED_DIGEST:?缺少 GHCR 发布摘要}" > "$RUNNER_TEMP/digest"
           printf '%s\n' "$GITHUB_RUN_NUMBER" > "$RUNNER_TEMP/run-number"
           tar -cf - -C deploy/houqin update.sh -C "$RUNNER_TEMP" docker-compose.yaml image digest run-number |
             ssh -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
               -o GlobalKnownHostsFile=/dev/null -o "UserKnownHostsFile=$ssh_dir/known_hosts" -o ConnectTimeout=15 \
-              -i "$ssh_dir/id" -p "$HOUQIN_SSH_PORT" -l "${HOUQIN_SSH_USER:?请配置部署账号}" -- openerp.wxwerp.com '
+              -i "$ssh_dir/id" -p "$HOUQIN_SSH_PORT" -l "${HOUQIN_SSH_USER:?请配置部署账号}" -- "$host" '
                 set -eu
                 umask 077
                 work=$(mktemp -d)
@@ -203,10 +210,12 @@ jobs:
 
       - name: 验证 staging 的 HTTPS 入口与数据库状态
         id: health
+        env:
+          DEPLOY_HOST: ${{ steps.deploy.outputs.host }}
         run: |
           status=$(curl --silent --show-error --fail --connect-timeout 5 --max-time 10 \
             --retry 60 --retry-delay 5 --retry-max-time 300 --retry-all-errors \
             --output "$RUNNER_TEMP/status.json" --write-out '%{http_code}' \
-            https://openerp.wxwerp.com/api/auth/status)
+            "https://${DEPLOY_HOST:?缺少部署主机名}/api/auth/status")
           test "$status" = 200
           jq -e 'type == "object" and (.initialized | type == "boolean")' "$RUNNER_TEMP/status.json"
