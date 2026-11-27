@@ -16,6 +16,7 @@
     "serve": "vite preview",
     "lint": "eslint",
     "fix": "eslint --fix",
+    "format:check": "prettier --check .",
     "lint:prettier": "prettier --write \"**/*.{js,cjs,ts,json,tsx,css,less,scss,vue,html,md}\"",
     "lint:stylelint": "stylelint  \"**/*.{css,scss,vue}\" --fix",
     "lint:lint-staged": "lint-staged",

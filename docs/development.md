@@ -178,7 +178,7 @@ pnpm --dir OpenERP.Web fix
 
 `lint` 只读检查，`fix` 自动修复可修复的问题（包括排版）。遇到 lint 报错或警告，按对应规则的官方文档修正成因，不用行内禁用或放宽配置绕过检查。
 
-类型检查为 `pnpm --dir OpenERP.Web typecheck`（`vue-tsc --noEmit`）。目前仍有 SpiderUI 自带泛型组件（`art-form`、`art-search-bar`、`art-table`）和 `SidebarSubmenu` 的 10 处类型报错，属于框架遗留问题，新增代码不应再增加报错。
+类型检查为 `pnpm --dir OpenERP.Web typecheck`（`vue-tsc --noEmit`）。当前没有类型报错，新增代码不应引入报错。`lint` 与 `typecheck` 依赖构建时生成的 `.auto-import.json` 和 `src/types/import/*.d.ts`（不入库），所以全新检出后要先执行一次 `pnpm --dir OpenERP.Web build`（CI 也是这个顺序）。单测在 `vitest.config.ts` 里关闭了 Node 25+ 默认启用的实验性 webstorage，否则 jsdom 的 `localStorage` 会变成 undefined。
 
 ### 前端视觉验收
 

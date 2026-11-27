@@ -690,7 +690,7 @@
 
   /* 授权状态筛选：面板外的一组按钮，数量以淡色文字跟在文本右侧 */
   .status-filter {
-    margin-bottom: 12px;
+    padding-bottom: 12px;
   }
 
   .status-option {

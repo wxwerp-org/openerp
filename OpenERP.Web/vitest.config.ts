@@ -34,6 +34,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['tests/unit/**/*.spec.ts'],
+    // Node 25+ 默认启用实验性 webstorage，会让 jsdom 的 localStorage 变成 undefined；单测关闭它。
+    poolOptions: { forks: { execArgv: ['--no-experimental-webstorage'] } },
     // Element Plus 样式在单测中无需解析
     css: false
   }

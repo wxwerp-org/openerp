@@ -86,7 +86,12 @@ export function deleteOrders(ids: string[]) {
 }
 
 export type OrderLabels = {
-  documents: { platformOrderNumber: string; fileName: string; contentType: string; content: string }[]
+  documents: {
+    platformOrderNumber: string
+    fileName: string
+    contentType: string
+    content: string
+  }[]
   failures: { platformOrderNumber: string; reason: string }[]
 }
 
@@ -99,7 +104,7 @@ export function printOrderLabels(ids: string[]) {
   })
 }
 
-export type ReportAmount ={ currency: string; orders: number; total: number }
+export type ReportAmount = { currency: string; orders: number; total: number }
 
 /** 某个维度取值下的订单数、件数和按币种的金额 */
 export type ReportBucket = {

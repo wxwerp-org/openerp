@@ -510,7 +510,8 @@ aspire-output/
 docs/superpowers/
 
 # 临时目录：联调/调试产生的本地文件（真实面单 PDF、探针日志、截图等，可能含订单、买家信息或凭据）一律放这里，禁止提交
-temp/
+# 只忽略仓库根目录的 temp/，不能写成 temp/，否则会误伤 OpenERP.Web/src/mock/temp 这类源码目录。
+/temp/
 probe*.log
 secrets.json
 *.pem
